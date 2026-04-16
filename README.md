@@ -209,7 +209,16 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 |------|-------------|
 | `docs/ARCHITECTURE.md` | arc42-format system design and deployment topology |
 | `docs/REQUIREMENTS.md` | FR/NFR/SR/SEC/COMP requirements, ASPICE-traceable |
+| `docs/SAFETY-CONCEPT.md` | Safety classification, QM/ASIL boundary, Fault Library isolation |
+| `docs/TEST-STRATEGY.md` | Test levels, CI pipeline, HIL gating, coverage tooling |
+| `docs/CODING-STANDARDS.md` | Rust/Kotlin formatting, linting, error handling, naming, SPDX |
+| `docs/DEVELOPER-GUIDE.md` | Build prerequisites, toolchain setup, run and test instructions |
+| `docs/DEPLOYMENT-GUIDE.md` | SIL / HIL / production topology, configuration, rollback |
+| `docs/GLOSSARY.md` | Domain terms: SOVD, UDS, DTC, DoIP, ASIL, DFM, and more |
 | `docs/adr/` | 18 Architecture Decision Records (ADR-0001 through ADR-0018) |
+| `CONTRIBUTING.md` | How to contribute, PR process, commit conventions |
+| `CODE_OF_CONDUCT.md` | Eclipse Community Code of Conduct |
+| `CHANGELOG.md` | Release history by phase |
 
 ## Relationship to upstream
 

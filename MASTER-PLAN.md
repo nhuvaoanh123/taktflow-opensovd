@@ -657,6 +657,8 @@ Each phase has: entry criteria, deliverables, exit criteria, owner.
    - `hil_sovd_07_large_fault_list.yaml` — ECU with 50+ faults, pagination correctness
    - `hil_sovd_08_error_handling.yaml` — ECU disconnect, degraded-mode responses (per ADR-0018 "never hard fail"), stale cache flag, timeouts
 
+   - Live stop note (2026-04-16): D2 and D6 are green on the current hybrid Pi path, but D3 and D5 are still blocked by the Phase 5 CDA MDDs being FLXC1000-derived sparse catalogs with no real forwarded fault surface, and D4 now reaches the real downstream `404` because the same catalog set does not define `rzc/motor_self_test`.
+
 3. **Real STM32 flashing via ST-LINK on the Windows dev host**
    - First phase where `firmware/ecu/cvc/` is built as an ARM ELF (not POSIX) and flashed through COM3 ST-LINK per `tools/bench/hardware-map.toml`
    - Build target cross-compiles from the Windows dev host via STM32CubeCLT / ARM GCC toolchain

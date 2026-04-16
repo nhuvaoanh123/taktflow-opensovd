@@ -54,7 +54,7 @@ project has something to test against". This is where those downloads live.
 If upstream releases a new version we want to pull in:
 
 ```sh
-cd /h/eclipse-opensovd/external/odxtools
+cd /h/taktflow-opensovd/external/odxtools
 rtk git fetch --depth 1 origin main
 rtk git reset --hard origin/main
 ```

@@ -1,0 +1,187 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88.0"
+license = "Apache-2.0"
+homepage = "https://github.com/eclipse-opensovd/opensovd-core"
+repository = "https://github.com/eclipse-opensovd/opensovd-core"
+
+[workspace]
+resolver = "3"
+members = [
+  "sovd-interfaces",
+  "sovd-dfm",
+  "sovd-db",
+  "sovd-server",
+  "sovd-gateway",
+  "sovd-client",
+  "sovd-tracing",
+  "sovd-main",
+  "integration-tests",
+  "xtask",
+  "crates/sovd-db-sqlite",
+  "crates/sovd-db-score",
+  "crates/fault-sink-unix",
+  "crates/fault-sink-lola",
+  "crates/opcycle-taktflow",
+  "crates/opcycle-score-lifecycle",
+]
+
+[workspace.dependencies]
+sovd-interfaces = { path = "sovd-interfaces" }
+sovd-dfm = { path = "sovd-dfm", default-features = false }
+sovd-db = { path = "sovd-db" }
+sovd-server = { path = "sovd-server" }
+sovd-gateway = { path = "sovd-gateway" }
+sovd-client = { path = "sovd-client" }
+sovd-tracing = { path = "sovd-tracing" }
+sovd-db-sqlite = { path = "crates/sovd-db-sqlite" }
+sovd-db-score = { path = "crates/sovd-db-score" }
+fault-sink-unix = { path = "crates/fault-sink-unix" }
+fault-sink-lola = { path = "crates/fault-sink-lola" }
+opcycle-taktflow = { path = "crates/opcycle-taktflow" }
+opcycle-score-lifecycle = { path = "crates/opcycle-score-lifecycle" }
+
+# ---- common crates ----
+async-trait = "0.1.89"
+thiserror = "2.0.17"
+num-traits = "0.2"
+parking_lot = "0.12.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.48.0", default-features = false }
+tokio-util = { version = "0.7.3", default-features = false }
+futures = "0.3"
+regex = "1.12.2"
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+bytes = "1"
+# ---- CDA-specific wire-format crates (TDD punchlist: expected to not resolve until patches land) ----
+prost = "0.14"
+prost-build = "0.14.1"
+flatbuffers = "25.9.23"
+doip-codec = "2.0.8"
+doip-definitions = "3.0.13"
+xz2 = "0.1.7"
+# ---- end CDA-specific ----
+hex = "0.4.3"
+strum = "0.27.2"
+strum_macros = "0.27.2"
+indexmap = "2.12.1"
+http = "1.3.1"
+mime = "0.3.17"
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
+chrono = { version = "0.4.42", features = ["serde"] }
+reqwest = "0.12.24"
+url = "2.5.7"
+clap = { version = "4.5", features = ["derive"] }
+figment = { version = "0.10.19", features = ["env", "toml"] }
+schemars = "1.1.0"
+utoipa = { version = "5", features = ["chrono", "uuid"] }
+aide = "0.16.0-alpha.1"
+# ---- CDA-specific MDD / self-ref / mmap / build-script-config crates ----
+ouroboros = "0.18.5"
+memmap2 = "0.9"
+cargo_toml = "0.22.3"
+# ---- end CDA-specific ----
+toml = "0.9.8"
+libc = "0.2.177"
+foldhash = "0.2.0"
+mockall = "0.14.0"
+sha2 = "0.10"
+
+# ---- CDA-specific mbedtls UDS TLS crates (mirrored as local paths per CDA layout) ----
+mbedtls-sys = { path = "comm-mbedtls/mbedtls-sys" }
+mbedtls-rs = { path = "comm-mbedtls/mbedtls-rs" }
+# ---- end CDA-specific ----
+
+# ---- tracing & logging crates ----
+tracing = "0.1.41"
+tracing-core = "0.1.34"
+tracing-appender = "0.2.3"
+tracing-opentelemetry = "0.32.0"
+tracing-subscriber = { version = "0.3.20", default-features = false, features = ["fmt", "env-filter"] }
+# ---- CDA-specific DLT tracing crates (TDD punchlist: Phase 6 enables these) ----
+tracing-dlt = { version = "0.1.0" }
+dlt-rs = "0.1.0"
+dlt-sys = "0.1.0"
+# ---- end CDA-specific ----
+strip-ansi-escapes = "0.2.1"
+nu-ansi-term = "0.50"
+console-subscriber = "0.5.0"
+percent-encoding = "2.3.2"
+
+# ---- opentelemetry crates ----
+opentelemetry = { version = "0.31.0", default-features = false }
+opentelemetry_sdk = { version = "0.31.0", default-features = false }
+opentelemetry-otlp = "0.31.0"
+opentelemetry-semantic-conventions = "0.31.0"
+
+# ---- networking crates ----
+openssl = "0.10"
+socket2 = "0.6.1"
+tokio-openssl = { version = "0.6.5" }
+tower = { version = "0.5", default-features = false }
+tower-http = "0.6"
+
+# ---- web/api crates ----
+axum = { version = "0.8", default-features = false }
+axum-extra = { version = "0.12.2" }
+serde_qs = "1.0.0-rc.3"
+urlencoding = "2.1.3"
+
+# ---- persistence ----
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "chrono"] }
+
+# ---- IPC wire format (Fault-Lib → DFM) ----
+# See ADR-0016 and crates/fault-sink-unix. postcard is chosen over bincode
+# because it is `no_std`-friendly, has a stable wire format, and the Fault
+# Library shim may want to use it from non-Rust callers via the generated
+# schema in the future.
+postcard = { version = "1.1", default-features = false, features = ["use-std"] }
+
+# ---- test-only helpers ----
+tempfile = "3.14"
+
+# ---- utility crates ----
+const_format = "0.2.35" # compile time string formatting
+rustversion = "1.0.22"  # macros for conditional compilation
+
+[workspace.lints.clippy]
+# enable pedantic
+pedantic = { level = "warn", priority = -1 }
+## exclude some too pedantic lints for now
+similar_names = "allow"
+
+# additional lints
+clone_on_ref_ptr = "warn"
+indexing_slicing = "deny"
+unwrap_used = "deny"
+arithmetic_side_effects = "deny"
+separated_literal_suffix = "deny"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(nightly)'] }
+
+[profile.release.package."*"]
+opt-level = 3
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
+[patch.crates-io]
+# Necessary because upstream is still using an older version of serde_qs (0.14 instead of 1.0.0-rc.3)
+aide = { git = "https://github.com/alexmohr/aide.git", rev = "56355cb" }
+doip-codec = { git = "https://github.com/theswiftfox/doip-codec.git", rev = "0dba319" }
+doip-definitions = { git = "https://github.com/theswiftfox/doip-definitions.git", rev = "bdeab8c" }
+flatbuffers = { git = "https://github.com/alexmohr/flatbuffers.git", rev = "0ba3307d" }

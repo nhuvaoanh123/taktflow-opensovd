@@ -32,7 +32,6 @@ use sovd_interfaces::{
 
 // Forward faults go through `InMemoryServer::dispatch_*` helpers so
 // route handlers never have to branch on local-vs-forwarded themselves.
-
 use crate::{InMemoryServer, routes::error::ApiError};
 
 /// Query parameters for `GET .../faults`.

@@ -329,9 +329,7 @@ pub(crate) fn read_ecudata<'a>(
     } else {
         // SAFETY: The MDD file was previously verified by flatbuffers::root during
         // the initial load. Unchecked parsing is ~10x faster for trusted data.
-        Ok(unsafe {
-            dataformat::root_as_ecu_data_unchecked(bytes)
-        })
+        Ok(unsafe { dataformat::root_as_ecu_data_unchecked(bytes) })
     };
 
     let end = Instant::now();

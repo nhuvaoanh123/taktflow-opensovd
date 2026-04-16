@@ -7,7 +7,7 @@ something to test against".
 
 This inventory is intentionally exhaustive. Every artifact below has been
 verified to exist and is either already on disk or was downloaded today
-into `H:\eclipse-opensovd\external\asam-public\`.
+into `H:\taktflow-opensovd\external\asam-public\`.
 
 ---
 
@@ -188,7 +188,7 @@ Empty stub (just a README). No specification content.
 
 ## Section B — What we downloaded from the web today (2026-04-14)
 
-All under `H:\eclipse-opensovd\external\asam-public\`. Total ~5.3 MB.
+All under `H:\taktflow-opensovd\external\asam-public\`. Total ~5.3 MB.
 Each PDF / ZIP has an adjacent `*.source.txt` sidecar with source URL,
 download date, coverage notes, and a per-file license summary.
 

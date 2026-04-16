@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "description": "Response body for `GET /{entity-collection}/{entity-id}/faults/{fault-code}`.\n\nProvenance: `faults/responses.yaml#FaultDetails` (inline schema — the\nspec does not give it a name in `components/schemas`, so we coin one).",
+  "required": [
+    "item"
+  ],
+  "properties": {
+    "environment_data": {
+      "description": "OEM-specific environment / freeze-frame data."
+    },
+    "errors": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "#/components/schemas/DataError"
+      },
+      "description": "Errors related to `environment_data`, if any."
+    },
+    "extras": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/components/schemas/ResponseExtras",
+          "description": "Soft-fail marker per ADR-0018 rule 4. Absent on the nominal\npath; set with `stale: true` when a degraded response is\nserved. Extra (per ADR-0006): not part of ISO 17978-3."
+        }
+      ]
+    },
+    "item": {
+      "$ref": "#/components/schemas/Fault",
+      "description": "The fault entry itself."
+    },
+    "schema": {
+      "description": "Optional embedded JSON Schema describing the response shape."
+    }
+  }
+}

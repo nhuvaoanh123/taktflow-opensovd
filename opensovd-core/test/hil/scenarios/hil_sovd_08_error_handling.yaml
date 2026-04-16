@@ -22,8 +22,8 @@ gate:
   bench_env_value: "1"
   readiness_env: PHASE5_BENCH_READY
   readiness_env_value: "1"
-  tcp_addr: 192.168.0.197:21002
-  base_url: http://192.168.0.197:21002
+  tcp_addr: 192.0.2.10:21002
+  base_url: http://192.0.2.10:21002
   not_ready_reason: >-
     Line B Phase 5 has not yet declared the bench ready for deliberate
     `can0` disconnect / reconnect cycles on the Pi. Keep D9 gated until
@@ -46,7 +46,7 @@ precondition:
     list instead of falling back to an empty baseline.
 
 pi:
-  ssh_host: taktflow-pi@192.168.0.197
+  ssh_host: bench-pi@192.0.2.10
   interface: can0
   nominal_bitrate: 500000
   recovery_restart_ms: 100

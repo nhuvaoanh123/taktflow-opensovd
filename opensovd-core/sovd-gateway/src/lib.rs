@@ -65,12 +65,13 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-use std::collections::{BTreeSet, HashMap};
-use std::sync::Arc;
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use serde::Deserialize;
-
 use sovd_interfaces::{
     ComponentId, SovdError,
     spec::{
@@ -593,12 +594,13 @@ impl GatewayConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use async_trait::async_trait;
     use sovd_interfaces::{
         traits::backend::{BackendKind, SovdBackend},
         types::error::Result as SovdResult,
     };
+
+    use super::*;
 
     // --- test doubles ---------------------------------------------------
 

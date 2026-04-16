@@ -21,8 +21,8 @@ gate:
   bench_env_value: "1"
   readiness_env: PHASE5_BENCH_READY
   readiness_env_value: "1"
-  tcp_addr: 192.168.0.197:21002
-  base_url: http://192.168.0.197:21002
+  tcp_addr: 192.0.2.10:21002
+  base_url: http://192.0.2.10:21002
   not_ready_reason: >-
     Line B Phase 5 has not yet declared the full bench fleet ready.
     Keep D2 gated until CVC, FZC, RZC, and TCU are all provisioned and

@@ -23,8 +23,11 @@
 //! - a bus-off fault marker appears within the configured deadline
 //! - the stale flag clears after the Pi CAN interface is restored
 
+mod common;
+
 use std::{env, fs, net::SocketAddr, path::PathBuf, process::Command, time::Duration};
 
+use common::{override_pi_sovd_gate, override_pi_ssh_host};
 use reqwest::StatusCode;
 use serde::Deserialize;
 use sovd_interfaces::spec::{
@@ -132,7 +135,7 @@ impl PiCanGuard {
                    for i in $(seq 1 {burst_frames}); do \
                      cansend {iface} {frame} >/dev/null 2>&1 || true; \
                    done; \
-                   if ip -details -statistics link show {iface} | grep -Eq 'BUS-OFF|bus-off'; then \
+                   if ip -details -statistics link show {iface} | grep -Ei \"BUS-OFF|bus-off\"; then \
                      ip -details -statistics link show {iface}; \
                      exit 0; \
                    fi; \
@@ -154,7 +157,9 @@ impl PiCanGuard {
             &format!(
                 "set -euo pipefail; \
                  ip link set {iface} down 2>/dev/null || true; \
-                 ip link set {iface} type can bitrate {bitrate} restart-ms {restart_ms}; \
+                 if ! ip link set {iface} type can bitrate {bitrate} restart-ms {restart_ms} 2>/dev/null; then \
+                   ip link set {iface} type can bitrate {bitrate}; \
+                 fi; \
                  ip link set {iface} up; \
                  ip -details -statistics link show {iface}",
                 iface = self.plan.interface,
@@ -189,7 +194,11 @@ fn scenario_path() -> PathBuf {
 fn load_scenario() -> Scenario {
     let path = scenario_path();
     let raw = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    serde_yaml::from_str(&raw).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+    let mut scenario: Scenario =
+        serde_yaml::from_str(&raw).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
+    override_pi_sovd_gate(&mut scenario.gate.tcp_addr, &mut scenario.gate.base_url);
+    override_pi_ssh_host(&mut scenario.pi.ssh_host);
+    scenario
 }
 
 async fn preflight() -> Preflight {

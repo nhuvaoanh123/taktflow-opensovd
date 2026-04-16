@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "description": "Response body for `GET /{entity-collection}/{entity-id}/faults`.\n\nProvenance: `faults/types.yaml#ListOfFaults`.\n\n`schema` is only present if the request was made with\n`?include-schema=true`; we carry it as an opaque JSON value to avoid\nmodelling the full `OpenAPI` 3.1 meta-schema.",
+  "required": [
+    "items"
+  ],
+  "properties": {
+    "extras": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/components/schemas/ResponseExtras",
+          "description": "Soft-fail marker per ADR-0018 rule 4. Absent on the nominal\npath so the spec-pure shape is preserved; set to\n`Some(ResponseExtras { stale: true, .. })` when the backend\nreturned a last-known snapshot because a fresh query failed\nor a retry budget was exhausted.\n\nExtra (per ADR-0006): not part of ISO 17978-3."
+        }
+      ]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/components/schemas/Fault"
+      },
+      "description": "All faults that match the request filter."
+    },
+    "next_page": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int32",
+      "description": "Cursor for the next page, expressed as the next 1-based page number.",
+      "minimum": 0
+    },
+    "schema": {
+      "description": "Optional embedded JSON Schema describing the response shape."
+    },
+    "total": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64",
+      "description": "Total number of faults that matched the filter before paging.",
+      "minimum": 0
+    }
+  }
+}

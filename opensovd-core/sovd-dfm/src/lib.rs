@@ -37,14 +37,13 @@
 //! [`OperationCycle`]: sovd_interfaces::traits::operation_cycle::OperationCycle
 //! [`SovdBackend`]: sovd_interfaces::traits::backend::SovdBackend
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
-use tokio::sync::RwLock;
-use uuid::Uuid;
-
 use sovd_interfaces::{
     ComponentId, SovdError,
     spec::{
@@ -64,6 +63,8 @@ use sovd_interfaces::{
     },
     types::error::Result,
 };
+use tokio::sync::RwLock;
+use uuid::Uuid;
 
 pub mod config;
 
@@ -518,10 +519,11 @@ impl SovdBackend for Dfm {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use opcycle_taktflow::TaktflowOperationCycle;
     use sovd_db_sqlite::SqliteSovdDb;
     use sovd_interfaces::extras::fault::{FaultId, FaultRecord, FaultSeverity};
+
+    use super::*;
 
     async fn build_dfm() -> Dfm {
         let db: Arc<dyn SovdDb> = Arc::new(
@@ -577,10 +579,12 @@ mod tests {
     // fail flag between calls.
     #[tokio::test]
     async fn list_faults_falls_back_to_last_known_snapshot_on_db_error() {
-        use sovd_interfaces::spec::fault::Fault;
-        use sovd_interfaces::traits::sovd_db::SovdDb;
-        use std::sync::Arc as StdArc;
-        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{
+            Arc as StdArc,
+            atomic::{AtomicBool, Ordering},
+        };
+
+        use sovd_interfaces::{spec::fault::Fault, traits::sovd_db::SovdDb};
 
         struct FlakySovdDb {
             fail: StdArc<AtomicBool>,
@@ -689,8 +693,7 @@ mod tests {
     // or surface a Degraded on the fallback read branch.
     #[tokio::test]
     async fn list_faults_write_cache_timeout_does_not_hang() {
-        use sovd_interfaces::spec::fault::Fault;
-        use sovd_interfaces::traits::sovd_db::SovdDb;
+        use sovd_interfaces::{spec::fault::Fault, traits::sovd_db::SovdDb};
 
         struct AlwaysOkDb;
 

@@ -19,8 +19,11 @@
 //! The test fails on any deadlock-like timeout, non-200/204 response, or
 //! missing state transition under concurrent load.
 
+mod common;
+
 use std::{env, fs, net::SocketAddr, path::PathBuf, time::Duration};
 
+use common::override_pi_sovd_gate;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use sovd_interfaces::spec::{component::DiscoveredEntities, fault::ListOfFaults};
@@ -113,7 +116,10 @@ fn scenario_path() -> PathBuf {
 fn load_scenario() -> Scenario {
     let path = scenario_path();
     let raw = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    serde_yaml::from_str(&raw).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+    let mut scenario: Scenario =
+        serde_yaml::from_str(&raw).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
+    override_pi_sovd_gate(&mut scenario.gate.tcp_addr, &mut scenario.gate.base_url);
+    scenario
 }
 
 async fn preflight() -> Preflight {

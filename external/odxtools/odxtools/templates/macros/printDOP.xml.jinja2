@@ -1,0 +1,167 @@
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+
+{%- import('macros/printElementId.xml.jinja2') as peid %}
+{%- import('macros/printAdminData.xml.jinja2') as pad %}
+{%- import('macros/printSpecialData.xml.jinja2') as psd %}
+{%- import('macros/printCompuMethod.xml.jinja2') as pcm %}
+{%- import('macros/printDescription.xml.jinja2') as pd %}
+
+
+{%- macro printDiagCodedType(dct) %}
+<DIAG-CODED-TYPE {{-make_xml_attrib("BASE-DATA-TYPE", dct.base_data_type.value)}}
+                 {{-make_xml_attrib("BASE-TYPE-ENCODING", dct.base_type_encoding and dct.base_type_encoding.value)}}
+                 {{-make_bool_xml_attrib("IS-HIGHLOW-BYTE-ORDER", dct.is_highlow_byte_order_raw)}}
+                 {%- if dct.termination is defined %}
+                 {{-make_xml_attrib("TERMINATION", dct.termination.value)}}
+                 {%- endif %}
+                 {%- if dct.is_condensed_raw is defined %}
+                 {{-make_bool_xml_attrib("CONDENSED", dct.is_condensed_raw)}}
+                 {%- endif %}
+                 {#- #} xsi:type="{{dct.dct_type}}">
+ {%- if dct.dct_type in ("STANDARD-LENGTH-TYPE", "LEADING-LENGTH-INFO-TYPE") %}
+ <BIT-LENGTH>{{dct.bit_length}}</BIT-LENGTH>
+ {%- if dct.dct_type in ("STANDARD-LENGTH-TYPE", ) and dct.bit_mask is not none %}
+ {%- set num_nibbles = (dct.bit_mask.bit_length() + 7) // 8 * 2 %}
+ <BIT-MASK>{{ ("%%0%dX" | format(num_nibbles | int)) | format(dct.bit_mask | int) }}</BIT-MASK>
+ {%- endif %}
+ {%- else %}
+ {%- if dct.max_length is not none %}
+ <MAX-LENGTH>{{dct.max_length}}</MAX-LENGTH>
+ {%- endif %}
+ <MIN-LENGTH>{{dct.min_length}}</MIN-LENGTH>
+ {%- endif %}
+</DIAG-CODED-TYPE>
+{%- endmacro %}
+
+{%- macro printPhysicalType(physical_type) -%}
+{%- if physical_type.display_radix is not none %}
+<PHYSICAL-TYPE BASE-DATA-TYPE="{{physical_type.base_data_type.value}}" DISPLAY-RADIX="{{physical_type.display_radix.name}}" />
+{%- elif physical_type.precision is not none %}
+<PHYSICAL-TYPE BASE-DATA-TYPE="{{physical_type.base_data_type.value}}">
+ <PRECISION>{{physical_type.precision}}</PRECISION>
+</PHYSICAL-TYPE>
+{%- else %}
+<PHYSICAL-TYPE BASE-DATA-TYPE="{{physical_type.base_data_type.value}}" />
+{%- endif %}
+{%- endmacro -%}
+
+{%- macro printScaleConstr(sc) %}
+<SCALE-CONSTR VALIDITY="{{sc.validity.value}}">
+  {%- if sc.short_label is not none %}
+  <SHORT-LABEL>{{sc.short_label|e}}</SHORT-LABEL>
+  {%- endif %}
+  {{pd.printDescription(sc.description)}}
+  {{pcm.printLimit("LOWER-LIMIT", sc.lower_limit) }}
+  {{pcm.printLimit("UPPER-LIMIT", sc.upper_limit) }}
+</SCALE-CONSTR>
+{%- endmacro -%}
+
+{%- macro printInternalConstr(ic, is_physical) %}
+{%- if is_physical %}
+<PHYS-CONSTR>
+{%- else %}
+<INTERNAL-CONSTR>
+{%- endif %}
+  {{pcm.printLimit("LOWER-LIMIT", ic.lower_limit) }}
+  {{pcm.printLimit("UPPER-LIMIT", ic.upper_limit) }}
+  {%- if ic.scale_constrs %}
+  <SCALE-CONSTRS>
+  {%- for sc in ic.scale_constrs %}
+    {{- printScaleConstr(sc)|indent(4)}}
+  {%- endfor %}
+  </SCALE-CONSTRS>
+  {%- endif %}
+{%- if is_physical %}
+</PHYS-CONSTR>
+{%- else %}
+</INTERNAL-CONSTR>
+{%- endif %}
+{%- endmacro -%}
+
+{%- macro printDopBaseAttribs(dop) %}
+{{- make_xml_attrib("ID", dop.odx_id.local_id) }}
+{{- make_xml_attrib("OID", dop.oid) }}
+{%- endmacro %}
+
+{%- macro printDopBaseSubtags(dop) %}
+ {{ peid.printElementIdSubtags(dop)|indent(1) }}
+ {%- if dop.admin_data %}
+ {{ pad.printAdminData(dop.admin_data)|indent(1) }}
+ {%- endif %}
+ {{- psd.printSpecialDataGroups(dop.sdgs)|indent(1) }}
+{%- endmacro %}
+
+{%- macro printComplexDopAttribs(st) %}
+ {{- printDopBaseAttribs(st) }}
+{%- endmacro -%}
+
+{%- macro printComplexDopSubtags(st) %}
+ {{- printDopBaseSubtags(st) }}
+{%- endmacro %}
+
+{%- macro printDataObjectProp(dop) %}
+<DATA-OBJECT-PROP {{- printDopBaseAttribs(dop) }}>
+ {{- printDopBaseSubtags(dop) }}
+ {{- pcm.printCompuMethod(dop.compu_method)|indent(1) }}
+ {{- printDiagCodedType(dop.diag_coded_type)|indent(1) }}
+ {{- printPhysicalType(dop.physical_type)|indent(1) }}
+ {%- if dop.internal_constr %}
+ {{- printInternalConstr(dop.internal_constr, False)|indent(1) }}
+ {%- endif %}
+ {%- if dop.unit_ref %}
+ <UNIT-REF {{make_ref_attribs(dop.unit_ref)}} />
+ {%- endif %}
+ {%- if dop.physical_constr %}
+ {{- printInternalConstr(dop.internal_constr, True)|indent(1) }}
+ {%- endif %}
+</DATA-OBJECT-PROP>
+{%- endmacro %}
+
+{%- macro printDtcDop(dop) %}
+<DTC-DOP {{- printDopBaseAttribs(dop) }}
+         {{- make_bool_xml_attrib("IS-VISIBLE", dop.is_visible_raw) }}>
+ {{- printDopBaseSubtags(dop)|indent(1) }}
+ {{- printDiagCodedType(dop.diag_coded_type)|indent(1) }}
+ {{- printPhysicalType(dop.physical_type)|indent(1) }}
+ {{- pcm.printCompuMethod(dop.compu_method)|indent(1) }}
+ <DTCS>
+ {%- for dtc in dop.dtcs_raw %}
+ {%- if hasattr(dtc, "ref_id") %}
+  <DTC-REF {{make_ref_attribs(dtc)}} />
+ {%- else %}
+  <DTC {{-peid.printElementIdAttribs(dtc)}}>
+   <SHORT-NAME>{{dtc.short_name}}</SHORT-NAME>
+   <TROUBLE-CODE>{{dtc.trouble_code}}</TROUBLE-CODE>
+  {%- if dtc.display_trouble_code is not none   %}
+   <DISPLAY-TROUBLE-CODE>{{dtc.display_trouble_code}}</DISPLAY-TROUBLE-CODE>
+  {%- endif %}
+   <TEXT {{- make_xml_attrib("TI", dtc.text.text_identifier) }}>{{dtc.text|e}}</TEXT>
+  {%- if not dtc.level is none   %}
+   <LEVEL>{{dtc.level}}</LEVEL>
+  {%- endif %}
+   {{- psd.printSpecialDataGroups(dtc.sdgs)|indent(3, first=True) }}
+  </DTC>
+ {%- endif %}
+ {%- endfor %}
+ </DTCS>
+ {%- if dop.linked_dtc_dops_raw   %}
+ <LINKED-DTC-DOPS>
+   {%- for linked_dtc_dop in dop.linked_dtc_dops_raw %}
+   <LINKED-DTC-DOP>
+     {%- if linked_dtc_dop.not_inherited_dtc_snrefs  %}
+     <NOT-INHERITED-DTC-SNREFS>
+       {%- for ni_snref in linked_dtc_dop.not_inherited_dtc_snrefs %}
+       <NOT-INHERITED-DTC-SNREF SHORT-NAME="{{ni_snref}}" />
+       {%- endfor %}
+     </NOT-INHERITED-DTC-SNREFS>
+     {%- endif %}
+     <DTC-DOP-REF {{make_ref_attribs(linked_dtc_dop.dtc_dop_ref)}} />
+   </LINKED-DTC-DOP>
+   {%- endfor %}
+ </LINKED-DTC-DOPS>
+ {%- endif %}
+</DTC-DOP>
+{%- endmacro -%}

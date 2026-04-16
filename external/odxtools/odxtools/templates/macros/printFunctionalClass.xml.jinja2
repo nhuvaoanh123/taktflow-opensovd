@@ -1,0 +1,17 @@
+
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+
+{%- import('macros/printElementId.xml.jinja2') as peid %}
+{%- import('macros/printAdminData.xml.jinja2') as pad %}
+
+{%- macro printFunctionalClass(fc) -%}
+<FUNCT-CLASS {{-peid.printElementIdAttribs(fc)}}>
+  {{ peid.printElementIdSubtags(fc)|indent(2) }}
+  {%- if fc.admin_data is not none %}
+  {{ pad.printAdminData(fc.admin_data)|indent(2) }}
+  {%- endif %}
+</FUNCT-CLASS>
+{%- endmacro -%}

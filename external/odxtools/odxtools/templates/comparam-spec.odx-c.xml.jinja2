@@ -1,0 +1,26 @@
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+ #
+ # This template writes an .odx-c file for a communication
+ # parameter specification.
+-#}
+{%- import('macros/printOdxCategory.xml.jinja2') as poc %}
+{%- import('macros/printProtStack.xml.jinja2') as pps %}
+{#- -#}
+
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<!-- Written using odxtools {{odxtools_version}} -->
+<ODX MODEL-VERSION="2.2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="odx.xsd">
+ {{- set_category_docfrag(comparam_spec.short_name, "COMPARAM-SPEC") }}
+ <COMPARAM-SPEC  {{- poc.printOdxCategoryAttribs(comparam_spec) }}>
+   {{- poc.printOdxCategorySubtags(comparam_spec)|indent(3) }}
+   {%- if comparam_spec.prot_stacks %}
+   <PROT-STACKS>
+    {%- for ps in comparam_spec.prot_stacks %}
+     {{- pps.printProtStack(ps) | indent(5) -}}
+    {%- endfor %}
+   </PROT-STACKS>
+   {%- endif %}
+ </COMPARAM-SPEC>
+</ODX>

@@ -1,0 +1,93 @@
+# SPDX-License-Identifier: MIT
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import cast
+from xml.etree import ElementTree
+
+from typing_extensions import override
+
+from ..diagvariable import DiagVariable
+from ..exceptions import odxassert
+from ..nameditemlist import NamedItemList
+from ..odxdoccontext import OdxDocContext
+from ..odxlink import OdxLinkDatabase, OdxLinkRef
+from ..parentref import ParentRef
+from ..variablegroup import VariableGroup
+from .diaglayer import DiagLayer
+from .functionalgroupraw import FunctionalGroupRaw
+from .hierarchyelement import HierarchyElement
+
+
+@dataclass(kw_only=True)
+class FunctionalGroup(HierarchyElement):
+    """This is a diagnostic layer for functionality shared between multiple ECU variants
+    """
+
+    @property
+    def functional_group_raw(self) -> FunctionalGroupRaw:
+        return cast(FunctionalGroupRaw, self.diag_layer_raw)
+
+    @property
+    def diag_variables_raw(self) -> list[DiagVariable | OdxLinkRef]:
+        return self.functional_group_raw.diag_variables_raw
+
+    @property
+    def diag_variables(self) -> NamedItemList[DiagVariable]:
+        return self._diag_variables
+
+    @property
+    def variable_groups(self) -> NamedItemList[VariableGroup]:
+        return self._variable_groups
+
+    @property
+    def parent_refs(self) -> list[ParentRef]:
+        return self.functional_group_raw.parent_refs
+
+    @staticmethod
+    def from_et(et_element: ElementTree.Element, context: OdxDocContext) -> "FunctionalGroup":
+        functional_group_raw = FunctionalGroupRaw.from_et(et_element, context)
+
+        return FunctionalGroup(diag_layer_raw=functional_group_raw)
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+
+        odxassert(
+            isinstance(self.diag_layer_raw, FunctionalGroupRaw),
+            "The raw diagnostic layer passed to FunctionalGroup "
+            "must be a FunctionalGroupRaw")
+
+    @override
+    def _compute_value_inheritance(self, odxlinks: OdxLinkDatabase) -> None:
+        super()._compute_value_inheritance(odxlinks)
+
+        self._diag_variables = NamedItemList(self._compute_available_diag_variables(odxlinks))
+        self._variable_groups = NamedItemList(self._compute_available_variable_groups(odxlinks))
+
+    def _compute_available_diag_variables(self,
+                                          odxlinks: OdxLinkDatabase) -> Iterable[DiagVariable]:
+
+        def get_local_objects_fn(dl: DiagLayer) -> Iterable[DiagVariable]:
+            if not hasattr(dl.diag_layer_raw, "diag_variables"):
+                return []
+
+            return dl.diag_layer_raw.diag_variables  # type: ignore[no-any-return]
+
+        def not_inherited_fn(parent_ref: ParentRef) -> list[str]:
+            return parent_ref.not_inherited_variables
+
+        return self._compute_available_objects(get_local_objects_fn, not_inherited_fn)
+
+    def _compute_available_variable_groups(self,
+                                           odxlinks: OdxLinkDatabase) -> Iterable[VariableGroup]:
+
+        def get_local_objects_fn(dl: DiagLayer) -> Iterable[VariableGroup]:
+            if not hasattr(dl.diag_layer_raw, "variable_groups"):
+                return []
+
+            return dl.diag_layer_raw.variable_groups  # type: ignore[no-any-return]
+
+        def not_inherited_fn(parent_ref: ParentRef) -> list[str]:
+            return []
+
+        return self._compute_available_objects(get_local_objects_fn, not_inherited_fn)

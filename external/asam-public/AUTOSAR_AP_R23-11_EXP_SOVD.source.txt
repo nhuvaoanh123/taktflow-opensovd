@@ -1,0 +1,5 @@
+source: https://www.autosar.org/fileadmin/standards/R23-11/AP/AUTOSAR_AP_EXP_SOVD.pdf
+title: AUTOSAR Adaptive Platform R23-11 - Explanation of Service-Oriented Vehicle Diagnostics
+downloaded: 2026-04-14
+covers: Updated SOVD explanation tracking SOVD 1.0 features. Largest of the three AUTOSAR SOVD docs.
+license: AUTOSAR Document, freely downloadable from public autosar.org. Subject to AUTOSAR document license terms; reference-only / internal use.

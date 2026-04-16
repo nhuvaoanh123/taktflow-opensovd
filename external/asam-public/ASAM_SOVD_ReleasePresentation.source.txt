@@ -1,0 +1,6 @@
+source: https://www.asam.net/index.php?eID=dumpFile&t=f&f=5035&token=e64977333fa4379bc8222b5ed74849270627f91f
+also-served-as: https://www.asam.net/fileadmin/Standards/SOVD/ASAM_SOVD_BS_V1-0.pdf
+title: ASAM SOVD v1.0 Release Presentation
+downloaded: 2026-04-14
+covers: SOVD overview, motivation, new features in v1.0, relation to other standards (UDS, ODX, AUTOSAR), deliverables. Slide deck.
+license: ASAM publication, freely downloadable from public asam.net page (no login). Treat as ASAM copyrighted. Reference-only / internal use.

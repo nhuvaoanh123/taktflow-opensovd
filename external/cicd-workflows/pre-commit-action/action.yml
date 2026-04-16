@@ -1,0 +1,108 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2025 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+
+name: 'OpenSOVD Pre-Commit Checks'
+description: 'Runs pre-commit hooks with a standardized configuration from this action.'
+
+inputs:
+  rust-nightly-version:
+    description: 'Rust nightly version to use (YYYY-MM-DD), defaults to 2025-07-14 if not set'
+    required: false
+    default: '2025-07-14'
+  python-version:
+    description: 'Python version to use for pre-commit environment'
+    required: false
+    default: '3.13'
+  config-path:
+    description: >
+      Path to a custom .pre-commit-config.yml in the consumer repository. If not provided, the action uses its own config.
+    required: false
+    default: ''
+  copyright-text:
+    description: >
+      Copyright holder text used by reuse annotate for new files. Defaults to "The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)".
+    required: false
+    default: 'The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)'
+  license:
+    description: >
+      SPDX license identifier used by reuse annotate for new files (e.g. "Apache-2.0"). Defaults to "Apache-2.0".
+    required: false
+    default: 'Apache-2.0'
+  reuse-template:
+    description: >
+      Name of the reuse Jinja2 template in .reuse/templates/ (without .jinja2 suffix). Consumer repos can provide their own template. Defaults to "opensovd".
+    required: false
+    default: 'opensovd'
+  ignore-paths:
+    description: >
+      Comma-separated list of file patterns to ignore during REUSE checks (e.g., "*.md,docs/**,*.txt"). Files matching these patterns will be skipped by reuse annotate.
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout consumer repository
+      uses: actions/checkout@v4
+      with:
+        submodules: false
+
+    - name: Determine input values with defaults
+      id: inputs
+      shell: bash
+      run: |
+        # Rust nightly version
+        if [[ -n "${{ inputs.rust-nightly-version }}" ]]; then
+          echo "rust_toolchain=nightly-${{ inputs.rust-nightly-version }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "rust_toolchain=nightly-2025-07-14" >> "$GITHUB_OUTPUT"
+        fi
+
+        # Python version
+        if [[ -n "${{ inputs.python-version }}" ]]; then
+          echo "python_version=${{ inputs.python-version }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "python_version=3.13" >> "$GITHUB_OUTPUT"
+        fi
+
+        # Pre-commit config path
+        if [[ -n "${{ inputs.config-path }}" ]]; then
+          echo "config_flag=--config=${{ inputs.config-path }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "config_flag=--config=${GITHUB_ACTION_PATH}/.pre-commit-config.yml" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        toolchain: ${{ steps.inputs.outputs.rust_toolchain }}
+        components: clippy, rustfmt
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+        python-version: ${{ steps.inputs.outputs.python_version }}
+        activate-environment: true
+
+    - name: Install reuse tool
+      shell: bash
+      run: uv tool install reuse
+
+    - name: Run checks
+      shell: bash
+      run: |
+        uv run "${GITHUB_ACTION_PATH}/../run_checks.py" --no-fix \
+          ${{ steps.inputs.outputs.config_flag }} \
+          --hook-script="${GITHUB_ACTION_PATH}/reuse-annotate-hook.py" \
+          --copyright="${{ inputs.copyright-text }}" \
+          --license="${{ inputs.license }}" \
+          --template="${{ inputs.reuse-template }}" \
+          --ignore-paths="${{ inputs.ignore-paths }}"

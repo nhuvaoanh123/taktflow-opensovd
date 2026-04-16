@@ -1,0 +1,5 @@
+source: https://www.autosar.org/fileadmin/standards/R22-11/AP/AUTOSAR_EXP_SOVD.pdf
+title: AUTOSAR Adaptive Platform R22-11 - Explanation of Service-Oriented Vehicle Diagnostics
+downloaded: 2026-04-14
+covers: AUTOSAR's interpretation of SOVD: discovery, capability description, locking, faults, modes, single-ECU jobs, bulk data, communication logs.
+license: AUTOSAR Document, freely downloadable from public autosar.org. Subject to AUTOSAR document license terms; reference-only / internal use.

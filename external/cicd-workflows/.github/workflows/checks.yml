@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2025 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+
+name: CI Checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      rust-nightly-version:
+        description: 'Rust nightly version to use (YYYY-MM-DD), defaults to 2025-07-14 if not set'
+        required: false
+        type: string
+      python-version:
+        description: 'Python version to use for pre-commit environment'
+        required: false
+        type: string
+      pre-commit-config-path:
+        description: 'Path to a custom .pre-commit-config.yml in the consumer repository'
+        required: false
+        type: string
+      copyright-text:
+        description: 'Copyright holder text for reuse annotate, defaults to "The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)"'
+        required: false
+        type: string
+      license:
+        description: 'SPDX license identifier for reuse annotate (e.g. "Apache-2.0"), defaults to "Apache-2.0"'
+        required: false
+        type: string
+      reuse-template:
+        description: 'Name of reuse Jinja2 template in .reuse/templates/ (without .jinja2 suffix), defaults to "opensovd"'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Run checks
+        uses: ./pre-commit-action
+        with:
+          rust-nightly-version: ${{ inputs.rust-nightly-version }}
+          python-version: ${{ inputs.python-version }}
+          config-path: ${{ inputs.pre-commit-config-path }}
+          copyright-text: ${{ inputs.copyright-text }}
+          license: ${{ inputs.license }}
+          reuse-template: ${{ inputs.reuse-template }}

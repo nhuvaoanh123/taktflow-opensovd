@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+
+name: 'Format and Clippy'
+description: 'Run rustfmt and clippy checks with reviewdog'
+
+inputs:
+  toolchain:
+    description: 'Rust toolchain version to use'
+    required: true
+  github-token:
+    description: 'GitHub token for reviewdog'
+    required: true
+  fail-on-format-error:
+    description: 'Whether to fail the job on formatting errors'
+    required: false
+    default: 'true'
+  fail-on-clippy-error:
+    description: 'Whether to fail the job on clippy errors'
+    required: false
+    default: 'true'
+  clippy-deny-warnings:
+    description: 'Whether to deny warnings in clippy (add -D warnings flag)'
+    required: false
+    default: 'true'
+  clippy-features:
+    description: 'Additional features to pass to clippy (e.g. "integration-tests")'
+    required: false
+    default: 'default'
+  rustfmt-enable-reviewdog:
+    description: 'Whether to enable reviewdog for rustfmt'
+    required: false
+    default: 'true'
+  error-on-unformatted:
+    description: 'Whether to treat unformatted code as an error in rustfmt'
+    required: false
+    default: 'true'
+  reporter:
+    description: 'Reporter to use for reviewdog'
+    required: false
+    default: 'github-pr-review'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Rust toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: clippy, rustfmt
+        cache-shared-key: ${{ inputs.toolchain }}
+        rustflags: ""
+
+    - name: Install reviewdog
+      uses: reviewdog/action-setup@v1
+      with:
+        reviewdog_version: latest
+
+    - name: Formatting (rustfmt via reviewdog)
+      if: ${{ inputs.rustfmt-enable-reviewdog == 'true' }}
+      continue-on-error: ${{ inputs.fail-on-format-error == 'false' }}
+      shell: bash
+      env:
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
+        FAIL_ON_FORMAT: ${{ inputs.fail-on-format-error }}
+      run: |
+        if [ "$FAIL_ON_FORMAT" = "true" ]; then
+          SEVERITY_TRANSFORM="sed 's/severity=\"warning\"/severity=\"error\"/g'"
+          FAIL_LEVEL="any"
+          STDERR_SEVERITY="error"
+        else
+          SEVERITY_TRANSFORM="cat"
+          FAIL_LEVEL="none"
+          STDERR_SEVERITY="warning"
+        fi
+
+        # rustfmt reports two kinds of issues:
+        #   1. Fixable formatting - emitted as checkstyle XML on stdout (exit 0)
+        #   2. Overflow/unformatted - emitted as diagnostics on stderr (exit 1)
+        # We capture stderr separately so we can merge both into the XML for
+        # reviewdog. Without "|| FMT_EXIT=$?", GHA's default "set -eo pipefail"
+        # would kill the step before reviewdog runs, losing ALL annotations.
+        FMT_EXIT=0
+        cargo fmt -- \
+          --emit=checkstyle \
+          --config error_on_unformatted=${{ inputs.error-on-unformatted }},error_on_line_overflow=true,format_strings=true \
+          --config group_imports=StdExternalCrate \
+          --config imports_granularity=Crate \
+          --config hex_literal_case=Upper \
+          2>/tmp/rustfmt_stderr.log \
+          | python3 "${{ github.action_path }}/fix-checkstyle-xml.py" \
+          | eval "$SEVERITY_TRANSFORM" \
+          > /tmp/checkstyle.xml \
+          || FMT_EXIT=$?
+
+        # Merge overflow/unformatted errors from stderr into checkstyle XML
+        # so reviewdog can annotate them inline on the PR
+        python3 "${{ github.action_path }}/merge-rustfmt-stderr.py" \
+          /tmp/checkstyle.xml /tmp/rustfmt_stderr.log "$STDERR_SEVERITY"
+
+        reviewdog \
+          -f=checkstyle \
+          -reporter=${{ inputs.reporter }} \
+          -filter-mode=nofilter \
+          -fail-level="$FAIL_LEVEL" \
+          -level=error \
+          < /tmp/checkstyle.xml
+        rm -f /tmp/checkstyle.xml /tmp/rustfmt_stderr.log
+
+        # Propagate the original rustfmt failure after reviewdog has posted
+        # annotations - the step still fails, but the developer gets inline
+        # comments pointing to the problematic lines.
+        if [ "$FMT_EXIT" -ne 0 ]; then
+          exit "$FMT_EXIT"
+        fi
+
+    - name: Formatting (rustfmt without reviewdog)
+      if: ${{ inputs.rustfmt-enable-reviewdog == 'false' }}
+      continue-on-error: ${{ inputs.fail-on-format-error == 'false' }}
+      shell: bash
+      run: |
+        cargo fmt -- \
+          --check \
+          --config error_on_unformatted=${{ inputs.error-on-unformatted }},error_on_line_overflow=true,format_strings=true \
+          --config group_imports=StdExternalCrate \
+          --config imports_granularity=Crate \
+          --config hex_literal_case=Upper
+
+    - name: Clippy
+      uses: giraffate/clippy-action@v1
+      with:
+        reporter: ${{ inputs.reporter }}
+        github_token: ${{ inputs.github-token }}
+        clippy_flags: --locked --all-targets ${{ inputs.clippy-features == 'all-features' && '--all-features' || format('--features {0}', inputs.clippy-features) }} ${{ inputs.clippy-deny-warnings == 'true' && '-- -D warnings' || '' }}
+        filter_mode: 'nofilter'
+        fail_on_error: ${{ inputs.fail-on-clippy-error }}
+        level: ${{ inputs.fail-on-clippy-error == 'true' && 'error' || 'warning' }}

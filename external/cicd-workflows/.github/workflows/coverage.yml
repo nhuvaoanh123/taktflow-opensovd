@@ -1,0 +1,121 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+
+name: Coverage
+
+on:
+  workflow_call:
+    inputs:
+      rust-version:
+        description: "Rust toolchain version (default: nightly)"
+        type: string
+        default: "nightly"
+      cargo-locked:
+        description: "Use --locked flag for cargo commands"
+        type: boolean
+        default: true
+      coverage-threshold:
+        description: "Minimum line coverage percentage (0 to disable enforcement)"
+        type: number
+        default: 0
+      exclude-crates:
+        description: "Space-separated list of crates to exclude from coverage"
+        type: string
+        default: ""
+      ignore-filename-regex:
+        description: "Regex for filenames to ignore in coverage"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    env:
+      IGNORE_REGEX: ${{ inputs.ignore-filename-regex }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ inputs.rust-version }}
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Build exclude flags
+        id: flags
+        shell: bash
+        run: |
+          LOCKED="${{ inputs.cargo-locked && '--locked' || '' }}"
+          EXCLUDES=""
+          for crate in ${{ inputs.exclude-crates }}; do
+            EXCLUDES="$EXCLUDES --exclude $crate"
+          done
+          echo "locked=$LOCKED" >> "$GITHUB_OUTPUT"
+          echo "excludes=$EXCLUDES" >> "$GITHUB_OUTPUT"
+
+      - name: Generate coverage (LCOV)
+        shell: bash
+        run: |
+          ARGS=(--workspace ${{ steps.flags.outputs.locked }} ${{ steps.flags.outputs.excludes }})
+          if [ -n "$IGNORE_REGEX" ]; then
+            ARGS+=(--ignore-filename-regex "$IGNORE_REGEX")
+          fi
+          cargo llvm-cov "${ARGS[@]}" --lcov --output-path lcov.info
+
+      - name: Generate coverage summary
+        id: coverage
+        shell: bash
+        run: |
+          ARGS=(--workspace ${{ steps.flags.outputs.locked }} ${{ steps.flags.outputs.excludes }})
+          if [ -n "$IGNORE_REGEX" ]; then
+            ARGS+=(--ignore-filename-regex "$IGNORE_REGEX")
+          fi
+          cargo llvm-cov "${ARGS[@]}" --json --no-run --output-path coverage.json
+          TOTAL_LINE_COV=$(jq '.data[0].totals.lines.percent' coverage.json)
+          rm -f coverage.json
+
+          REPORT=$(cargo llvm-cov "${ARGS[@]}" --no-run 2>&1)
+          echo "$REPORT"
+
+          echo "total_coverage=$TOTAL_LINE_COV" >> "$GITHUB_OUTPUT"
+          echo "### Coverage Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Total line coverage: ${TOTAL_LINE_COV}%**" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info
+          retention-days: 30
+
+      - name: Enforce coverage threshold
+        if: ${{ inputs.coverage-threshold > 0 }}
+        shell: bash
+        run: |
+          COVERAGE="${{ steps.coverage.outputs.total_coverage }}"
+          THRESHOLD="${{ inputs.coverage-threshold }}"
+          echo "Coverage: ${COVERAGE}%, Threshold: ${THRESHOLD}%"
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
+            exit 1
+          fi
+          echo "Coverage ${COVERAGE}% meets threshold ${THRESHOLD}%"

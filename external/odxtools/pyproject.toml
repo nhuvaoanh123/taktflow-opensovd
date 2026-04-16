@@ -1,0 +1,131 @@
+[build-system]
+requires = [
+    "setuptools >= 59",
+    "setuptools_scm[toml] >= 6.2",
+    "wheel >= 0.41"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "odxtools"
+description = "Utilities to work with the ODX standard for automotive diagnostics"
+license = {text = "MIT"}
+authors = [
+    {name = "Katrin Bauer", email = "katrin.bauer@mbition.io"},
+    {name = "Andreas Lauser", email = "andreas.lauser@mbition.io"},
+    {name = "Ayoub Kaanich", email = "kayoub5@live.com"},
+]
+maintainers = [
+    {name = "Andreas Lauser", email = "andreas.lauser@mbition.io"},
+    {name = "Ayoub Kaanich", email = "kayoub5@live.com"},
+]
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ['can', 'can bus', 'DoIP', 'odx', 'pdx', 'obd', 'uds', 'automotive', 'diagnostics']
+classifiers = [
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
+    'Development Status :: 5 - Production/Stable',
+    'Environment :: Console',
+    'Intended Audience :: Developers',
+    'License :: OSI Approved :: MIT License',
+    'Operating System :: OS Independent',
+]
+dependencies = [
+    "bitstruct >= 8.17",
+    "argparse_addons >= 0.12",
+    "jinja2 >= 3.1",
+    "python-can >= 4.2",
+    "markdownify >= 0.11",
+    "deprecation >= 2.1",
+    "packaging",
+    "rich >= 13.7",
+    "typing_extensions >= 4.9",
+    "bincopy >= 20.1",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+browse-tool = [
+     "InquirerPy >= 0.3.4",
+]
+
+test = [
+     "mypy >= 1.5",
+     "ruff >= 0.0.290",
+     "pytest >= 7.4",
+     "coverage >= 7.3",
+]
+
+examples = [
+     "can-isotp >= 1.9",
+]
+
+all = [
+     "odxtools[browse-tool,test,examples]"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/mercedes-benz/odxtools"
+"Bug Tracker" = "https://github.com/mercedes-benz/odxtools/issues"
+"Repository" = "https://github.com/mercedes-benz/odxtools"
+
+[project.scripts]
+odxtools = "odxtools.__init__:_main"
+
+[tool.setuptools]
+packages = [ "odxtools" ]
+
+[tool.setuptools_scm]
+write_to = "odxtools/version.py"
+
+[tool.mypy]
+
+exclude = [
+	'build',
+]
+
+ignore_missing_imports = true
+strict = true
+
+[tool.ruff]
+lint.select = [
+    "E",  # pycodestyle Error
+    "W",  # pycodestyle Warning
+    "F",  # pyflakes
+    "B",  # pyflakes-bugbear
+    "UP",  # pyupgrade
+    "C4",  # flake8-comprehensions
+]
+lint.ignore = [
+    "E501",  # line too long
+    "F541",  # f-string-missing-placeholders
+    "W293",  # empty lines contains white space
+]
+exclude = [
+    "doc",
+    "odxtools/version.py",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["odxtools"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # unused imports
+"tests/test_ecu_config.py" = ["W291", "W293"]  # trailing whitespace; empty line contains white space
+
+[tool.yapf]
+based_on_style = "yapf"
+column_limit = 100
+indent_width = 4
+split_before_dict_set_generator = 1
+split_before_first_argument = 0
+split_penalty_after_opening_bracket=1000
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "error::odxtools.exceptions.DecodeError",
+]

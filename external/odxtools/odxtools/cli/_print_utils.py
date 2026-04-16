@@ -1,0 +1,291 @@
+# SPDX-License-Identifier: MIT
+import re
+import textwrap
+
+import markdownify
+from rich import print as rich_print
+from rich.padding import Padding as RichPadding
+from rich.table import Table as RichTable
+
+from ..description import Description
+from ..diaglayers.diaglayer import DiagLayer
+from ..diaglayers.hierarchyelement import HierarchyElement
+from ..diagservice import DiagService
+from ..parameters.codedconstparameter import CodedConstParameter
+from ..parameters.nrcconstparameter import NrcConstParameter
+from ..parameters.parameter import Parameter
+from ..parameters.physicalconstantparameter import PhysicalConstantParameter
+from ..parameters.systemparameter import SystemParameter
+from ..parameters.valueparameter import ValueParameter
+from ..singleecujob import SingleEcuJob
+
+
+def format_desc(description: Description, indent: int = 0) -> str:
+    # Collapse whitespaces
+    desc = re.sub(r"\s+", " ", str(description))
+    # Covert XHTML to Markdown
+    desc = markdownify.markdownify(desc)
+    # Collapse blank lines
+    desc = re.sub(r"(\n\s*)+\n+", "\n", desc).strip()
+    # add indentation
+    desc = textwrap.indent(desc, " " * indent)
+
+    return desc
+
+
+def print_diagnostic_service(service: DiagService,
+                             print_params: bool = False,
+                             print_pre_condition_states: bool = False,
+                             print_state_transitions: bool = False,
+                             print_audiences: bool = False,
+                             allow_unknown_bit_lengths: bool = False) -> None:
+
+    rich_print()
+    rich_print(f" Service [magenta]'{service.short_name}'[/magenta]:")
+
+    if service.description:
+        desc = format_desc(service.description, indent=3)
+        rich_print(f"  Description: " + desc)
+
+    if print_pre_condition_states and len(service.pre_condition_states) > 0:
+        pre_condition_states_short_names = [
+            pre_condition_state.short_name for pre_condition_state in service.pre_condition_states
+        ]
+        rich_print(f"  Pre-Condition States: {', '.join(pre_condition_states_short_names)}")
+
+    if print_state_transitions and len(service.state_transitions) > 0:
+        state_transitions = [
+            f"{state_transition.source_snref} -> {state_transition.target_snref}"
+            for state_transition in service.state_transitions
+        ]
+        rich_print(f"  State Transitions: {', '.join(state_transitions)}")
+
+    if print_audiences and service.audience:
+        enabled_audiences_short_names = [
+            enabled_audience.short_name for enabled_audience in service.audience.enabled_audiences
+        ]
+        rich_print(f"  Enabled Audiences: {', '.join(enabled_audiences_short_names)}")
+
+    if print_params:
+        print_service_parameters(service, allow_unknown_bit_lengths=allow_unknown_bit_lengths)
+
+
+def print_service_parameters(service: DiagService,
+                             *,
+                             allow_unknown_bit_lengths: bool = False) -> None:
+    '''
+    prints parameter details of request, positive response and
+    negative response of diagnostic service
+    '''
+    rich_print()
+    rich_print(
+        f"  Request and response parameters of diagnostic service [magenta]'{service.short_name}'[/magenta]"
+    )
+
+    # Request
+    if service.request:
+        rich_print()
+        rich_print(f"   Request [dark_sea_green2]'{service.request.short_name}'[/dark_sea_green2]:")
+        const_prefix = service.request.coded_const_prefix()
+        rich_print(
+            f"    Identifying Prefix: 0x{const_prefix.hex().upper()} ({bytes(const_prefix)!r})")
+        rich_print(f"    Parameters:")
+        param_table = build_parameter_table(service.request.parameters)
+        rich_print(RichPadding(param_table, pad=(0, 0, 0, 4)))
+    else:
+        rich_print(f"   No Request!")
+
+    # Positive Responses
+    if not service.positive_responses:
+        rich_print(f"   No positive responses")
+
+    for resp in service.positive_responses:
+        rich_print()
+        rich_print(f"   Positive Response [dark_sea_green2]'{resp.short_name}'[/dark_sea_green2]:")
+        rich_print(f"    Parameters:")
+        table = build_parameter_table(list(resp.parameters))
+        rich_print(RichPadding(table, pad=(0, 0, 0, 4)))
+
+    # Negative Response
+    if not service.negative_responses:
+        rich_print(f"   No negative responses")
+
+    for resp in service.negative_responses:
+        rich_print()
+        rich_print(f"   Negative Response [dark_sea_green2]'{resp.short_name}'[/dark_sea_green2]:")
+        rich_print(f"    Parameters:")
+        table = build_parameter_table(list(resp.parameters))
+        rich_print(RichPadding(table, pad=(0, 0, 0, 4)))
+
+
+def build_service_table(services: list[DiagService],
+                        *,
+                        additional_columns: list[tuple[str, list[str]]] | None = None) -> RichTable:
+    """
+    Extracts data of diagnostic services into
+    a RichTable object that can be printed
+    """
+
+    # Create Rich table
+    table = RichTable(
+        title="", show_header=True, header_style="bold cyan", border_style="blue", show_lines=True)
+
+    request = None
+    table.add_column("Name", style="magenta")
+    table.add_column("Semantic", justify="left", style="white")
+    table.add_column("Hex-Request", justify="left", style="light_goldenrod3")
+
+    if additional_columns is not None:
+        for ac_title, _ in additional_columns:
+            table.add_column(ac_title, justify="left", style="white")
+
+    for i, service in enumerate(services):
+
+        if service.request:
+            prefix = service.request.coded_const_prefix()
+            request = f"0x{str(prefix.hex().upper())[:32]}..." if len(
+                prefix) > 32 else f"0x{str(prefix.hex().upper())}"
+
+        if additional_columns is not None:
+            table.add_row(service.short_name, service.semantic, request,
+                          *[ac_values[i] for _, ac_values in additional_columns])
+        else:
+            table.add_row(service.short_name, service.semantic, request)
+
+    return table
+
+
+def build_parameter_table(parameters: list[Parameter]) -> RichTable:
+    """
+    Extracts data of parameters of a diagnostic service into
+    a RichTable object that can be printed
+    """
+
+    # Create Rich table
+    table = RichTable(
+        title="", show_header=True, header_style="bold cyan", border_style="blue", show_lines=True)
+
+    # Add columns with appropriate styling
+    table.add_column("Name", style="light_slate_grey")
+    table.add_column("Byte Position", justify="right", style="yellow")
+    table.add_column("Bit Length", justify="right", style="yellow")
+    table.add_column("Semantic", justify="left", style="white")
+    table.add_column("Parameter Type", justify="left", style="white")
+    table.add_column("Data Type", justify="left", style="white")
+    table.add_column("Value", justify="left", style="light_goldenrod3")
+    table.add_column("Linked DOP", justify="left", style="white")
+
+    name_column: list[str] = []
+    byte_column: list[str] = []
+    bit_length_column: list[str] = []
+    semantic_column: list[str] = []
+    param_type_column: list[str] = []
+    value_column: list[str] = []
+    data_type_column: list[str] = []
+    dop_column: list[str] = []
+
+    for param in parameters:
+        name_column.append(param.short_name)
+        byte_column.append("" if param.byte_position is None else str(param.byte_position))
+        semantic_column.append(param.semantic or "")
+        param_type_column.append(param.parameter_type)
+        length = 0
+        if param.get_static_bit_length() is not None:
+            n = param.get_static_bit_length()
+            bit_length_column.append("" if n is None else str(n))
+            length = (n or 0) // 4
+        else:
+            bit_length_column.append("")
+        if isinstance(param, CodedConstParameter):
+            if isinstance(param.coded_value, int):
+                value_column.append(f"0x{param.coded_value:0{length}X}")
+            elif isinstance(param.coded_value, bytes) or isinstance(param.coded_value, bytearray):
+                value_column.append(f"0x{param.coded_value.hex().upper()}")
+            else:
+                value_column.append(f"{param.coded_value!r}")
+            data_type_column.append(param.diag_coded_type.base_data_type.name)
+            dop_column.append("")
+        elif isinstance(param, NrcConstParameter):
+            data_type_column.append(param.diag_coded_type.base_data_type.name)
+            value_column.append(str(param.coded_values))
+            dop_column.append("")
+        elif isinstance(param, (PhysicalConstantParameter, SystemParameter, ValueParameter)):
+            # this is a hack to make this routine work for parameters
+            # which reference DOPs of a type that a is not yet
+            # internalized. (all parameter objects of the tested types
+            # are supposed to have a DOP.)
+            param_dop = getattr(param, "_dop", None)
+
+            if param_dop is not None:
+                dop_column.append(param_dop.short_name)
+
+            if param_dop is not None and (phys_type := getattr(param, "physical_type",
+                                                               None)) is not None:
+                data_type_column.append(phys_type.base_data_type.name)
+            else:
+                data_type_column.append("")
+            if isinstance(param, PhysicalConstantParameter):
+                if isinstance(param.physical_constant_value, bytes) or isinstance(
+                        param.physical_constant_value, bytearray):
+                    value_column.append(f"0x{param.physical_constant_value.hex().upper()}")
+                else:
+                    value_column.append(f"{param.physical_constant_value!r}")
+            elif isinstance(param, ValueParameter) and param.physical_default_value is not None:
+                if isinstance(param.physical_default_value, bytes) or isinstance(
+                        param.physical_default_value, bytearray):
+                    value_column.append(f"0x{param.physical_default_value.hex().upper()}")
+                else:
+                    value_column.append(f"{param.physical_default_value!r}")
+            else:
+                value_column.append("")
+        else:
+            value_column.append("")
+            data_type_column.append("")
+            dop_column.append("")
+
+    # Add all rows at once by zipping dictionary values
+    rows = zip(
+        name_column,
+        byte_column,
+        bit_length_column,
+        semantic_column,
+        param_type_column,
+        data_type_column,
+        value_column,
+        dop_column,
+        strict=False)
+    for row in rows:
+        table.add_row(*map(str, row))
+
+    return table
+
+
+def print_dl_metrics(variants: list[DiagLayer]) -> None:
+    """
+    Print diagnostic layer metrics using Rich tables.
+    Args:
+        variants: List of diagnostic layer variants to analyze
+    """
+    # Create Rich table
+    table = RichTable(
+        title="", show_header=True, header_style="bold cyan", border_style="blue", show_lines=True)
+
+    # Add columns with appropriate styling
+    table.add_column("Name", style="green3")
+    table.add_column("Variant Type", style="medium_spring_green")
+    table.add_column("Number of Services", justify="right", style="yellow")
+    table.add_column("Number of DOPs", justify="right", style="yellow")
+    table.add_column("Number of communication parameters", justify="right", style="yellow")
+
+    # Process each variant
+    for variant in variants:
+        assert isinstance(variant, DiagLayer)
+        all_services: list[DiagService | SingleEcuJob] = sorted(
+            variant.services, key=lambda x: x.short_name)
+        ddds = variant.diag_data_dictionary_spec
+        comparam_refs = list(variant.comparam_refs) if isinstance(variant, HierarchyElement) else []
+
+        # Add row to table
+        table.add_row(variant.short_name, variant.variant_type.value, str(len(all_services)),
+                      str(len(list(ddds.data_object_props))), str(len(comparam_refs)))
+    rich_print(table)

@@ -1,0 +1,6 @@
+source: https://www.asam.net/index.php?eID=dumpFile&t=f&f=5036&token=b339d6abff02d6b0f6884f4fe6e0681955160505
+also-served-as: https://www.asam.net/fileadmin/Standards/SOVD/TOC.pdf
+title: ASAM SOVD v1.0.0 - Table of Contents
+downloaded: 2026-04-14
+covers: chapter list and section structure of full ASAM SOVD specification (the spec body itself is paywalled; this TOC lets us infer scope/coverage).
+license: ASAM publication, freely downloadable from public asam.net page (no login). Treat as ASAM copyrighted; redistribution likely requires permission. Reference-only / internal use.

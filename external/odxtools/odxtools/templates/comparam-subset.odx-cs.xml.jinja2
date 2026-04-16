@@ -1,0 +1,46 @@
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+ #
+ # This template writes an .odx-cs file for a communication
+ # parameter subset.
+-#}
+{%- import('macros/printOdxCategory.xml.jinja2') as poc %}
+{%- import('macros/printComparam.xml.jinja2') as pcp -%}
+{%- import('macros/printDOP.xml.jinja2') as pdop %}
+{%- import('macros/printUnitSpec.xml.jinja2') as pus %}
+{%- import('macros/printDescription.xml.jinja2') as pd %}
+{#- -#}
+
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<!-- Written using odxtools {{odxtools_version}} -->
+<ODX MODEL-VERSION="2.2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="odx.xsd">
+ {{- set_category_docfrag(comparam_subset.short_name, "COMPARAM-SUBSET") }}
+ <COMPARAM-SUBSET  {{- poc.printOdxCategoryAttribs(comparam_subset) }} {{make_xml_attrib("CATEGORY", comparam_subset.category)}}>
+   {{- poc.printOdxCategorySubtags(comparam_subset)|indent(3) }}
+   {%- if comparam_subset.comparams %}
+   <COMPARAMS>
+     {%- for cp in comparam_subset.comparams %}
+     {{- pcp.printSimpleComparam(cp) | indent(5, first=True) }}
+     {%- endfor %}
+   </COMPARAMS>
+   {%- endif %}
+   {%- if comparam_subset.complex_comparams %}
+   <COMPLEX-COMPARAMS>
+     {%- for cp in comparam_subset.complex_comparams %}
+     {{- pcp.printComplexComparam(cp) | indent(5, first=True) }}
+     {%- endfor %}
+   </COMPLEX-COMPARAMS>
+   {%- endif %}
+   {% if comparam_subset.data_object_props %}
+   <DATA-OBJECT-PROPS>
+     {%- for dop in comparam_subset.data_object_props %}
+     {{- pdop.printDataObjectProp(dop) | indent(5, first=True) }}
+     {%- endfor %}
+   </DATA-OBJECT-PROPS>
+   {% endif %}
+   {% if comparam_subset.unit_spec %}
+   {{ pus.printUnitSpec(comparam_subset.unit_spec) }}
+   {% endif %}
+ </COMPARAM-SUBSET>
+</ODX>

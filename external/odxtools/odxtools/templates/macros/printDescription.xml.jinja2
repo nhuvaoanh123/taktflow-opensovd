@@ -1,0 +1,22 @@
+{#- -*- mode: sgml; tab-width: 1; sgml-basic-offset: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+
+{%- macro printDescription(desc) %}
+{%- if desc is not none %}
+<DESC {{- make_xml_attrib("TI", desc.text_identifier)}}>{{desc.text}}
+{%- if desc.external_docs %}
+<EXTERNAL-DOCS>
+ {%- for ed in desc.external_docs %}
+ {%- if ed.description is none %}}
+ <EXTERNAL-DOC HREF="{{ed.href}}" />
+ {%- else %}}
+ <EXTERNAL-DOC HREF="{{ed.href}}">{{ed.description}}</EXTERNAL-DOC>
+ {%- endif %}}
+ {%- endfor %}
+</EXTERNAL-DOCS>
+{%- endif -%}
+</DESC>
+{%- endif %}
+{%- endmacro %}

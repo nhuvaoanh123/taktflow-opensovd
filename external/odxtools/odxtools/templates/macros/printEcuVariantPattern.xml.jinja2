@@ -1,0 +1,28 @@
+
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+
+{%- macro printMatchingParameter(mp) -%}
+<MATCHING-PARAMETER>
+  <EXPECTED-VALUE>{{mp.expected_value | e}}</EXPECTED-VALUE>
+  <DIAG-COMM-SNREF SHORT-NAME="{{mp.diag_comm_snref}}" />
+  {%- if mp.out_param_if_snref is not none %}
+  <OUT-PARAM-IF-SNREF SHORT-NAME="{{mp.out_param_if_snref}}" />
+  {%- endif %}
+  {%- if mp.out_param_if_snpathref is not none %}
+  <OUT-PARAM-IF-SNPATHREF SHORT-NAME-PATH="{{mp.out_param_if_snpathref}}" />
+  {%- endif %}
+</MATCHING-PARAMETER>
+{%- endmacro -%}
+
+{%- macro printEcuVariantPattern(vp) -%}
+<ECU-VARIANT-PATTERN>
+ <MATCHING-PARAMETERS>
+  {%- for mp in vp.matching_parameters %}
+  {{ printMatchingParameter(mp) | indent(2) }}
+  {%- endfor %}
+ </MATCHING-PARAMETERS>
+</ECU-VARIANT-PATTERN>
+{%- endmacro -%}

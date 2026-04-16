@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+
+name: Miri
+
+on:
+  workflow_call:
+    inputs:
+      rust-nightly-version:
+        description: "Rust nightly version to use (e.g. nightly or nightly-2025-07-14)"
+        type: string
+        default: "nightly"
+      cargo-locked:
+        description: "Use --locked flag for cargo commands"
+        type: boolean
+        default: true
+      exclude-crates:
+        description: "Space-separated list of crates to exclude from Miri"
+        type: string
+        default: ""
+      miri-flags:
+        description: "Extra MIRIFLAGS environment variable"
+        type: string
+        default: "-Zmiri-disable-isolation"
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-miri:
+    name: Miri (Undefined Behavior Check)
+    runs-on: ubuntu-latest
+    env:
+      MIRIFLAGS: ${{ inputs.miri-flags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ inputs.rust-nightly-version }}
+          components: miri, rust-src
+
+      - name: Build exclude flags
+        id: flags
+        shell: bash
+        run: |
+          LOCKED="${{ inputs.cargo-locked && '--locked' || '' }}"
+          EXCLUDES=""
+          for crate in ${{ inputs.exclude-crates }}; do
+            EXCLUDES="$EXCLUDES --exclude $crate"
+          done
+          echo "locked=$LOCKED" >> "$GITHUB_OUTPUT"
+          echo "excludes=$EXCLUDES" >> "$GITHUB_OUTPUT"
+
+      - name: Run Miri
+        run: |
+          cargo miri test --workspace \
+            ${{ steps.flags.outputs.locked }} \
+            ${{ steps.flags.outputs.excludes }}

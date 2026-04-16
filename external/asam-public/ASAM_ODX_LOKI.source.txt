@@ -1,0 +1,5 @@
+source: https://www.asam.net/index.php?eID=dumpFile&t=f&f=497&token=7c7182d44ec439c317384c1526f1cc114ef56a6a
+title: ASAM ODX List of Known Issues (LOKI)
+downloaded: 2026-04-14
+covers: Known issues and clarifications in the ODX standard. Helpful for our odx-converter conformance work.
+license: ASAM publication, freely downloadable from public asam.net page (no login). Treat as ASAM copyrighted. Reference-only.

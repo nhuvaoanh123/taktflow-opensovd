@@ -1,0 +1,5 @@
+source: https://www.asam.net/index.php?eID=dumpFile&t=f&f=725&token=a63fced692287bd1f60511a0a0fabed89fd42b6b
+title: ASAM ODX Authoring Guidelines - Release Presentation
+downloaded: 2026-04-14
+covers: Authoring conventions for ODX databases. Useful when generating test PDX files.
+license: ASAM publication, freely downloadable from public asam.net page (no login). Treat as ASAM copyrighted. Reference-only.

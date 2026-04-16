@@ -1,0 +1,52 @@
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+
+{%- import('macros/printElementId.xml.jinja2') as peid %}
+{%- import('macros/printCompuMethod.xml.jinja2') as pcm %}
+{%- import('macros/printDOP.xml.jinja2') as pdop %}
+
+{%- macro printMux(mux) %}
+<MUX {{-peid.printElementIdAttribs(mux)}}
+     {{-make_bool_xml_attrib("IS-VISIBLE", mux.is_visible_raw)}}
+     {#- #}>
+  {{ peid.printElementIdSubtags(mux)|indent(1) }}
+  <BYTE-POSITION>{{mux.byte_position}}</BYTE-POSITION>
+  <SWITCH-KEY>
+    <BYTE-POSITION>{{mux.switch_key.byte_position}}</BYTE-POSITION>
+    {%- if mux.switch_key.bit_position is not none %}
+    <BIT-POSITION>{{mux.switch_key.bit_position}}</BIT-POSITION>
+    {%- endif %}
+    <DATA-OBJECT-PROP-REF {{make_ref_attribs(mux.switch_key.dop_ref)}}/>
+  </SWITCH-KEY>
+  {%- if mux.default_case is not none %}
+  <DEFAULT-CASE>
+    {{ peid.printElementIdSubtags(mux.default_case)|indent(4) }}
+    {%- if mux.default_case.structure_ref is not none %}
+    <STRUCTURE-REF {{make_ref_attribs(mux.default_case.structure_ref)}}/>
+    {%- endif %}
+    {%- if mux.default_case.structure_snref is not none %}
+    <STRUCTURE-SNREF SHORT_NAME="{{mux.default_case.structure_snref}}"/>
+    {%- endif %}
+  </DEFAULT-CASE>
+  {%- endif %}
+  {%- if mux.cases %}
+  <CASES>
+    {%- for case in mux.cases %}
+    <CASE>
+      {{ peid.printElementIdSubtags(case)|indent(6) }}
+      {%- if case.structure_ref is not none %}
+      <STRUCTURE-REF {{make_ref_attribs(case.structure_ref)}}/>
+      {%- endif %}
+      {%- if case.structure_snref is not none %}
+      <STRUCTURE-SNREF SHORT_NAME="{{case.structure_snref}}"/>
+      {%- endif %}
+      {{ pcm.printLimit("LOWER-LIMIT", case.lower_limit) }}
+      {{ pcm.printLimit("UPPER-LIMIT", case.upper_limit) }}
+    </CASE>
+    {%- endfor %}
+  </CASES>
+  {%- endif %}
+</MUX>
+{%- endmacro -%}

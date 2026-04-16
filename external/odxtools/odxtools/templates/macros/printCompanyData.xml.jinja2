@@ -1,0 +1,93 @@
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+
+{%- import('macros/printElementId.xml.jinja2') as peid %}
+{%- import('macros/printSpecialData.xml.jinja2') as psd %}
+{%- import('macros/printDescription.xml.jinja2') as pd %}
+
+{%- macro printCompanyData(company_data) %}
+<COMPANY-DATA {{-peid.printElementIdAttribs(company_data)}}>
+ {{ peid.printElementIdSubtags(company_data)|indent(1) }}
+ {%- if company_data.roles is not none %}
+ <ROLES>
+  {%- for role in company_data.roles %}
+  <ROLE>{{role|e}}</ROLE>
+  {%- endfor %}
+ </ROLES>
+ {%- endif %}
+ {%- if company_data.team_members is not none %}
+ <TEAM-MEMBERS>
+  {%- for team_member in company_data.team_members %}
+  <TEAM-MEMBER {{-peid.printElementIdAttribs(team_member)}}>
+   {{ peid.printElementIdSubtags(team_member)|indent(3) }}
+   {%- if team_member.roles is not none %}
+   <ROLES>
+    {%- for role in team_member.roles %}
+    <ROLE>{{role|e}}</ROLE>
+    {%- endfor %}
+   </ROLES>
+   {%- endif %}
+   {%- if team_member.department is not none %}
+   <DEPARTMENT>{{team_member.department|e}}</DEPARTMENT>
+   {%- endif %}
+   {%- if team_member.address is not none %}
+   <ADDRESS>{{team_member.address|e}}</ADDRESS>
+   {%- endif %}
+   {%- if team_member.zipcode is not none %}
+   <ZIP>{{team_member.zipcode|e}}</ZIP>
+   {%- endif %}
+   {%- if team_member.city is not none %}
+   <CITY>{{team_member.city|e}}</CITY>
+   {%- endif %}
+   {%- if team_member.phone is not none %}
+   <PHONE>{{team_member.phone|e}}</PHONE>
+   {%- endif %}
+   {%- if team_member.fax is not none %}
+   <FAX>{{team_member.fax|e}}</FAX>
+   {%- endif %}
+   {%- if team_member.email is not none %}
+   <EMAIL>{{team_member.email|e}}</EMAIL>
+   {%- endif %}
+  </TEAM-MEMBER>
+  {%- endfor %}
+ </TEAM-MEMBERS>
+ {%- endif %}
+ {%- if company_data.company_specific_info is not none %}
+ <COMPANY-SPECIFIC-INFO>
+  <RELATED-DOCS>
+  {%- for rd in company_data.company_specific_info.related_docs %}
+   <RELATED-DOC>
+    {%- if rd.xdoc  is not none %}
+    <XDOC>
+     {{ peid.printElementIdSubtags(rd.xdoc)|indent(5) }}
+     {%- if rd.xdoc.number is not none %}
+     <NUMBER>{{rd.xdoc.number|e}}</NUMBER>
+     {%- endif %}
+     {%- if rd.xdoc.state is not none %}
+     <STATE>{{rd.xdoc.state|e}}</STATE>
+     {%- endif %}
+     {%- if rd.xdoc.date is not none %}
+     <DATE>{{rd.xdoc.date|e}}</DATE>
+     {%- endif %}
+     {%- if rd.xdoc.publisher is not none %}
+     <PUBLISHER>{{rd.xdoc.publisher|e}}</PUBLISHER>
+     {%- endif %}
+     {%- if rd.xdoc.url is not none %}
+     <URL>{{rd.xdoc.url|e}}</URL>
+     {%- endif %}
+     {%- if rd.xdoc.position is not none %}
+     <POSITION>{{rd.xdoc.position|e}}</POSITION>
+     {%- endif %}
+    </XDOC>
+    {%- endif %}
+    {{pd.printDescription(rd.description)}}
+   </RELATED-DOC>
+  {%- endfor %}
+  </RELATED-DOCS>
+  {{- psd.printSpecialDataGroups(company_data.company_specific_info.sdgs)|indent(2, first=True) }}
+ </COMPANY-SPECIFIC-INFO>
+ {%- endif %}
+</COMPANY-DATA>
+{%- endmacro -%}

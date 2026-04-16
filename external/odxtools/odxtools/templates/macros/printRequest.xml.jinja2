@@ -1,0 +1,23 @@
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+
+{%- import('macros/printElementId.xml.jinja2') as peid %}
+{%- import('macros/printDOP.xml.jinja2') as pdop %}
+{%- import('macros/printParam.xml.jinja2') as pp %}
+{%- import('macros/printSpecialData.xml.jinja2') as psd %}
+
+{%- macro printRequest(request) -%}
+<REQUEST {{-peid.printElementIdAttribs(request)}}>
+ {{ peid.printElementIdSubtags(request)|indent(1) }}
+{%- if request.parameters %}
+ <PARAMS>
+ {%- for param in request.parameters -%}
+  {{pp.printParam(param)|indent(2)}}
+ {%- endfor %}
+ </PARAMS>
+{%- endif %}
+ {{- psd.printSpecialDataGroups(request.sdgs)|indent(1, first=True) }}
+</REQUEST>
+{%- endmacro -%}

@@ -1,0 +1,15 @@
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+
+{%- import('macros/printElementId.xml.jinja2') as peid %}
+
+{%- macro printStaticField(sf) -%}
+<STATIC-FIELD {{-peid.printElementIdAttribs(sf)}}>
+ {{ peid.printElementIdSubtags(sf)|indent(1) }}
+ <BASIC-STRUCTURE-REF {{make_ref_attribs(sf.structure_ref)}} />
+ <FIXED-NUMBER-OF-ITEMS>{{sf.fixed_number_of_items}}</FIXED-NUMBER-OF-ITEMS>
+ <ITEM-BYTE-SIZE>{{sf.item_byte_size}}</ITEM-BYTE-SIZE>
+</STATIC-FIELD>
+{%- endmacro -%}

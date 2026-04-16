@@ -1,0 +1,22 @@
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+
+{%- import('macros/printBasicStructure.xml.jinja2') as pbs %}
+{%- import('macros/printParam.xml.jinja2') as pparam %}
+
+{%- macro printEnvData(env_data) %}
+<ENV-DATA {{ pbs.printBasicStructureAttribs(env_data) }}>
+  {{ pbs.printBasicStructureSubtags(env_data)|indent(1) }}
+  {%- if not env_data.dtc_values %}
+  <ALL-VALUE/>
+  {%- else %}
+  <DTC-VALUES>
+    {%- for dtcv in env_data.dtc_values %}
+    <DTC-VALUE>{{dtcv}}</DTC-VALUE>
+    {%- endfor %}
+  </DTC-VALUES>
+  {%- endif %}
+</ENV-DATA>
+{%- endmacro -%}

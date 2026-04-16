@@ -1,0 +1,5 @@
+source: https://www.asam.net/fileadmin/Events/2022_10_Regional_Meeting_NA/2_ASAM_SOVD.pdf
+title: ASAM SOVD - Dresden 2022 Regional Meeting (Bernd Wenzel)
+downloaded: 2026-04-14
+covers: SOVD use cases, architecture choices, deployment options. Slide deck from public ASAM regional meeting.
+license: ASAM publication, freely downloadable from public asam.net page (no login). Treat as ASAM copyrighted. Reference-only.

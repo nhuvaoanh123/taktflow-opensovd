@@ -1,0 +1,5 @@
+source: https://www.asam.net/fileadmin/Events/2021_10_Technical_Seminar/2_ASAM_SOVD.pdf
+title: ASAM SOVD - 2021 Technical Seminar slides
+downloaded: 2026-04-14
+covers: pre-1.0 view of SOVD scope, use-cases, and architectural alternatives. Useful as historical context.
+license: ASAM publication, freely downloadable from public asam.net page (no login). Treat as ASAM copyrighted. Reference-only.

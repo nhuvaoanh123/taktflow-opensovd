@@ -1,0 +1,14 @@
+# Extracted ASAM/ISO archives
+#
+# We commit the SOURCE archive (e.g. ISO_17978-3_openapi.zip) and its
+# *.source.txt sidecar but NOT the extracted contents. The extracted
+# YAMLs / XSDs carry "© by ASAM e.V." copyright headers and the ASAM
+# license terms restrict redistribution. Anyone with this repo can
+# re-extract from the committed zip locally for reference work; vendoring
+# the extracted files into the repo would constitute redistribution and
+# requires legal review.
+#
+# See ../inventory-2026-04-14.md Section B for the full license rationale.
+
+ISO_17978-3_openapi/
+ISO_22901-3/

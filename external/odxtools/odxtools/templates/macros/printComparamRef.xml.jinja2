@@ -1,0 +1,34 @@
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+{%- import('macros/printComparam.xml.jinja2') as pcp %}
+{%- import('macros/printDescription.xml.jinja2') as pd %}
+{#- -#}
+
+{%- macro printComparamRef(cp) %}
+<COMPARAM-REF {{make_ref_attribs(cp.spec_ref)}}>
+  {%- if cp.value is string %}
+  <SIMPLE-VALUE>{{cp.value}}</SIMPLE-VALUE>
+  {{ pd.printDescription(cp.description) }}
+  {%- elif cp.value is iterable %}
+  {%- if hasattr(cp.value, "hex") %}
+  {#- the value has a hex() method. assume that is a bytes or bytestring #}
+  <SIMPLE-VALUE>{{cp.value.hex().upper()}}</SIMPLE-VALUE>
+  {{ pd.printDescription(cp.description) }}
+  {%- else %}
+  {{ pcp.printComplexValue(cp.value)|indent(1) }}
+  {{ pd.printDescription(cp.description) }}
+  {%- endif %}
+  {%- else %}
+  <SIMPLE-VALUE>{{cp.value}}</SIMPLE-VALUE>
+  {{ pd.printDescription(cp.description) }}
+  {%- endif %}
+  {%- if cp.prot_stack_snref is not none %}
+  <PROT-STACK-SNREF SHORT-NAME="{{cp.prot_stack_snref}}"/>
+  {%- endif %}
+  {%- if cp.protocol_snref is not none %}
+  <PROTOCOL-SNREF SHORT-NAME="{{cp.protocol_snref}}"/>
+  {%- endif %}
+</COMPARAM-REF>
+{%- endmacro %}

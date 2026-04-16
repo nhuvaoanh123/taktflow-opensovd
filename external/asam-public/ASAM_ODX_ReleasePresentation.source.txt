@@ -1,0 +1,5 @@
+source: https://www.asam.net/index.php?eID=dumpFile&t=f&f=724&token=b62d6ae8599ea0bcdb3e6bc5e415f070d69e7fdf
+title: ASAM MCD-2 D (ODX) Release Presentation
+downloaded: 2026-04-14
+covers: Background and feature overview of the ODX standard (the diagnostic database format SOVD wraps). Slide deck.
+license: ASAM publication, freely downloadable from public asam.net page (no login). Treat as ASAM copyrighted. Reference-only.

@@ -1,0 +1,5 @@
+source: https://www.asam.net/index.php?eID=dumpFile&t=f&f=570&token=8a09021c1b0e3a386ac11bf730e03337f9ad0d9a
+title: ASAM MCD-2 D (ODX) - Table of Contents
+downloaded: 2026-04-14
+covers: Chapter list and section structure of the full ASAM ODX specification (spec body is paywalled; TOC lets us infer scope/coverage).
+license: ASAM publication, freely downloadable from public asam.net page (no login). Treat as ASAM copyrighted. Reference-only.

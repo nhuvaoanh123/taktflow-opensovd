@@ -1,0 +1,374 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: 2025 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+ *
+ * See the NOTICE file(s) distributed with this work for additional
+ * information regarding copyright ownership.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Apache License Version 2.0 which is available at
+ * https://www.apache.org/licenses/LICENSE-2.0
+ */
+
+pub use cda_comm_doip::config::DoipConfig;
+use cda_interfaces::{
+    FunctionalDescriptionConfig, HashMap,
+    datatypes::{
+        ComParams, ComponentsConfig, DatabaseNamingConvention, DiagnosticServiceAffixPosition,
+        FaultConfig, FlatbBufConfig, SdBoolMappings, SdMappingsTruthyValue,
+    },
+};
+use serde::{Deserialize, Serialize};
+
+use crate::AppError;
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Configuration {
+    pub server: ServerConfig,
+    pub doip: DoipConfig,
+    pub database: DatabaseConfig,
+    pub logging: cda_tracing::LoggingConfig,
+    pub onboard_tester: bool,
+    pub flash_files_path: String,
+    pub com_params: ComParams,
+    pub flat_buf: FlatbBufConfig,
+    pub functional_description: FunctionalDescriptionConfig,
+    pub components: ComponentsConfig,
+    #[cfg(feature = "health")]
+    pub health: cda_health::config::HealthConfig,
+    pub faults: FaultConfig,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct ServerConfig {
+    pub address: String,
+    pub port: u16,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct DatabaseConfig {
+    pub path: String,
+    pub naming_convention: DatabaseNamingConvention,
+    /// If true, the application will exit if no database could be loaded.
+    pub exit_no_database_loaded: bool,
+    /// If true, when variant detection fails to find a matching variant,
+    /// the ECU will fall back to the base variant instead of reporting an error.
+    pub fallback_to_base_variant: bool,
+}
+
+pub trait ConfigSanity {
+    /// Checks the configuration for common mistakes and returns an error message if found.
+    /// # Errors
+    /// Returns `Err(String)` if a sanity check fails, with a descriptive error message.
+    fn validate_sanity(&self) -> Result<(), AppError>;
+}
+
+impl Default for Configuration {
+    fn default() -> Self {
+        Configuration {
+            onboard_tester: true,
+            database: DatabaseConfig {
+                path: ".".to_owned(),
+                naming_convention: DatabaseNamingConvention::default(),
+                exit_no_database_loaded: false,
+                fallback_to_base_variant: true,
+            },
+            flash_files_path: ".".to_owned(),
+            server: ServerConfig {
+                address: "0.0.0.0".to_owned(),
+                port: 20002,
+            },
+            #[cfg(feature = "health")]
+            health: cda_health::config::HealthConfig::default(),
+            doip: DoipConfig {
+                tester_address: "10.2.1.240".to_owned(),
+                ..Default::default()
+            },
+            logging: cda_tracing::LoggingConfig::default(),
+            com_params: ComParams::default(),
+            flat_buf: FlatbBufConfig::default(),
+            functional_description: FunctionalDescriptionConfig {
+                description_database: "functional_groups".to_owned(),
+                enabled_functional_groups: None,
+                protocol_position:
+                    cda_interfaces::datatypes::DiagnosticServiceAffixPosition::Suffix,
+                protocol_case_sensitive: false,
+            },
+            components: ComponentsConfig {
+                additional_fields: HashMap::from_iter([
+                    (
+                        "x-sovd2uds-can-ecus".into(),
+                        SdBoolMappings::from_iter([(
+                            "CAN".to_owned(),
+                            SdMappingsTruthyValue::new(
+                                ["yes"].into_iter().map(ToOwned::to_owned).collect::<_>(),
+                                true,
+                            ),
+                        )]),
+                    ),
+                    (
+                        "x-sovd2uds-lin-ecus".into(),
+                        SdBoolMappings::from_iter([(
+                            "LIN".to_owned(),
+                            SdMappingsTruthyValue::new(
+                                ["yes"].into_iter().map(ToOwned::to_owned).collect::<_>(),
+                                true,
+                            ),
+                        )]),
+                    ),
+                ]),
+            },
+            faults: FaultConfig::default(),
+        }
+    }
+}
+
+impl ConfigSanity for Configuration {
+    fn validate_sanity(&self) -> Result<(), AppError> {
+        self.database.naming_convention.validate_sanity()?;
+        // Add more checks for Configuration fields here if needed
+        Ok(())
+    }
+}
+
+impl ConfigSanity for DatabaseNamingConvention {
+    fn validate_sanity(&self) -> Result<(), AppError> {
+        const SHORT_NAME_AFFIX_KEY: &str = "database_naming_convention.short_name_affixes";
+        const LONG_NAME_AFFIX_KEY: &str = "database_naming_convention.long_name_affixes";
+        const SERVICE_NAME_AFFIX_KEY: &str = "database_naming_convention.service_name_affixes";
+
+        fn validate_affix(
+            affix: &str,
+            pos: &DiagnosticServiceAffixPosition,
+            key: &str,
+        ) -> Result<(), AppError> {
+            match pos {
+                DiagnosticServiceAffixPosition::Prefix => {
+                    if affix.starts_with(' ') {
+                        return Err(AppError::ConfigurationError(format!(
+                            "{key}: '{affix}' has leading whitespace"
+                        )));
+                    }
+                }
+                DiagnosticServiceAffixPosition::Suffix => {
+                    if affix.ends_with(' ') {
+                        return Err(AppError::ConfigurationError(format!(
+                            "{key}: '{affix}' has trailing whitespace"
+                        )));
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        // Check short name affixes
+        for affix in &self.short_name_affixes {
+            validate_affix(affix, &self.short_name_affix_position, SHORT_NAME_AFFIX_KEY)?;
+        }
+
+        // Check long name affixes
+        for affix in &self.long_name_affixes {
+            validate_affix(affix, &self.long_name_affix_position, LONG_NAME_AFFIX_KEY)?;
+        }
+
+        // Validate services affixes
+        for (pos, affix) in self.service_affixes.values() {
+            validate_affix(affix, pos, SERVICE_NAME_AFFIX_KEY)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cda_interfaces::datatypes::DiagnosticServiceAffixPosition;
+    use figment::{
+        Figment,
+        providers::{Format, Serialized, Toml},
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn load_config_toml() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+flash_files_path = "/app/flash"
+onboard_tester = true
+
+[database]
+path = "/app/database"
+
+[database.naming_convention]
+short_name_affix_position = "Prefix"
+long_name_affix_position = "Prefix"
+configuration_service_parameter_semantic_id = "ID"
+short_name_affixes = [ "Read_", "Write_" ]
+long_name_affixes = [ "Read ", "Write " ]
+
+[database.naming_convention.service_affixes]
+0x10 = ["Prefix", "Control_"]
+
+[logging.tokio_tracing]
+server = "0.0.0.0:6669"
+
+[logging.otel]
+enabled = true
+endpoint = "http://jaeger:4317"
+
+[com_params.doip]
+nack_number_of_retries.default = {"0x03" = 42, "0x04" = 43}
+nack_number_of_retries.name = "CP_TEST"
+
+[functional_description]
+description_database = "teapot"
+
+"#;
+
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        config.validate_sanity().map_err(|err| err.to_string())?;
+        assert_eq!(
+            config
+                .com_params
+                .doip
+                .nack_number_of_retries
+                .default
+                .get("0x03"),
+            Some(&42)
+        );
+        assert_eq!(
+            config
+                .com_params
+                .doip
+                .nack_number_of_retries
+                .default
+                .get("0x04"),
+            Some(&43)
+        );
+        assert_eq!(
+            config.com_params.doip.nack_number_of_retries.name,
+            "CP_TEST"
+        );
+
+        assert_eq!(
+            config.database.naming_convention.short_name_affix_position,
+            DiagnosticServiceAffixPosition::Prefix,
+        );
+
+        assert_eq!(
+            config.database.naming_convention.long_name_affix_position,
+            DiagnosticServiceAffixPosition::Prefix,
+        );
+
+        assert_eq!(
+            config
+                .database
+                .naming_convention
+                .configuration_service_parameter_semantic_id,
+            "ID".to_owned(),
+        );
+        assert_eq!(
+            config.functional_description.description_database,
+            "teapot".to_owned()
+        );
+        assert_eq!(
+            config
+                .database
+                .naming_convention
+                .service_affixes
+                .get(&0x10.to_string()),
+            Some(&(
+                DiagnosticServiceAffixPosition::Prefix,
+                "Control_".to_string()
+            ))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn load_config_toml_sanityfail_short_name() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[database.naming_convention]
+short_name_affix_position = "Prefix"
+short_name_affixes = [ " Read", " Write_" ]
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        assert!(config.validate_sanity().is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn load_config_toml_sanityfail_long_name() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[database.naming_convention]
+long_name_affix_position = "Suffix"
+long_name_affixes = [ "Read ", "Write_ " ]
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        assert!(config.validate_sanity().is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn load_config_toml_additional_fields_ignore_case_lowercases_values()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[components.additional_fields.x-sovd2uds-time-travel-ecus.FluxCapacitor]
+values = ["Flux Capacitor Mark II", "Flux Capacitor Mark III", "yes"]
+ignore_case = true
+
+[components.additional_fields.x-sovd2uds-power-source-ecus.PowerSource]
+values = ["Plutonium", "Mr. Fusion"]
+ignore_case = true
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+
+        // Verify the FluxCapacitor additional field was loaded and values match case-insensitively
+        let flux_field = config
+            .components
+            .additional_fields
+            .get("x-sovd2uds-time-travel-ecus")
+            .expect("x-sovd2uds-time-travel-ecus should exist");
+        let flux_mapping = flux_field
+            .get("FluxCapacitor")
+            .expect("FluxCapacitor mapping should exist");
+        assert!(
+            flux_mapping.contains("flux capacitor mark ii"),
+            "Should match lowercase"
+        );
+        assert!(
+            flux_mapping.contains("Flux Capacitor Mark II"),
+            "Should match original case"
+        );
+        assert!(
+            flux_mapping.contains("FLUX CAPACITOR MARK II"),
+            "Should match uppercase"
+        );
+        assert!(flux_mapping.contains("yes"), "Should match lowercase 'yes'");
+        assert!(flux_mapping.contains("YES"), "Should match uppercase 'YES'");
+
+        // Verify the PowerSource additional field
+        let power_field = config
+            .components
+            .additional_fields
+            .get("x-sovd2uds-power-source-ecus")
+            .expect("x-sovd2uds-power-source-ecus should exist");
+        let power_mapping = power_field
+            .get("PowerSource")
+            .expect("PowerSource mapping should exist");
+        assert!(power_mapping.contains("Plutonium"));
+        assert!(power_mapping.contains("plutonium"));
+        assert!(power_mapping.contains("Mr. Fusion"));
+        assert!(power_mapping.contains("mr. fusion"));
+
+        Ok(())
+    }
+}

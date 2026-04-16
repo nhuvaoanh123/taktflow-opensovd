@@ -1,0 +1,137 @@
+{#- -*- mode: sgml; tab-width: 1; indent-tabs-mode: nil -*-
+ #
+ # SPDX-License-Identifier: MIT
+-#}
+
+{%- import('macros/printElementId.xml.jinja2') as peid %}
+{%- import('macros/printAdminData.xml.jinja2') as pad %}
+{%- import('macros/printCompanyData.xml.jinja2') as pcd %}
+{%- import('macros/printFunctionalClass.xml.jinja2') as pfc %}
+{%- import('macros/printDiagDataDictionarySpec.xml.jinja2') as pddds %}
+{%- import('macros/printService.xml.jinja2') as ps %}
+{%- import('macros/printSingleEcuJob.xml.jinja2') as psej %}
+{%- import('macros/printRequest.xml.jinja2') as prq %}
+{%- import('macros/printResponse.xml.jinja2') as presp %}
+{%- import('macros/printStateChart.xml.jinja2') as psc %}
+{%- import('macros/printAudience.xml.jinja2') as paud %}
+{%- import('macros/printSubComponent.xml.jinja2') as psubcomp %}
+{%- import('macros/printLibrary.xml.jinja2') as plib %}
+{%- import('macros/printSpecialData.xml.jinja2') as psd %}
+
+{%- macro printDiagLayerAttribs(dl) -%}
+{#- #} {{-peid.printElementIdAttribs(dl)}}{# -#}
+{%- endmacro -%}
+
+{%- macro printDiagLayerSubtags(dl) -%}
+{{- set_layer_docfrag(dl.short_name) }}
+{%- set dlr = dl.diag_layer_raw %}
+{{ peid.printElementIdSubtags(dlr)|indent(1) }}
+{%- if dlr.admin_data is not none %}
+{{ pad.printAdminData(dlr.admin_data) }}
+{%- endif %}
+{%- if dlr.company_datas %}
+<COMPANY-DATAS>
+{%- for cd in dlr.company_datas %}
+{{ pcd.printCompanyData(cd) }}
+{%- endfor %}
+</COMPANY-DATAS>
+{%- endif %}
+{%- if dlr.functional_classes %}
+<FUNCT-CLASSS>
+  {%- for fc in dlr.functional_classes %}
+  {{ pfc.printFunctionalClass(fc)|indent(3) }}
+  {%- endfor%}
+</FUNCT-CLASSS>
+{%- endif %}
+{%- if dlr.diag_data_dictionary_spec is not none %}
+{{ pddds.printDiagDataDictionarySpec(dlr.diag_data_dictionary_spec) }}
+{%- endif %}
+{%- if dlr.diag_comms_raw %}
+<DIAG-COMMS>
+  {%- for dc in dlr.diag_comms_raw %}
+
+  {#- use some serious duck typing to determine the kind of diag-comm
+  #- object. this would not be necessary if something like
+  #- isinstance() was available in jinja...
+  #}
+
+  {%- if hasattr(dc, "ref_id") %}
+  {#- -> reference to a diag-comm object #}
+  <DIAG-COMM-REF {{make_ref_attribs(dc)}} />
+  {%- elif hasattr(dc, "request") %}
+  {#- -> service #}
+  {{ ps.printService(dc)|indent(2) }}
+  {%- elif hasattr(dc, "prog_codes") %}
+  {#- -> single-ECU job #}
+  {{ psej.printSingleEcuJob(dc)|indent(2) }}
+  {%- else %}
+  <!-- Error: database contains an unrecognized DIAG-COMM. -->
+  {%- endif %}
+  {%- endfor %}
+</DIAG-COMMS>
+{%- endif %}
+{%- if dlr.requests %}
+<REQUESTS>
+  {%- for req in dlr.requests %}
+  {{ prq.printRequest(req)|indent(2) }}
+  {%- endfor %}
+</REQUESTS>
+{%- endif %}
+{%- if dlr.positive_responses %}
+<POS-RESPONSES>
+  {%- for resp in dlr.positive_responses %}
+  {{ presp.printResponse(resp, "POS-RESPONSE")|indent(2) }}
+  {%- endfor %}
+</POS-RESPONSES>
+{%- endif %}
+{%- if dlr.negative_responses %}
+<NEG-RESPONSES>
+  {%- for resp in dlr.negative_responses %}
+  {{ presp.printResponse(resp, "NEG-RESPONSE")|indent(2) }}
+  {%- endfor %}
+</NEG-RESPONSES>
+{%- endif %}
+{%- if dlr.global_negative_responses %}
+<GLOBAL-NEG-RESPONSES>
+  {%- for resp in dlr.global_negative_responses %}
+  {{ presp.printResponse(resp, "GLOBAL-NEG-RESPONSE")|indent(2) }}
+  {%- endfor %}
+</GLOBAL-NEG-RESPONSES>
+{%- endif %}
+{%- if dlr.import_refs %}
+<IMPORT-REFS>
+  {%- for ir in dlr.import_refs %}
+  <IMPORT-REF {{make_ref_attribs(ir)}} />
+  {%- endfor %}
+</IMPORT-REFS>
+{%- endif %}
+{%- if dlr.state_charts %}
+<STATE-CHARTS>
+  {%- for sc in dlr.state_charts %}
+  {{ psc.printStateChart(sc) }}
+  {%- endfor %}
+</STATE-CHARTS>
+{%- endif %}
+{%- if dlr.additional_audiences %}
+<ADDITIONAL-AUDIENCES>
+  {%- for audience in dlr.additional_audiences %}
+  {{ paud.printAdditionalAudience(audience)|indent(2) }}
+  {%- endfor %}
+</ADDITIONAL-AUDIENCES>
+{%- endif %}
+{%- if dlr.sub_components %}
+<SUB-COMPONENTS>
+  {%- for sc in dlr.sub_components %}
+  {{ psubcomp.printSubComponent(sc)|indent(2) }}
+  {%- endfor %}
+</SUB-COMPONENTS>
+{%- endif %}
+{%- if dlr.libraries %}
+<LIBRARYS>
+  {%- for lib in dlr.libraries %}
+  {{ plib.printLibrary(lib)|indent(2) }}
+  {%- endfor %}
+</LIBRARYS>
+{%- endif %}
+{{- psd.printSpecialDataGroups(dlr.sdgs)|indent(0, first=True) }}
+{%- endmacro -%}

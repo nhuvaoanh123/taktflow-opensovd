@@ -1,0 +1,5 @@
+source: https://standards.iso.org/iso/22901/-3/ed-1/en/FXD_ElectronicDocument.zip
+title: ISO 22901-3 ed. 1 - FXD (Flash Data eXchange) Electronic Document XSD schemas
+downloaded: 2026-04-14
+covers: ASAM/ISO FXD XSD schemas (V2.0.0 fxd, fxd-xhtml, xml) plus FXD Selection Dictionary V1.1.0/1.2.0. These are the schemas our odx-converter / fault-lib will need if we ever ingest flash containers per the ISO 22901-3 spec.
+license: Distributed via ISO Standards Maintenance Portal (standards.iso.org). Subject to "ISO Customer Licence Agreement". Reference-only / internal use; do not redistribute.

@@ -43,6 +43,20 @@ Previous phases delivered: upstream code-style alignment (Phase 0), workspace
 scaffolding + CDA integration (Phase 1-2), DFM + diagnostic DB + gateway
 routing (Phase 3-4), OpenAPI contract tests, Pi full-stack deploy (Phase 5 D1).
 
+## Testing
+
+| Layer | What | Count |
+|-------|------|-------|
+| Unit + async | `#[test]` + `#[tokio::test]` across all Rust crates | 5,680 |
+| Snapshot | `insta` schema snapshots (sovd-interfaces, locked to ASAM SOVD v1.1) | 36 files |
+| OpenAPI contract | Schema regeneration gate (`cargo xtask openapi-dump --check`) | per PR |
+| Integration | End-to-end flows: in-memory MVP, CDA+ECU-sim, DFM SQLite roundtrip, gateway routing | 25 test files |
+| HIL | Live CAN captures on physical STM32 bench (vcan0 smoke, real CAN, proxy) | 3 capture logs |
+| CI enforcement | clippy pedantic + deny-warnings, rustfmt, cargo-deny (license + advisory audit) | every push |
+
+CI runs on Linux and Windows, stable (1.88.0) and nightly toolchains, with a
+feature matrix covering all-features, minimal, and mbedtls-only configurations.
+
 ## Architecture
 
 ```

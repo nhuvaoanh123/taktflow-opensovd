@@ -80,13 +80,13 @@ Hardware-in-the-loop bench with physical and virtual ECUs:
 ```
  +------------------+          +--------------------+
  |  Dev host (Win)  |   SSH    |  Raspberry Pi      |
- |                  +--------->|  192.168.0.197     |
+ |                  +--------->|  (gateway host)    |
  |  3x ST-LINK     |          |                    |
- |  1x XDS110      |          |  sovd-main :21002  |
- |  GS_USB (CAN)   |          |  ecu-sim   :13400  |
- +--------+---------+          |  can-proxy :13401  |
+ |  1x XDS110      |          |  sovd-main         |
+ |  GS_USB (CAN)   |          |  ecu-sim           |
+ +--------+---------+          |  can-to-doip proxy |
           |                    +--------+-----------+
-          | Serial (COM3/7/8/11)        | can0 (500 kbps)
+          | Serial                      | can0 (500 kbps)
           v                             v
  +--------+---------+          +--------+-----------+
  | Physical ECUs    |          | CAN bus             |
@@ -98,11 +98,11 @@ Hardware-in-the-loop bench with physical and virtual ECUs:
  +-------------------+
 ```
 
-| Service | Host | Port | Role |
-|---------|------|------|------|
-| sovd-main | Pi | 21002 | SOVD REST API |
-| ecu-sim | Pi | 13400 | Virtual ECU simulator (POSIX builds of CVC/FZC/RZC) |
-| can-to-doip proxy | Pi | 13401 | Bridges CAN ISO-TP to DoIP for physical ECUs |
+| Service | Host | Role |
+|---------|------|------|
+| sovd-main | Pi | SOVD REST API |
+| ecu-sim | Pi | Virtual ECU simulator (POSIX builds of CVC/FZC/RZC) |
+| can-to-doip proxy | Pi | Bridges CAN ISO-TP to DoIP for physical ECUs |
 
 **Physical ECUs:** 3x STM32G474RE (CVC, FZC, RZC) + 1x TMS570LC43x (SC),
 all on CAN bus at 500 kbps via ISO-TP. Flashed via ST-LINK and XDS110.
@@ -110,7 +110,7 @@ all on CAN bus at 500 kbps via ISO-TP. Flashed via ST-LINK and XDS110.
 **Virtual ECUs:** BCM, ICU, TCU run as POSIX builds on the Pi or in Docker.
 
 **Deployment:** `deploy/pi/phase5-full-stack.sh` cross-compiles for aarch64,
-rsyncs to Pi, installs systemd units, and verifies with a health check curl.
+rsyncs to Pi, installs systemd units, and verifies with a health check.
 
 ## Repository map
 

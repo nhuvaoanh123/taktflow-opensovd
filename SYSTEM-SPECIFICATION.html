@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Taktflow OpenSOVD -- System Specification</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --blue-50: #e8f4fd;
+    --blue-600: #1a73e8;
+    --green-50: #e8f5e9;
+    --green-800: #2e7d32;
+    --orange-50: #fff3e0;
+    --orange-900: #e65100;
+    --red-50: #fce4ec;
+    --red-900: #c62828;
+    --yellow-50: #fff9c4;
+    --grey-100: #f5f5f5;
+    --grey-300: #e0e0e0;
+    --grey-700: #616161;
+    --grey-900: #212121;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: var(--grey-900);
+    line-height: 1.65;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 2.5rem;
+    background: #fff;
+  }
+
+  /* --- Typography --- */
+  h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    border-bottom: 3px solid var(--blue-600);
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+  h2 {
+    font-size: 1.45rem;
+    font-weight: 600;
+    color: var(--blue-600);
+    margin-top: 2.8rem;
+    margin-bottom: 0.6rem;
+    border-bottom: 1px solid var(--grey-300);
+    padding-bottom: 0.3rem;
+  }
+  h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin-top: 1.8rem;
+    margin-bottom: 0.5rem;
+  }
+  p, li { margin-bottom: 0.5rem; }
+  ul, ol { padding-left: 1.4rem; }
+  code {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.88em;
+    background: var(--grey-100);
+    padding: 0.15em 0.4em;
+    border-radius: 3px;
+  }
+  blockquote {
+    border-left: 4px solid var(--blue-600);
+    background: var(--blue-50);
+    padding: 0.8rem 1.2rem;
+    margin: 1rem 0;
+    font-style: italic;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid var(--grey-300);
+    margin: 2.5rem 0;
+  }
+  a { color: var(--blue-600); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { font-weight: 600; }
+
+  /* --- Meta block --- */
+  .meta {
+    color: var(--grey-700);
+    font-size: 0.92rem;
+    margin-bottom: 1.2rem;
+  }
+  .meta span { display: inline-block; margin-right: 2rem; }
+
+  /* --- Tables --- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0 1.5rem;
+    font-size: 0.92rem;
+  }
+  th {
+    background: var(--blue-600);
+    color: #fff;
+    font-weight: 600;
+    text-align: left;
+    padding: 0.55rem 0.75rem;
+  }
+  td {
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid var(--grey-300);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: var(--grey-100); }
+  tr:hover td { background: var(--yellow-50); }
+
+  /* category header rows in feature matrix */
+  td.cat {
+    font-weight: 700;
+    background: var(--blue-50) !important;
+    border-bottom: 2px solid var(--blue-600);
+  }
+
+  /* status badges */
+  .badge {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.15em 0.55em;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .badge-done     { background: var(--green-50); color: var(--green-800); border: 1px solid var(--green-800); }
+  .badge-stub     { background: var(--orange-50); color: var(--orange-900); border: 1px solid var(--orange-900); }
+  .badge-scaffold { background: var(--yellow-50); color: #7b6b00; border: 1px solid #c9a800; }
+
+  /* --- Mermaid diagrams --- */
+  .mermaid {
+    margin: 1.2rem 0;
+    text-align: center;
+  }
+
+  /* --- Print --- */
+  @media print {
+    body { padding: 0.5cm; font-size: 10pt; max-width: 100%; }
+    h2 { page-break-before: auto; }
+    table { page-break-inside: avoid; }
+    .mermaid svg { max-width: 100% !important; }
+  }
+
+  /* --- Responsive --- */
+  @media (max-width: 768px) {
+    body { padding: 1rem; }
+    table { font-size: 0.82rem; }
+  }
+
+  /* --- TOC --- */
+  nav.toc {
+    background: var(--grey-100);
+    border: 1px solid var(--grey-300);
+    border-radius: 6px;
+    padding: 1rem 1.5rem;
+    margin: 1.5rem 0 2rem;
+  }
+  nav.toc h2 {
+    font-size: 1rem;
+    margin: 0 0 0.6rem;
+    border: none;
+    color: var(--grey-900);
+  }
+  nav.toc ol { padding-left: 1.2rem; margin: 0; }
+  nav.toc li { margin-bottom: 0.2rem; font-size: 0.92rem; }
+</style>
+</head>
+<body>
+
+<h1>Taktflow OpenSOVD &mdash; System Specification</h1>
+
+<div class="meta">
+  <span><strong>Document ID:</strong> TAKTFLOW-SOVD-SPEC</span>
+  <span><strong>Revision:</strong> 1.0</span>
+  <span><strong>Status:</strong> Draft</span>
+  <span><strong>Date:</strong> 2026-04-16</span>
+  <span><strong>Owner:</strong> Taktflow SOVD workstream</span>
+</div>
+
+<blockquote>
+Single-document reference covering architecture, requirements, safety,
+and test strategy for the Taktflow Eclipse OpenSOVD diagnostic stack.
+</blockquote>
+
+<nav class="toc">
+<h2>Contents</h2>
+<ol>
+  <li><a href="#s1">Executive Summary</a></li>
+  <li><a href="#s2">System Architecture</a></li>
+  <li><a href="#s3">Feature Matrix</a></li>
+  <li><a href="#s4">Requirements Summary</a></li>
+  <li><a href="#s5">Safety Boundary</a></li>
+  <li><a href="#s6">State Machines</a></li>
+  <li><a href="#s7">Key Use Cases</a></li>
+  <li><a href="#s8">API Surface</a></li>
+  <li><a href="#s9">Deployment Topologies</a></li>
+  <li><a href="#s10">Test Strategy</a></li>
+  <li><a href="#s11">Component Catalogue</a></li>
+  <li><a href="#s12">Design Principles</a></li>
+  <li><a href="#s13">Standards Compliance</a></li>
+  <li><a href="#s14">Related Documents</a></li>
+  <li><a href="#s15">Revision History</a></li>
+</ol>
+</nav>
+
+<!-- ================================================================== -->
+<h2 id="s1">1. Executive Summary</h2>
+
+<p>Taktflow OpenSOVD is a general-purpose SOVD (ISO&nbsp;17978) diagnostic stack
+for <strong>multi-ECU zonal architectures</strong>. It replaces legacy UDS/CAN
+diagnostics with modern REST/HTTP so that every ECU &mdash; virtual or physical,
+regardless of role or zone &mdash; becomes addressable via standard HTTP tooling
+instead of proprietary diagnostic hardware and binary protocols.</p>
+
+<p>The HIL test bench uses a BMS zonal topology (CVC / FZC / RZC / SC) as the
+reference integration, but the stack itself is architecture-agnostic within
+automotive diagnostics.</p>
+
+<table>
+<thead><tr><th>Dimension</th><th>UDS (legacy)</th><th>SOVD (this system)</th></tr></thead>
+<tbody>
+<tr><td>Transport</td><td>CAN + ISO-TP / DoIP</td><td>REST/HTTP over IP</td></tr>
+<tr><td>Data format</td><td>Binary byte frames</td><td>JSON resources</td></tr>
+<tr><td>Addressing</td><td>Session + service IDs</td><td>URL paths (<code>/sovd/v1/components/{id}/faults</code>)</td></tr>
+<tr><td>Security</td><td>Seed/key</td><td>HTTPS + mTLS + OAuth</td></tr>
+<tr><td>Tooling</td><td>Specialized diagnostic tools</td><td>Any HTTP client</td></tr>
+</tbody>
+</table>
+
+<p><strong>Current status:</strong> Phase 5 &mdash; Hardware-in-the-Loop (April 2026).
+Full stack running on Raspberry Pi with physical STM32 ECUs on CAN bus.</p>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s2">2. System Architecture</h2>
+
+<h3>2.1 System context</h3>
+<pre class="mermaid">
+graph TB
+    T["&lt;b&gt;Off-board SOVD Tester&lt;/b&gt;&lt;br/&gt;(laptop / Postman / curl)"]
+    F["&lt;b&gt;Fleet / Cloud Operator&lt;/b&gt;&lt;br/&gt;(future)"]
+
+    T -->|"HTTPS (ISO 17978)"| Stack
+    F -->|"HTTPS (future)"| Stack
+
+    subgraph Stack ["Taktflow SOVD Stack -- Pi Gateway Host"]
+        GW["sovd-gateway"]
+        SRV["sovd-server"]
+        DFM["sovd-dfm"]
+        CDA["Classic Diagnostic&lt;br/&gt;Adapter (CDA)"]
+        PROXY["CAN-to-DoIP&lt;br/&gt;Proxy"]
+    end
+
+    Stack -->|"DoIP / TCP"| VE
+    Stack -->|"CAN / ISO-TP&lt;br/&gt;(via proxy)"| PE
+
+    VE["&lt;b&gt;Virtual ECUs&lt;/b&gt;&lt;br/&gt;BCM, ICU, TCU&lt;br/&gt;(POSIX + DoIP)"]
+    PE["&lt;b&gt;Physical ECUs&lt;/b&gt;&lt;br/&gt;CVC, FZC, RZC, SC&lt;br/&gt;(STM32G4 + TMS570)"]
+
+    style Stack fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
+    style T fill:#fff3e0,stroke:#e65100
+    style F fill:#fff3e0,stroke:#e65100
+    style VE fill:#e8f5e9,stroke:#2e7d32
+    style PE fill:#fce4ec,stroke:#c62828
+</pre>
+
+<h3>2.2 Component topology</h3>
+<pre class="mermaid">
+graph TB
+    TESTER["&lt;b&gt;Off-board SOVD Tester&lt;/b&gt;"]
+    TESTER -->|"HTTPS"| GW
+
+    subgraph PI ["Raspberry Pi Gateway Host (Linux aarch64)"]
+        GW["&lt;b&gt;sovd-gateway&lt;/b&gt;&lt;br/&gt;routing, fan-out,&lt;br/&gt;backend registry"]
+        SRV["&lt;b&gt;sovd-server&lt;/b&gt;&lt;br/&gt;one per ECU view"]
+        DFM["&lt;b&gt;sovd-dfm&lt;/b&gt;&lt;br/&gt;central fault mgr"]
+        DB["&lt;b&gt;sovd-db&lt;/b&gt;&lt;br/&gt;SQLite + WAL"]
+        CDA["&lt;b&gt;CDA&lt;/b&gt;&lt;br/&gt;(upstream)"]
+        PROXY["&lt;b&gt;CAN-to-DoIP&lt;/b&gt;&lt;br/&gt;proxy (Rust)"]
+
+        GW &lt;-->|"in-process"| SRV
+        GW -->|"SovdBackend"| DFM
+        GW -->|"HTTP"| CDA
+        DFM --> DB
+        SRV --> DFM
+        CDA -->|"UDS / DoIP"| PROXY
+    end
+
+    PROXY -->|"SocketCAN&lt;br/&gt;(can0 / vcan0)"| PE
+    CDA -->|"DoIP TCP"| VE
+
+    VE["&lt;b&gt;Virtual POSIX ECUs&lt;/b&gt;&lt;br/&gt;BCM, ICU, TCU"]
+    PE["&lt;b&gt;Physical ECUs&lt;/b&gt;&lt;br/&gt;CVC, FZC, RZC, SC"]
+
+    style PI fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
+    style TESTER fill:#fff3e0,stroke:#e65100
+    style VE fill:#e8f5e9,stroke:#2e7d32
+    style PE fill:#fce4ec,stroke:#c62828
+    style GW fill:#bbdefb,stroke:#1565c0
+    style DFM fill:#bbdefb,stroke:#1565c0
+    style DB fill:#c8e6c9,stroke:#2e7d32
+    style CDA fill:#ffe0b2,stroke:#e65100
+</pre>
+
+<h3>2.3 Crate dependency graph</h3>
+<pre class="mermaid">
+graph BT
+    IF["&lt;b&gt;sovd-interfaces&lt;/b&gt;&lt;br/&gt;types, traits, errors&lt;br/&gt;&lt;i&gt;(leaf -- zero I/O)&lt;/i&gt;"]
+
+    DB["sovd-db (SQLite)"] --> IF
+    DFM["sovd-dfm"] --> IF
+    SRV["sovd-server (Axum)"] --> IF
+    CLI["sovd-client"] --> IF
+    GW["sovd-gateway"] --> IF
+    TR["sovd-tracing"] --> IF
+
+    DFM --> DB
+
+    MAIN["&lt;b&gt;sovd-main&lt;/b&gt;&lt;br/&gt;binary assembly"] --> SRV
+    MAIN --> CLI
+    MAIN --> GW
+    MAIN --> TR
+    MAIN --> DFM
+
+    style IF fill:#fff9c4,stroke:#f9a825,stroke-width:2px
+    style MAIN fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px
+    style DB fill:#c8e6c9,stroke:#2e7d32
+</pre>
+
+<h3>2.4 Protocol hops</h3>
+<table>
+<thead><tr><th>Hop</th><th>Protocol</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Tester &rarr; Gateway/Server</td><td>HTTPS (ISO 17978 SOVD REST)</td><td>TLS, mTLS, JSON, correlation id</td></tr>
+<tr><td>Gateway &rarr; Server</td><td>in-process fn / async channel</td><td>same Tokio runtime</td></tr>
+<tr><td>Gateway &rarr; DFM</td><td>in-process via <code>SovdBackend</code> trait</td><td><code>sovd-interfaces</code></td></tr>
+<tr><td>Gateway &rarr; CDA</td><td>HTTP (Axum service)</td><td>in-proc or loopback</td></tr>
+<tr><td>CDA &rarr; ECU (virtual)</td><td>DoIP over TCP/13400</td><td>POSIX transport</td></tr>
+<tr><td>CDA &rarr; Pi CAN proxy</td><td>DoIP over TCP/13400</td><td>Pi translates</td></tr>
+<tr><td>Pi proxy &rarr; physical ECU</td><td>ISO-TP over CAN 500&nbsp;kbps</td><td>SocketCAN</td></tr>
+<tr><td>Fault shim &rarr; DFM (POSIX)</td><td>Unix domain socket</td><td>postcard wire format</td></tr>
+<tr><td>Fault shim &rarr; DFM (STM32)</td><td>NvM buffer, gateway sync</td><td>SR-4.1 non-blocking</td></tr>
+<tr><td>DFM &rarr; SQLite</td><td>sqlx async driver</td><td>WAL mode</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s3">3. Feature Matrix</h2>
+
+<h3>3.1 Capability overview</h3>
+<pre class="mermaid">
+graph LR
+    subgraph FAULTS ["Fault Management"]
+        F1["List DTCs&lt;br/&gt;(per-component + all)"]
+        F2["DTC detail + status"]
+        F3["Clear DTCs&lt;br/&gt;(all or by group)"]
+        F4["Pagination"]
+    end
+
+    subgraph ROUTINES ["Diagnostic Routines"]
+        R1["Start routine"]
+        R2["Stop routine"]
+        R3["Poll status"]
+        R4["Routine registry"]
+    end
+
+    subgraph COMPONENTS ["Component Management"]
+        C1["List components"]
+        C2["HW/SW version"]
+        C3["DID catalogue"]
+        C4["Capability discovery"]
+    end
+
+    subgraph FAULT_PIPE ["Fault Pipeline"]
+        P1["Fault API&lt;br/&gt;(C shim + Rust)"]
+        P2["DFM ingest"]
+        P3["Debounce +&lt;br/&gt;op-cycle gating"]
+        P4["SQLite persistence"]
+    end
+
+    subgraph SECURITY ["Security"]
+        S1["mTLS + HTTPS"]
+        S2["OAuth2 / OIDC tokens"]
+        S3["Audit log"]
+        S4["Rate limiting"]
+    end
+
+    style FAULTS fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
+    style ROUTINES fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style COMPONENTS fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style FAULT_PIPE fill:#fff9c4,stroke:#f9a825,stroke-width:2px
+    style SECURITY fill:#fce4ec,stroke:#c62828,stroke-width:2px
+</pre>
+
+<h3>3.2 Feature status matrix</h3>
+<table>
+<thead><tr><th>Feature</th><th>Requirement</th><th>Phase</th><th>Status</th><th>Verified by</th></tr></thead>
+<tbody>
+<tr><td class="cat" colspan="5">Fault Management</td></tr>
+<tr><td>List DTCs per component</td><td>FR-1.1</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>Unit + HIL 01</td></tr>
+<tr><td>Per-DTC detail</td><td>FR-1.2</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>Unit + snapshot</td></tr>
+<tr><td>Clear DTCs</td><td>FR-1.3</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>HIL 02</td></tr>
+<tr><td>Pagination</td><td>FR-1.4</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>HIL 07</td></tr>
+<tr><td>Multi-component aggregation</td><td>FR-1.5</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>Integration</td></tr>
+
+<tr><td class="cat" colspan="5">Diagnostic Routines</td></tr>
+<tr><td>Start routine</td><td>FR-2.1</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>HIL 03</td></tr>
+<tr><td>Stop routine</td><td>FR-2.2</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>Unit</td></tr>
+<tr><td>Poll status</td><td>FR-2.3</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>HIL 03</td></tr>
+<tr><td>Routine registry</td><td>FR-2.4</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>Unit</td></tr>
+
+<tr><td class="cat" colspan="5">Component Metadata</td></tr>
+<tr><td>List components</td><td>FR-3.1</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>HIL 05</td></tr>
+<tr><td>HW/SW version</td><td>FR-3.2</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>HIL 05</td></tr>
+<tr><td>DID catalogue + read</td><td>FR-3.3</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>Unit</td></tr>
+<tr><td>Capability discovery</td><td>FR-3.4</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>Unit</td></tr>
+
+<tr><td class="cat" colspan="5">Fault Pipeline</td></tr>
+<tr><td>Fault API (C + Rust)</td><td>FR-4.1</td><td>3</td><td><span class="badge badge-done">Done</span></td><td>Integration</td></tr>
+<tr><td>DFM ingest</td><td>FR-4.2</td><td>3</td><td><span class="badge badge-done">Done</span></td><td>DFM roundtrip</td></tr>
+<tr><td>Debounce + op-cycle</td><td>FR-4.3</td><td>3</td><td><span class="badge badge-done">Done</span></td><td>Unit</td></tr>
+<tr><td>SQLite persistence</td><td>FR-4.4</td><td>3</td><td><span class="badge badge-done">Done</span></td><td>DFM roundtrip</td></tr>
+<tr><td>Catalog version check</td><td>FR-4.5</td><td>3</td><td><span class="badge badge-done">Done</span></td><td>Unit</td></tr>
+
+<tr><td class="cat" colspan="5">Legacy UDS Compatibility</td></tr>
+<tr><td>Virtual ECUs over DoIP</td><td>FR-5.1</td><td>1-2</td><td><span class="badge badge-done">Done</span></td><td>CDA smoke</td></tr>
+<tr><td>Physical ECUs via proxy</td><td>FR-5.2</td><td>2</td><td><span class="badge badge-done">Done</span></td><td>HIL 01-08</td></tr>
+<tr><td>CDA configuration</td><td>FR-5.3</td><td>2</td><td><span class="badge badge-done">Done</span></td><td>Integration</td></tr>
+<tr><td>UDS session mirroring</td><td>FR-5.4</td><td>2</td><td><span class="badge badge-done">Done</span></td><td>CDA smoke</td></tr>
+<tr><td>UDS security access</td><td>FR-5.5</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>Unit</td></tr>
+
+<tr><td class="cat" colspan="5">Gateway</td></tr>
+<tr><td>Routing table</td><td>FR-6.1</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>Integration</td></tr>
+<tr><td>Federated hop</td><td>FR-6.2</td><td>6</td><td><span class="badge badge-stub">Stub</span></td><td>&mdash;</td></tr>
+
+<tr><td class="cat" colspan="5">Session + Security</td></tr>
+<tr><td>Session resource</td><td>FR-7.1</td><td>4</td><td><span class="badge badge-done">Done</span></td><td>Unit</td></tr>
+<tr><td>Security level</td><td>FR-7.2</td><td>4-6</td><td><span class="badge badge-scaffold">Scaffold</span></td><td>&mdash;</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s4">4. Requirements Summary</h2>
+
+<h3>4.1 Requirement traceability map</h3>
+<pre class="mermaid">
+graph LR
+    subgraph SOURCES ["Standards + Upstream"]
+        ISO17["ISO 17978&lt;br/&gt;(SOVD)"]
+        ISO14["ISO 14229&lt;br/&gt;(UDS)"]
+        ISO26["ISO 26262&lt;br/&gt;(Safety)"]
+        UD["upstream&lt;br/&gt;design.md"]
+        MVP["upstream&lt;br/&gt;mvp.md"]
+        MP["MASTER-PLAN"]
+    end
+
+    subgraph REQS ["Requirements (this project)"]
+        FR["FR-1..7&lt;br/&gt;Functional"]
+        NFR["NFR-1..6&lt;br/&gt;Non-functional"]
+        SR["SR-1..5&lt;br/&gt;Safety"]
+        SEC["SEC-1..5&lt;br/&gt;Security"]
+        COMP["COMP-1..5&lt;br/&gt;Compliance"]
+    end
+
+    subgraph IMPL ["Implementation"]
+        CODE["opensovd-core&lt;br/&gt;(16 crates)"]
+        CDA_I["CDA&lt;br/&gt;(14 crates)"]
+        FL["fault-lib"]
+    end
+
+    subgraph VERIFY ["Verification"]
+        UT["5,680 unit tests"]
+        SNAP["36 snapshots"]
+        INT["25 integration&lt;br/&gt;test files"]
+        HIL["8 HIL scenarios"]
+    end
+
+    ISO17 --> FR
+    ISO14 --> FR
+    ISO26 --> SR
+    UD --> FR
+    MVP --> FR
+    MP --> NFR
+
+    FR --> CODE
+    NFR --> CODE
+    SR --> FL
+    SEC --> CODE
+    COMP --> CODE
+
+    CODE --> UT
+    CODE --> SNAP
+    CODE --> INT
+    CODE --> HIL
+
+    style SOURCES fill:#f5f5f5,stroke:#616161
+    style REQS fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
+    style IMPL fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style VERIFY fill:#fff9c4,stroke:#f9a825,stroke-width:2px
+</pre>
+
+<h3>4.2 Non-functional requirements</h3>
+<table>
+<thead><tr><th>ID</th><th>Requirement</th><th>Target</th><th>Verified by</th></tr></thead>
+<tbody>
+<tr><td>NFR-1.1</td><td>DTC read latency</td><td>P99 &le; 500 ms (Pi, 7 ECUs)</td><td>HIL nightly</td></tr>
+<tr><td>NFR-1.2</td><td>Fault ingest latency</td><td>median &le; 100 ms</td><td>Integration</td></tr>
+<tr><td>NFR-1.3</td><td>Concurrent testers</td><td>&ge; 2 without cross-contamination</td><td>HIL 06</td></tr>
+<tr><td>NFR-1.4</td><td>Memory footprint</td><td>RSS &lt; 200 MB (Pi steady state)</td><td>HIL nightly</td></tr>
+<tr><td>NFR-2.1</td><td>Degraded mode</td><td>Serve other ECUs when one fails</td><td>HIL 08</td></tr>
+<tr><td>NFR-2.2</td><td>Auto-reconnect</td><td>Recovered backend reintegrated &lt; 5 s</td><td>HIL 08</td></tr>
+<tr><td>NFR-2.3</td><td>No-ECU startup</td><td>Server starts with zero backends</td><td>Integration</td></tr>
+<tr><td>NFR-3.1</td><td>DLT tracing</td><td>Context ids SOVD, DFM, GW, CDA</td><td>Phase 6</td></tr>
+<tr><td>NFR-3.2</td><td>OpenTelemetry spans</td><td>Full request trace</td><td>Phase 6</td></tr>
+<tr><td>NFR-3.3</td><td>Structured logs</td><td>JSON + correlation id</td><td>Phase 6</td></tr>
+<tr><td>NFR-4.1</td><td>SIL/HIL/prod parity</td><td>Same binary, config-only diff</td><td>CI matrix</td></tr>
+<tr><td>NFR-4.2</td><td>Host OS portability</td><td>Linux x86_64/aarch64 + Windows</td><td>CI matrix</td></tr>
+<tr><td>NFR-5.1</td><td>7-ECU MVP</td><td>Full topology concurrently</td><td>HIL 01</td></tr>
+<tr><td>NFR-6.1</td><td>Upstream style parity</td><td>Indistinguishable from CDA</td><td>Phase 4 audit</td></tr>
+</tbody>
+</table>
+
+<h3>4.3 Safety requirements</h3>
+<table>
+<thead><tr><th>ID</th><th>Requirement</th><th>Enforcement</th></tr></thead>
+<tbody>
+<tr><td>SR-1.1</td><td>No SOVD path modifies ASIL-D code without HARA delta</td><td>PR gate: safety-engineer sign-off</td></tr>
+<tr><td>SR-1.2</td><td>opensovd-core holds zero ASIL allocation</td><td>No ASIL library linkage</td></tr>
+<tr><td>SR-2.1</td><td>MISRA C:2012 clean on new embedded code</td><td>cppcheck/coverity CI gate</td></tr>
+<tr><td>SR-3.1</td><td>Motor self-test interlock (stationary only)</td><td>ECU firmware NRC 0x22</td></tr>
+<tr><td>SR-3.2</td><td>Brake check interlock (test mode only)</td><td>ECU firmware session check</td></tr>
+<tr><td>SR-4.1</td><td>Fault API is non-blocking</td><td>&lt; 10 &micro;s on STM32</td></tr>
+<tr><td>SR-4.2</td><td>DFM failure does not propagate to safety functions</td><td>NvM buffering on STM32</td></tr>
+<tr><td>SR-5.1</td><td>DoIP transport isolation</td><td>Separate task, bounded stack, rate-limited</td></tr>
+</tbody>
+</table>
+
+<h3>4.4 Security requirements</h3>
+<table>
+<thead><tr><th>ID</th><th>Requirement</th><th>Phase</th></tr></thead>
+<tbody>
+<tr><td>SEC-1.1</td><td>TLS on all external endpoints</td><td>6</td></tr>
+<tr><td>SEC-2.1</td><td>mTLS client certificate authentication</td><td>6</td></tr>
+<tr><td>SEC-2.2</td><td>OAuth2/OIDC bearer token authorization</td><td>4 scaffold, 6 full</td></tr>
+<tr><td>SEC-3.1</td><td>Audit log for privileged operations</td><td>4</td></tr>
+<tr><td>SEC-4.1</td><td>Session timeout (default 30 s)</td><td>4</td></tr>
+<tr><td>SEC-5.1</td><td>Rate limiting (20 rps default)</td><td>6</td></tr>
+<tr><td>SEC-5.2</td><td>Input validation + size limits (64 KiB)</td><td>4</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s5">5. Safety Boundary</h2>
+
+<pre class="mermaid">
+graph TB
+    subgraph QM ["QM Domain (no ASIL allocation)"]
+        direction TB
+        GW["SOVD Gateway"]
+        SRV["SOVD Server"]
+        DFM["DFM"]
+        DB[("Diagnostic DB")]
+        FS["FaultSink (IPC)"]
+
+        GW --> SRV --> DFM --> DB
+        DFM --> FS
+    end
+
+    BOUNDARY["---- Safety Boundary ----&lt;br/&gt;&lt;i&gt;Fault Library API is the ONLY crossing point.&lt;br/&gt;Data flows one direction: firmware -> SOVD. Never SOVD -> firmware.&lt;/i&gt;"]
+
+    subgraph SAFETY ["Safety-Critical Domain (ASIL-D)"]
+        direction TB
+        CDA_S["CDA (UDS/DoIP)"]
+        FL["Fault Library API&lt;br/&gt;(FaultShim_Report)"]
+        ECU_S["Physical ECU"]
+        FW["Firmware (ASIL-D)"]
+
+        CDA_S --> ECU_S
+        FW --> FL
+    end
+
+    FS -->|"fault data&lt;br/&gt;(one-way)"| FL
+    GW -->|"diagnostic request"| CDA_S
+
+    style QM fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style SAFETY fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style BOUNDARY fill:#fff9c4,stroke:#f9a825,stroke-width:3px,stroke-dasharray: 5 5
+    style FL fill:#ffcdd2,stroke:#c62828,stroke-width:2px
+</pre>
+
+<p><strong>Boundary rules:</strong></p>
+<ol>
+  <li>No SOVD path modifies ASIL-D firmware without HARA delta (SR-1.1)</li>
+  <li>opensovd-core links against zero ASIL-rated libraries (SR-1.2)</li>
+  <li>Fault Library API is the single crossing point</li>
+  <li>Fault data flows one direction: firmware &rarr; SOVD, never reverse</li>
+  <li>Routine interlocks enforced in firmware, not SOVD (SR-3.x)</li>
+</ol>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s6">6. State Machines</h2>
+
+<h3>6.1 DTC lifecycle</h3>
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> Pending : FaultShim_Report received
+
+    Pending --> Confirmed : debounce threshold met
+    Pending --> Suppressed : operation cycle excludes fault
+    Pending --> [*] : aging timeout
+
+    Confirmed --> Cleared : POST .../faults/clear or UDS 0x14
+    Confirmed --> Confirmed : additional occurrence (count++)
+
+    Suppressed --> Pending : operation cycle ends
+
+    Cleared --> Pending : same fault re-reported
+    Cleared --> [*] : no recurrence
+
+    note right of Confirmed
+        Visible to SOVD GET.
+        Persisted in SQLite.
+    end note
+</pre>
+
+<table>
+<thead><tr><th>State</th><th>Visible via SOVD</th><th>Persisted</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>Pending</td><td>No</td><td>In-memory</td><td>Below debounce threshold</td></tr>
+<tr><td>Confirmed</td><td>Yes</td><td>SQLite</td><td>Active DTC, reported to testers</td></tr>
+<tr><td>Suppressed</td><td>No</td><td>In-memory</td><td>Excluded by operation cycle</td></tr>
+<tr><td>Cleared</td><td>No</td><td>Tombstone</td><td>Cleared by tester or UDS</td></tr>
+</tbody>
+</table>
+
+<h3>6.2 Operation cycle</h3>
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> Idle : system boot
+
+    Idle --> Running : start_cycle (REST or IPC)
+    Running --> Evaluating : stop_cycle
+    Running --> Running : faults ingested
+
+    Evaluating --> Idle : evaluation complete
+</pre>
+
+<table>
+<thead><tr><th>Kind</th><th>Trigger</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>Ignition</td><td>ECU power events via Fault Shim IPC</td><td>Standard automotive power cycle</td></tr>
+<tr><td>Driving</td><td>Vehicle speed &gt; 0 via platform DID</td><td>Motion-dependent faults</td></tr>
+<tr><td>Tester</td><td>REST POST .../operation-cycles/start</td><td>Manual diagnostic session</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s7">7. Key Use Cases</h2>
+
+<h3>7.1 UC1 &mdash; Read DTCs (FR-1.1, FR-1.5)</h3>
+<pre class="mermaid">
+sequenceDiagram
+    participant T as Tester
+    participant GW as sovd-gateway
+    participant CDA as CDA
+    participant PX as Proxy
+    participant ECU as CVC (STM32)
+
+    T->>+GW: GET /sovd/v1/components/cvc/faults
+    GW->>+CDA: route("cvc") -> CdaBackend
+    CDA->>+PX: DoIP -> UDS 0x19
+    PX->>+ECU: CAN ISO-TP
+    ECU-->>-PX: UDS response 0x59
+    PX-->>-CDA: DoIP response
+    CDA-->>-GW: JSON DTC list
+    GW-->>-T: 200 OK
+</pre>
+
+<h3>7.2 UC2 &mdash; Report fault via Fault API (FR-4.1)</h3>
+<pre class="mermaid">
+sequenceDiagram
+    participant SWC as Firmware (ASIL-B)
+    participant SHIM as FaultShim
+    participant DFM as DFM Pipeline
+    participant DB as SQLite
+
+    SWC->>SHIM: FaultShim_Report(fid, severity, meta)
+    Note over SWC,SHIM: Non-blocking, returns immediately
+    SHIM->>DFM: Unix socket / NvM buffer
+    DFM->>DFM: Debounce -> OpCycle -> DtcLifecycle
+    DFM->>DB: persist DTC
+    Note over DB: Visible via GET within 100 ms
+</pre>
+
+<h3>7.3 UC3 &mdash; Clear DTCs (FR-1.3)</h3>
+<pre class="mermaid">
+sequenceDiagram
+    participant T as Tester
+    participant AUTH as Auth + Audit
+    participant GW as Gateway
+    participant CDA as CDA
+    participant ECU as ECU
+
+    T->>+AUTH: POST .../faults/clear
+    AUTH->>AUTH: mTLS + token + audit log
+    AUTH->>+GW: authorized
+    GW->>+CDA: CdaBackend
+    CDA->>+ECU: UDS 0x14 (ClearDTC)
+    ECU-->>-CDA: 0x54 (success)
+    CDA-->>-GW: OK
+    GW-->>-AUTH: OK
+    AUTH-->>-T: 204 No Content
+</pre>
+
+<h3>7.4 UC5 &mdash; Trigger routine with safety interlock (FR-2.1, SR-3.1)</h3>
+<pre class="mermaid">
+sequenceDiagram
+    participant T as Tester
+    participant GW as Gateway
+    participant CDA as CDA
+    participant ECU as ECU
+
+    T->>+GW: POST .../operations/motor_self_test/start
+    GW->>+CDA: CdaBackend
+    CDA->>+ECU: UDS 0x31 01 (RoutineControl)
+
+    alt vehicle not stationary
+        ECU-->>CDA: NRC 0x22 ConditionsNotCorrect
+        CDA-->>GW: error
+        GW-->>T: 409 Conflict (safety interlock)
+    else preconditions met
+        ECU-->>-CDA: 0x71 01 (accepted)
+        CDA-->>-GW: accepted
+        GW-->>-T: 202 Accepted
+    end
+</pre>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s8">8. API Surface</h2>
+
+<h3>8.1 REST endpoints (ISO 17978)</h3>
+<table>
+<thead><tr><th>Method</th><th>Endpoint</th><th>Description</th><th>Req</th></tr></thead>
+<tbody>
+<tr><td>GET</td><td><code>/sovd/v1/components</code></td><td>List all components</td><td>FR-3.1</td></tr>
+<tr><td>GET</td><td><code>/sovd/v1/components/{id}</code></td><td>Component detail (HW/SW version)</td><td>FR-3.2</td></tr>
+<tr><td>GET</td><td><code>/sovd/v1/components/{id}/faults</code></td><td>List DTCs (status-mask, pagination)</td><td>FR-1.1</td></tr>
+<tr><td>GET</td><td><code>/sovd/v1/components/{id}/faults/{dtc}</code></td><td>Single DTC detail</td><td>FR-1.2</td></tr>
+<tr><td>POST</td><td><code>/sovd/v1/components/{id}/faults/clear</code></td><td>Clear DTCs</td><td>FR-1.3</td></tr>
+<tr><td>GET</td><td><code>/sovd/v1/faults</code></td><td>Aggregated DTCs across all components</td><td>FR-1.5</td></tr>
+<tr><td>GET</td><td><code>/sovd/v1/components/{id}/operations</code></td><td>Routine catalogue</td><td>FR-2.4</td></tr>
+<tr><td>POST</td><td><code>/sovd/v1/components/{id}/operations/{rid}/start</code></td><td>Start routine</td><td>FR-2.1</td></tr>
+<tr><td>POST</td><td><code>/sovd/v1/components/{id}/operations/{rid}/stop</code></td><td>Stop routine</td><td>FR-2.2</td></tr>
+<tr><td>GET</td><td><code>/sovd/v1/components/{id}/operations/{rid}/status</code></td><td>Poll routine status</td><td>FR-2.3</td></tr>
+<tr><td>GET</td><td><code>/sovd/v1/components/{id}/data</code></td><td>List DIDs</td><td>FR-3.3</td></tr>
+<tr><td>GET</td><td><code>/sovd/v1/components/{id}/data/{did}</code></td><td>Read single DID</td><td>FR-3.3</td></tr>
+<tr><td>POST</td><td><code>/sovd/v1/sessions</code></td><td>Create session</td><td>FR-7.1</td></tr>
+<tr><td>GET</td><td><code>/sovd/v1/health</code></td><td>Liveness check</td><td>&mdash;</td></tr>
+</tbody>
+</table>
+
+<h3>8.2 Middleware stack</h3>
+<pre class="mermaid">
+flowchart TD
+    REQ["Incoming HTTPS request"] --> M1
+    M1["Tracing&lt;br/&gt;&lt;i&gt;correlation id + OTLP span&lt;/i&gt;"] --> M2
+    M2["Authentication&lt;br/&gt;&lt;i&gt;TLS cert + bearer token&lt;/i&gt;"] --> M3
+    M3["Rate limiting&lt;br/&gt;&lt;i&gt;per-IP, 20 rps default&lt;/i&gt;"] --> M4
+    M4["Audit logging&lt;br/&gt;&lt;i&gt;privileged ops only&lt;/i&gt;"] --> M5
+    M5["Body validation&lt;br/&gt;&lt;i&gt;size + schema&lt;/i&gt;"] --> HANDLER
+    HANDLER["Route handler"] --> BACKEND["SovdBackend trait dispatch"]
+
+    style REQ fill:#fff3e0,stroke:#e65100
+    style HANDLER fill:#bbdefb,stroke:#1565c0
+    style BACKEND fill:#bbdefb,stroke:#1565c0
+</pre>
+
+<h3>8.3 OpenAPI contract</h3>
+<p>The API schema is snapshot-locked to ASAM SOVD v1.1. Any schema change is
+detected by <code>cargo xtask openapi-dump --check</code> and fails CI.</p>
+<ul>
+  <li>36 golden JSON snapshot files verify wire format stability</li>
+  <li>Schema regeneration is a PR gate</li>
+</ul>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s9">9. Deployment Topologies</h2>
+
+<h3>9.1 Topology comparison</h3>
+<table>
+<thead><tr><th>Aspect</th><th>SIL (Docker Compose)</th><th>HIL (Pi bench)</th><th>Production</th></tr></thead>
+<tbody>
+<tr><td>Host</td><td>Linux x86_64</td><td>Raspberry Pi aarch64</td><td>Pi aarch64</td></tr>
+<tr><td>ECUs</td><td>POSIX containers (DoIP)</td><td>Physical STM32 + virtual</td><td>Physical + virtual</td></tr>
+<tr><td>CAN bus</td><td>vcan0 (virtual)</td><td>can0 (500 kbps real)</td><td>can0 (real)</td></tr>
+<tr><td>TLS</td><td>Optional (localhost)</td><td>Optional</td><td>mTLS enforced</td></tr>
+<tr><td>DLT</td><td>Local viewer</td><td>Local viewer</td><td>Cloud collector</td></tr>
+<tr><td>Binary</td><td>Same artifact</td><td>Same artifact</td><td>Same artifact</td></tr>
+</tbody>
+</table>
+
+<h3>9.2 HIL test bench</h3>
+<pre class="mermaid">
+graph LR
+    subgraph DEV ["Dev Host (Windows)"]
+        STL["3x ST-LINK"]
+        XDS["1x XDS110"]
+        GS["GS_USB (CAN)"]
+    end
+
+    subgraph PI ["Raspberry Pi (gateway host)"]
+        SM["sovd-main"]
+        SIM["ecu-sim"]
+        PX["can-to-doip proxy"]
+    end
+
+    subgraph HW ["Physical ECUs"]
+        CVC["CVC STM32G474RE"]
+        FZC["FZC STM32G474RE"]
+        RZC["RZC STM32G474RE"]
+        SC["SC TMS570LC43x"]
+    end
+
+    DEV -->|"SSH"| PI
+    DEV -->|"Serial (flash/debug)"| HW
+    PI -->|"can0 (500 kbps)"| HW
+
+    style DEV fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style PI fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
+    style HW fill:#fce4ec,stroke:#c62828,stroke-width:2px
+</pre>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s10">10. Test Strategy</h2>
+
+<h3>10.1 Test pyramid</h3>
+<pre class="mermaid">
+graph TB
+    subgraph PYRAMID ["Test Pyramid"]
+        direction TB
+        HIL["&lt;b&gt;Level 5: HIL&lt;/b&gt;&lt;br/&gt;8 scenarios on physical bench"]
+        INT["&lt;b&gt;Level 4: Integration&lt;/b&gt;&lt;br/&gt;25 test files, real backends"]
+        OA["&lt;b&gt;Level 3: OpenAPI Contract&lt;/b&gt;&lt;br/&gt;schema locked to ASAM v1.1"]
+        SNAP["&lt;b&gt;Level 2: Snapshot&lt;/b&gt;&lt;br/&gt;36 golden JSON files"]
+        UNIT["&lt;b&gt;Level 1: Unit + Async&lt;/b&gt;&lt;br/&gt;5,680 tests"]
+    end
+
+    HIL ~~~ INT ~~~ OA ~~~ SNAP ~~~ UNIT
+
+    style HIL fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style INT fill:#fff3e0,stroke:#e65100
+    style OA fill:#fff9c4,stroke:#f9a825
+    style SNAP fill:#e8f5e9,stroke:#2e7d32
+    style UNIT fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
+</pre>
+
+<h3>10.2 HIL scenario matrix</h3>
+<table>
+<thead><tr><th>#</th><th>Scenario</th><th>Validates</th></tr></thead>
+<tbody>
+<tr><td>01</td><td>Read faults (all ECUs)</td><td>Full fault read path, P99 latency</td></tr>
+<tr><td>02</td><td>Clear faults</td><td>DTC clear SOVD &rarr; UDS &rarr; CAN</td></tr>
+<tr><td>03</td><td>Operation execution</td><td>Routine trigger + status polling</td></tr>
+<tr><td>04</td><td>CAN bus-off</td><td>Fault detection and recovery</td></tr>
+<tr><td>05</td><td>Components metadata</td><td>ECU HW/SW versions via SOVD</td></tr>
+<tr><td>06</td><td>Concurrent testers</td><td>Multi-client concurrent access</td></tr>
+<tr><td>07</td><td>Large fault list</td><td>Pagination under high fault count</td></tr>
+<tr><td>08</td><td>Error handling</td><td>Invalid requests, timeouts, error codes</td></tr>
+</tbody>
+</table>
+
+<h3>10.3 CI pipeline</h3>
+<table>
+<thead><tr><th>Gate</th><th>Command</th><th>Enforcement</th></tr></thead>
+<tbody>
+<tr><td>Format</td><td><code>cargo +nightly fmt -- --check</code></td><td>Hard fail</td></tr>
+<tr><td>Clippy</td><td><code>cargo clippy --all-targets -- -D warnings</code></td><td>Hard fail</td></tr>
+<tr><td>License</td><td><code>cargo deny check</code></td><td>Hard fail</td></tr>
+<tr><td>Unit + integration tests</td><td><code>cargo test --locked</code></td><td>Hard fail</td></tr>
+<tr><td>OpenAPI</td><td><code>cargo xtask openapi-dump --check</code></td><td>Hard fail</td></tr>
+<tr><td>Feature matrix</td><td><code>--all-features</code>, <code>--no-default-features</code>, <code>--features mbedtls</code></td><td>Hard fail</td></tr>
+<tr><td>Platforms</td><td>Linux x86_64, Windows x86_64</td><td>Hard fail</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s11">11. Component Catalogue</h2>
+
+<h3>11.1 opensovd-core workspace (16 crates)</h3>
+<table>
+<thead><tr><th>Crate</th><th>Purpose</th><th>Req</th></tr></thead>
+<tbody>
+<tr><td><code>sovd-interfaces</code></td><td>Trait + type contracts. Zero I/O.</td><td>All FR</td></tr>
+<tr><td><code>sovd-server</code></td><td>Axum HTTP server, OpenAPI via utoipa</td><td>FR-1.x, FR-2.x, FR-3.x</td></tr>
+<tr><td><code>sovd-gateway</code></td><td>Federated routing, parallel fan-out</td><td>FR-1.5, FR-6.x</td></tr>
+<tr><td><code>sovd-dfm</code></td><td>Diagnostic Fault Manager</td><td>FR-4.x</td></tr>
+<tr><td><code>sovd-db-sqlite</code></td><td>SQLite persistence, WAL, migrations</td><td>FR-4.4</td></tr>
+<tr><td><code>sovd-db-score</code></td><td>S-CORE KV backend (placeholder)</td><td>&mdash;</td></tr>
+<tr><td><code>fault-sink-unix</code></td><td>Unix socket IPC, postcard wire format</td><td>FR-4.1, FR-4.2</td></tr>
+<tr><td><code>fault-sink-lola</code></td><td>S-CORE LoLa shared-memory (placeholder)</td><td>&mdash;</td></tr>
+<tr><td><code>opcycle-taktflow</code></td><td>In-process operation cycle state machine</td><td>FR-4.3</td></tr>
+<tr><td><code>opcycle-score-lifecycle</code></td><td>S-CORE lifecycle subscriber (placeholder)</td><td>&mdash;</td></tr>
+<tr><td><code>sovd-tracing</code></td><td>DLT + OTLP subscriber configuration</td><td>NFR-3.x</td></tr>
+<tr><td><code>sovd-main</code></td><td>Binary entry point, TOML config loader</td><td>&mdash;</td></tr>
+<tr><td><code>sovd-client</code></td><td>HTTP client (skeleton)</td><td>FR-6.2</td></tr>
+<tr><td><code>xtask</code></td><td><code>cargo xtask openapi-dump [--check]</code></td><td>COMP-1.1</td></tr>
+<tr><td><code>integration-tests</code></td><td>End-to-end test suite</td><td>All</td></tr>
+</tbody>
+</table>
+
+<h3>11.2 Supporting components</h3>
+<table>
+<thead><tr><th>Component</th><th>Language</th><th>Lines</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>classic-diagnostic-adapter/</code></td><td>Rust</td><td>~68k</td><td>SOVD-to-UDS/DoIP bridge (upstream fork, 14 crates)</td></tr>
+<tr><td><code>fault-lib/</code></td><td>Rust</td><td>~600</td><td>Framework-agnostic fault API, <code>#![forbid(unsafe_code)]</code></td></tr>
+<tr><td><code>dlt-tracing-lib/</code></td><td>Rust</td><td>~1.9k</td><td>Rust tracing subscriber for COVESA DLT</td></tr>
+<tr><td><code>odx-converter/</code></td><td>Kotlin</td><td>~4.2k</td><td>ODX (.pdx) to MDD binary format converter</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s12">12. Design Principles</h2>
+
+<ol>
+  <li><strong>Rust-first.</strong> Async (Tokio), memory-safe, <code>#![forbid(unsafe_code)]</code> where possible. Clippy pedantic + deny enforced in CI.</li>
+  <li><strong>Trait boundaries, not frameworks.</strong> <code>sovd-interfaces</code> defines all contracts with zero I/O. Implementations are swappable.</li>
+  <li><strong>Spec-locked API surface.</strong> OpenAPI schema snapshot-tested against ASAM SOVD v1.1.</li>
+  <li><strong>Build first, contribute later.</strong> No upstream PRs during early phases.</li>
+  <li><strong>Extras on top, never inside mirrored code.</strong> Taktflow customizations live in layered crates, not inline edits to upstream files.</li>
+  <li><strong>Isolation over integration on the safety axis.</strong> Fault Library is the ONLY boundary between QM and ASIL-D.</li>
+</ol>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s13">13. Standards Compliance</h2>
+
+<table>
+<thead><tr><th>Standard</th><th>Relevance</th></tr></thead>
+<tbody>
+<tr><td>ISO 17978 (SOVD)</td><td>Primary API specification. MVP subset conformance.</td></tr>
+<tr><td>ISO 14229 (UDS)</td><td>Legacy diagnostic protocol via CDA bridge.</td></tr>
+<tr><td>ISO 26262</td><td>Safety lifecycle. OpenSOVD is QM; firmware is ASIL-D.</td></tr>
+<tr><td>ISO 13400 (DoIP)</td><td>Diagnostic transport over IP.</td></tr>
+<tr><td>ISO 15765-2 (ISO-TP)</td><td>CAN transport protocol.</td></tr>
+<tr><td>MISRA C:2012</td><td>Embedded C coding standard for safety-critical code.</td></tr>
+<tr><td>ASAM MCD-2D (ODX)</td><td>Diagnostic data exchange format.</td></tr>
+<tr><td>Automotive SPICE</td><td>Process assessment; L2-3 traceability required.</td></tr>
+<tr><td>Apache-2.0</td><td>License. REUSE/SPDX compliance enforced.</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s14">14. Related Documents</h2>
+
+<table>
+<thead><tr><th>Document</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>ARCHITECTURE.md</td><td>Full arc42 architecture with detailed views</td></tr>
+<tr><td>REQUIREMENTS.md</td><td>Complete FR/NFR/SR/SEC/COMP with acceptance criteria</td></tr>
+<tr><td>SAFETY-CONCEPT.md</td><td>Safety boundary, failure containment, MISRA</td></tr>
+<tr><td>TEST-STRATEGY.md</td><td>Test levels, CI pipeline, coverage</td></tr>
+<tr><td>TRADE-STUDIES.md</td><td>18 trade studies for every major decision</td></tr>
+<tr><td>DEPLOYMENT-GUIDE.md</td><td>SIL/HIL/production deployment</td></tr>
+<tr><td>DEVELOPER-GUIDE.md</td><td>Build, run, and test instructions</td></tr>
+<tr><td>GLOSSARY.md</td><td>Domain terminology</td></tr>
+<tr><td>docs/adr/</td><td>18 Architecture Decision Records</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s15">15. Revision History</h2>
+
+<table>
+<thead><tr><th>Rev</th><th>Date</th><th>Author</th><th>Change</th></tr></thead>
+<tbody>
+<tr><td>1.0</td><td>2026-04-16</td><td>SOVD workstream</td><td>Initial consolidated specification</td></tr>
+</tbody>
+</table>
+
+<hr>
+<p style="text-align:center; color:var(--grey-700); font-size:0.85rem; margin-top:2rem;">
+  &copy; 2026 The Contributors to Eclipse OpenSOVD (Taktflow fork) &mdash; Apache-2.0
+</p>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'default',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+    sequence: { useMaxWidth: true, showSequenceNumbers: false },
+  });
+</script>
+</body>
+</html>

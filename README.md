@@ -209,6 +209,7 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 |------|-------------|
 | `docs/ARCHITECTURE.md` | arc42-format system design and deployment topology |
 | `docs/REQUIREMENTS.md` | FR/NFR/SR/SEC/COMP requirements, ASPICE-traceable |
+| `docs/TRADE-STUDIES.md` | 18 trade studies: every major technical decision with options, criteria, rationale |
 | `docs/SAFETY-CONCEPT.md` | Safety classification, QM/ASIL boundary, Fault Library isolation |
 | `docs/TEST-STRATEGY.md` | Test levels, CI pipeline, HIL gating, coverage tooling |
 | `docs/CODING-STANDARDS.md` | Rust/Kotlin formatting, linting, error handling, naming, SPDX |

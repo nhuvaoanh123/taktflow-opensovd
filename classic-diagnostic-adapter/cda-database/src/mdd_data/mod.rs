@@ -327,9 +327,9 @@ pub(crate) fn read_ecudata<'a>(
         )
         .map_err(|e| format!("Failed to parse ECU data: {e}"))
     } else {
+        // SAFETY: The MDD file was previously verified by flatbuffers::root during
+        // the initial load. Unchecked parsing is ~10x faster for trusted data.
         Ok(unsafe {
-            // unsafe but around 10x faster.
-            // can be used when previously verified and trusted data is loaded.
             dataformat::root_as_ecu_data_unchecked(bytes)
         })
     };

@@ -16,14 +16,14 @@ enforced by CI and will fail your PR if violated.
 
 Enforced via `cargo +nightly fmt -- --check` in CI.
 
-| Setting | Value |
-|---------|-------|
-| `max_width` | 100 |
-| `format_strings` | true |
-| `group_imports` | StdExternalCrate |
-| `imports_granularity` | Crate |
-| `error_on_unformatted` | true |
-| `error_on_line_overflow` | true |
+| Setting | Value | Note |
+|---------|-------|------|
+| `max_width` | 100 | In `rustfmt.toml` |
+| `group_imports` | StdExternalCrate | In `rustfmt.toml` (requires nightly rustfmt) |
+| `imports_granularity` | Crate | In `rustfmt.toml` (requires nightly rustfmt) |
+| `format_strings` | true | Via CLI flag (`cargo +nightly fmt`) |
+| `error_on_unformatted` | true | Via CLI flag |
+| `error_on_line_overflow` | true | Via CLI flag |
 
 **Import ordering** follows a strict three-group model:
 
@@ -139,9 +139,16 @@ SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD
 - Use `#![forbid(unsafe_code)]` in crates that do not require unsafe
   (e.g., `fault-lib`).
 - When unsafe is necessary (FFI, platform-specific I/O), isolate it in a
-  dedicated module with a `// SAFETY:` comment on every unsafe block.
+  dedicated module with a `// SAFETY:` comment on every unsafe block
+  explaining why the preconditions are met.
+- FFI wrapper crates (`comm-mbedtls/mbedtls-rs`) concentrate unsafe in
+  callback functions and initialization routines. Each callback documents
+  its safety contract in a `/// # Safety` doc comment. Individual FFI calls
+  within safe wrapper functions are covered by the wrapper's doc comment.
 - Never use unsafe for performance optimization without benchmarks proving
-  the safe alternative is insufficient.
+  the safe alternative is insufficient. Exception: FlatBuffers
+  `root_as_*_unchecked` is permitted on previously-verified data with a
+  SAFETY comment documenting the prior verification.
 
 ## Kotlin (odx-converter)
 

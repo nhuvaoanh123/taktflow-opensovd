@@ -669,6 +669,8 @@ fn register_cleanup() {
             eprintln!("Failed to stop ecu-sim: {e}");
         }
     }
+    // SAFETY: cleanup_handler is an extern "C" fn with no captured state.
+    // atexit is called once during single-threaded test setup.
     unsafe {
         libc::atexit(cleanup_handler);
     }

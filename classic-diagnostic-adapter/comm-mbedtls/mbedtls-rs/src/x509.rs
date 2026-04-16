@@ -98,6 +98,7 @@ impl X509Certificate {
     }
 
     fn new_uninit() -> Self {
+        // SAFETY: zeroed + init is the documented mbedtls initialization sequence.
         unsafe {
             let mut crt: ffi::mbedtls_x509_crt = std::mem::zeroed();
             ffi::mbedtls_x509_crt_init(&raw mut crt);

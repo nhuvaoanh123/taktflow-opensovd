@@ -123,6 +123,7 @@ impl MemBio {
 // ---------------------------------------------------------------------------
 
 unsafe extern "C" fn membio_send(ctx: *mut c_void, buf: *const c_uchar, len: usize) -> c_int {
+    // SAFETY: ctx is a MemBio pointer set by mbedtls_ssl_set_bio; buf/len are provided by mbedtls.
     let bio = unsafe { &mut *ctx.cast::<MemBio>() };
     let slice = unsafe { std::slice::from_raw_parts(buf, len) };
     bio.outgoing.extend_from_slice(slice);
@@ -130,6 +131,7 @@ unsafe extern "C" fn membio_send(ctx: *mut c_void, buf: *const c_uchar, len: usi
 }
 
 unsafe extern "C" fn membio_recv(ctx: *mut c_void, buf: *mut c_uchar, len: usize) -> c_int {
+    // SAFETY: ctx is a MemBio pointer set by mbedtls_ssl_set_bio; buf/len are provided by mbedtls.
     let bio = unsafe { &mut *ctx.cast::<MemBio>() };
     let n = bio.read_incoming(unsafe { std::slice::from_raw_parts_mut(buf, len) });
     if n == 0 {
@@ -197,6 +199,8 @@ where
     }
 
     fn new_inner(config: Arc<SslConfig>, inner: S) -> io::Result<Self> {
+        // SAFETY: Initializes PSA crypto subsystem and mbedtls SSL context.
+        // config is kept alive via Arc; bio is pinned and stable for the BIO callbacks.
         unsafe {
             let psa_ret = ffi::psa_crypto_init();
             if psa_ret != 0 {

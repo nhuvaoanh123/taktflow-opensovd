@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD
+
 // Copyright (c) 2025 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
 //
 // See the NOTICE file(s) distributed with this work for additional

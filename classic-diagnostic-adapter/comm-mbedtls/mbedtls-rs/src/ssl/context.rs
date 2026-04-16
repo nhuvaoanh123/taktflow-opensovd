@@ -43,11 +43,16 @@ struct BioContext<S> {
 }
 
 /// `f_send` callback: called by mbedtls when it wants to write ciphertext.
+///
+/// # Safety
+/// `ctx` must be a valid `*mut BioContext<S>` set via `mbedtls_ssl_set_bio`.
+/// `buf` must point to `len` readable bytes (guaranteed by mbedtls).
 unsafe extern "C" fn bio_send<S: Write>(
     ctx: *mut c_void,
     buf: *const c_uchar,
     len: usize,
 ) -> c_int {
+    // SAFETY: ctx is a BioContext pointer registered via mbedtls_ssl_set_bio; buf/len from mbedtls.
     let bio = unsafe { &mut *ctx.cast::<BioContext<S>>() };
     let slice = unsafe { std::slice::from_raw_parts(buf, len) };
     match bio.stream.write(slice) {
@@ -64,7 +69,12 @@ unsafe extern "C" fn bio_send<S: Write>(
 }
 
 /// `f_recv` callback: called by mbedtls when it wants to read ciphertext.
+///
+/// # Safety
+/// `ctx` must be a valid `*mut BioContext<S>` set via `mbedtls_ssl_set_bio`.
+/// `buf` must point to `len` writable bytes (guaranteed by mbedtls).
 unsafe extern "C" fn bio_recv<S: Read>(ctx: *mut c_void, buf: *mut c_uchar, len: usize) -> c_int {
+    // SAFETY: ctx is a BioContext pointer registered via mbedtls_ssl_set_bio; buf/len from mbedtls.
     let bio = unsafe { &mut *ctx.cast::<BioContext<S>>() };
     let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
     match bio.stream.read(slice) {

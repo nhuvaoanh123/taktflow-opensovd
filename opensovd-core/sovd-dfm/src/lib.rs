@@ -42,6 +42,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use tokio::sync::RwLock;
+use uuid::Uuid;
+
 use sovd_interfaces::{
     ComponentId, SovdError,
     spec::{
@@ -61,8 +64,6 @@ use sovd_interfaces::{
     },
     types::error::Result,
 };
-use tokio::sync::RwLock;
-use uuid::Uuid;
 
 pub mod config;
 

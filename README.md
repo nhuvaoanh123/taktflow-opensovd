@@ -1,13 +1,18 @@
 # taktflow-opensovd
 
-Monorepo for [Eclipse OpenSOVD](https://github.com/eclipse-opensovd) development --
-an open-source implementation of **ISO 17978 Service-Oriented Vehicle Diagnostics (SOVD)**,
-the modern REST/HTTP replacement for UDS/CAN diagnostics in automotive.
+Open-source **SOVD diagnostic stack** (ISO 17978) -- from REST API to physical
+ECU, tested on real automotive hardware.
 
-Built by the [Taktflow](https://github.com/Taktflow-Systems) SOVD workstream.
-Target: full SOVD stack on real hardware, upstreamed to Eclipse by end of 2026.
+Built by [Taktflow](https://github.com/Taktflow-Systems). Targeting upstream
+contribution to [Eclipse OpenSOVD](https://github.com/eclipse-opensovd) and
+integration with [Eclipse S-CORE](https://projects.eclipse.org/projects/automotive.score).
 
-## Why SOVD
+## Goal
+
+Replace legacy UDS/CAN diagnostics with modern REST/HTTP across Taktflow's
+multi-customer BMS platform. Every ECU becomes reachable via standard HTTP
+tooling -- `curl`, Postman, cloud fleet APIs -- instead of proprietary
+diagnostic hardware and binary protocols.
 
 | Dimension | UDS (legacy) | SOVD (modern) |
 |-----------|-------------|---------------|
@@ -17,12 +22,36 @@ Target: full SOVD stack on real hardware, upstreamed to Eclipse by end of 2026.
 | Security | Seed/key | HTTPS + certificates + OAuth |
 | Tooling | Specialized diagnostic tools | Any HTTP client |
 
-Vehicles are moving to IP-based zonal architectures. OEMs need cloud fleet
-diagnostics, OTA feedback, and AI/ML fault analysis. SOVD is the ASAM/ISO
-standard that makes this possible, and OpenSOVD is the Eclipse reference
-implementation -- designated as the diagnostic layer for
-[Eclipse S-CORE](https://projects.eclipse.org/projects/automotive.score)
-(the SDV reference OS / middleware stack).
+## Scope
+
+**In scope:**
+
+- SOVD Server -- REST API implementing ISO 17978, async Rust (Tokio + Axum)
+- SOVD Gateway -- federated routing across local and remote diagnostic hosts
+- Diagnostic Fault Manager (DFM) -- fault ingestion, persistence, operation-cycle gating
+- Classic Diagnostic Adapter (CDA) -- SOVD-to-UDS/DoIP bridge for legacy ECUs
+- Fault ingestion IPC -- Unix sockets / Windows named pipes, no_std-compatible wire format
+- ODX-to-MDD converter -- diagnostic database format tooling
+- Hardware-in-the-loop test bench -- STM32 + TMS570 physical ECUs on CAN bus
+
+**Out of scope:**
+
+- Safety-relevant functionality (handled by S-CORE, ASIL-B). OpenSOVD is QM.
+- Embedded RTOS or base software. Firmware lives in a separate repository.
+- Production deployment tooling. This is the diagnostic stack, not the vehicle OS.
+
+## Design principles
+
+- **Rust-first.** Async (Tokio), memory-safe, `#![forbid(unsafe_code)]` where
+  possible. Edition 2024, Rust 1.88+. Clippy pedantic + deny rules enforced in CI.
+- **Trait boundaries, not frameworks.** `sovd-interfaces` defines all contracts
+  (SovdBackend, FaultSink, SovdDb, OperationCycle) with zero I/O. Implementations
+  are swappable: SQLite or S-CORE KV for persistence, Unix sockets or LoLa
+  shared-memory for fault transport, Taktflow or S-CORE lifecycle for operation cycles.
+- **Spec-locked API surface.** OpenAPI schema is snapshot-tested against ASAM SOVD v1.1.
+  `cargo xtask openapi-dump --check` gates every PR.
+- **Build first, contribute later.** No upstream PRs during early phases. When we
+  upstream, we upstream finished, tested, working systems.
 
 ## Current status
 
@@ -128,7 +157,7 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 
 ## Repository map
 
-### Core (Taktflow-developed)
+### Core (~86k LoC Rust, ~4.2k LoC Kotlin)
 
 | Directory | Language | Lines | Description |
 |-----------|----------|-------|-------------|
@@ -142,28 +171,27 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 
 | Crate | Purpose |
 |-------|---------|
-| `sovd-interfaces` | Trait + type contracts (SovdBackend, FaultSink, OperationCycle). Zero I/O. 53 tests. |
+| `sovd-interfaces` | Trait + type contracts (SovdBackend, FaultSink, OperationCycle). Zero I/O. |
 | `sovd-server` | Axum HTTP server, routes to backend impls, OpenAPI generation via utoipa |
 | `sovd-gateway` | Federated routing across local + remote SOVD hosts, parallel fan-out |
 | `sovd-dfm` | Diagnostic Fault Manager -- holds DB + fault sink + operation cycle |
 | `sovd-db-sqlite` | SQLite persistence, WAL journaling, auto-migration |
-| `sovd-db-score` | S-CORE key-value backend (Phase 4 placeholder) |
+| `sovd-db-score` | S-CORE key-value backend (placeholder) |
 | `fault-sink-unix` | Unix socket / Windows named pipe IPC, postcard wire format |
-| `fault-sink-lola` | S-CORE LoLa shared-memory transport (Phase 4 placeholder) |
+| `fault-sink-lola` | S-CORE LoLa shared-memory transport (placeholder) |
 | `opcycle-taktflow` | In-process operation cycle state machine, tokio watch fan-out |
-| `opcycle-score-lifecycle` | S-CORE lifecycle subscriber (Phase 4 placeholder) |
+| `opcycle-score-lifecycle` | S-CORE lifecycle subscriber (placeholder) |
 | `sovd-main` | Entry point binary, wires backends from TOML config |
-| `sovd-tracing` | Tracing subscriber setup |
-| `sovd-client` | HTTP client (Phase 3 skeleton) |
+| `sovd-client` | HTTP client (skeleton) |
 | `xtask` | `cargo xtask openapi-dump [--check]` for OpenAPI YAML regeneration |
 | `integration-tests` | End-to-end HIL and contract tests |
 
-### Planned / early
+### Planned
 
 | Directory | Language | Description |
 |-----------|----------|-------------|
-| `uds2sovd-proxy/` | Rust | UDS/DoIP to SOVD REST proxy -- Cargo.toml scaffolded, no src yet |
-| `cpp-bindings/` | C++ | C++ API bindings -- planned, no code yet |
+| `uds2sovd-proxy/` | Rust | UDS/DoIP to SOVD REST proxy -- scaffolded, implementation pending |
+| `cpp-bindings/` | C++ | C++ API bindings -- planned |
 
 ### Reference (read-only)
 
@@ -182,19 +210,6 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 | `docs/ARCHITECTURE.md` | arc42-format system design and deployment topology |
 | `docs/REQUIREMENTS.md` | FR/NFR/SR/SEC/COMP requirements, ASPICE-traceable |
 | `docs/adr/` | 18 Architecture Decision Records (ADR-0001 through ADR-0018) |
-
-## Design principles
-
-- **Rust-first.** Async (Tokio), memory-safe, `#![forbid(unsafe_code)]` where possible.
-  Edition 2024, Rust 1.88+. Clippy pedantic + deny rules enforced in CI.
-- **Trait boundaries, not frameworks.** `sovd-interfaces` defines all contracts
-  (SovdBackend, FaultSink, SovdDb, OperationCycle) with zero I/O. Implementations
-  are swappable: SQLite or S-CORE KV for persistence, Unix sockets or LoLa
-  shared-memory for fault transport, Taktflow or S-CORE lifecycle for operation cycles.
-- **Spec-locked API surface.** OpenAPI schema is snapshot-tested against ASAM SOVD v1.1.
-  `cargo xtask openapi-dump --check` gates every PR.
-- **Build first, contribute later.** No upstream PRs during early phases. When we
-  upstream, we upstream finished, tested, working systems.
 
 ## Relationship to upstream
 

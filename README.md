@@ -9,10 +9,14 @@ integration with [Eclipse S-CORE](https://projects.eclipse.org/projects/automoti
 
 ## Goal
 
-Replace legacy UDS/CAN diagnostics with modern REST/HTTP across Taktflow's
-multi-customer BMS platform. Every ECU becomes reachable via standard HTTP
-tooling -- `curl`, Postman, cloud fleet APIs -- instead of proprietary
-diagnostic hardware and binary protocols.
+Replace legacy UDS/CAN diagnostics with modern REST/HTTP for **multi-ECU
+zonal architectures**. Every ECU -- regardless of role or zone -- becomes
+reachable via standard HTTP tooling (`curl`, Postman, cloud fleet APIs)
+instead of proprietary diagnostic hardware and binary protocols.
+
+Taktflow's HIL bench uses a BMS zonal topology (CVC / FZC / RZC / SC) as
+the reference test setup, but the stack is architecture-agnostic within
+automotive diagnostics.
 
 | Dimension | UDS (legacy) | SOVD (modern) |
 |-----------|-------------|---------------|
@@ -88,57 +92,71 @@ feature matrix covering all-features, minimal, and mbedtls-only configurations.
 
 ## Architecture
 
-```
-                  Off-board UDS Tester
-                         |
-                         | UDS over DoIP
-                         v
-                  UDS2SOVD Proxy          Off-board SOVD Client / Cloud
-                         |                         |
-                         | SOVD REST               | SOVD REST (ISO 17978)
-                         v                         v
-                   +---------SOVD Gateway----------+
-                         |                    |
-              +----------+----------+    Remote hosts
-              |          |          |    (HTTP fan-out)
-        SOVD Server    DFM     Service App
-              |       /    \    (fault reset,
-              |    SovdDb  FaultSink  flash, ...)
-              |   (SQLite)  (Unix IPC)
-              |                |
-        OpenAPI doc     Fault shim (POSIX / STM32)
-                               |
-                       Classic Diagnostic
-                        Adapter (CDA)
-                               |
-                          UDS over DoIP
-                               |
-                        Physical ECU (CAN)
+```mermaid
+graph TB
+    UDS["Off-board UDS Tester"]
+    SOVD_CLI["Off-board SOVD Client / Cloud"]
+
+    UDS -->|"UDS over DoIP"| PROXY["UDS2SOVD Proxy"]
+    PROXY -->|"SOVD REST"| GW
+    SOVD_CLI -->|"SOVD REST<br/>(ISO 17978)"| GW
+
+    subgraph STACK ["SOVD Gateway"]
+        GW["<b>sovd-gateway</b>"]
+        GW --> SRV["<b>SOVD Server</b>"]
+        GW --> DFM["<b>DFM</b>"]
+        GW --> APP["Service App<br/>(fault reset, flash)"]
+        GW -->|"HTTP fan-out"| REMOTE["Remote hosts"]
+        DFM --> DB[("SovdDb<br/>SQLite")]
+        DFM --> FS["FaultSink<br/>(Unix IPC)"]
+        SRV --> OA["OpenAPI doc"]
+    end
+
+    FS --> SHIM["Fault shim<br/>(POSIX / STM32)"]
+    SHIM --> CDA["<b>Classic Diagnostic<br/>Adapter (CDA)</b>"]
+    CDA -->|"UDS over DoIP"| ECU["<b>Physical ECU</b><br/>(CAN bus)"]
+
+    style STACK fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
+    style GW fill:#bbdefb,stroke:#1565c0
+    style SRV fill:#bbdefb,stroke:#1565c0
+    style DFM fill:#bbdefb,stroke:#1565c0
+    style DB fill:#c8e6c9,stroke:#2e7d32
+    style CDA fill:#ffe0b2,stroke:#e65100
+    style ECU fill:#fce4ec,stroke:#c62828
 ```
 
 ## Testing bench
 
 Hardware-in-the-loop bench with physical and virtual ECUs:
 
-```
- +------------------+          +--------------------+
- |  Dev host (Win)  |   SSH    |  Raspberry Pi      |
- |                  +--------->|  (gateway host)    |
- |  3x ST-LINK     |          |                    |
- |  1x XDS110      |          |  sovd-main         |
- |  GS_USB (CAN)   |          |  ecu-sim           |
- +--------+---------+          |  can-to-doip proxy |
-          |                    +--------+-----------+
-          | Serial                      | can0 (500 kbps)
-          v                             v
- +--------+---------+          +--------+-----------+
- | Physical ECUs    |          | CAN bus             |
- |                  +<-------->|                     |
- | CVC  STM32G474RE |          | ISO-TP frames      |
- | FZC  STM32G474RE |          +--------------------+
- | RZC  STM32G474RE |
- | SC   TMS570LC43x |
- +-------------------+
+```mermaid
+graph LR
+    subgraph DEV ["Dev Host (Windows)"]
+        STL["3x ST-LINK"]
+        XDS["1x XDS110"]
+        GS["GS_USB (CAN)"]
+    end
+
+    subgraph PI ["Raspberry Pi (gateway host)"]
+        SM["sovd-main"]
+        SIM["ecu-sim"]
+        PX["can-to-doip proxy"]
+    end
+
+    subgraph HW ["Physical ECUs"]
+        CVC["CVC STM32G474RE"]
+        FZC["FZC STM32G474RE"]
+        RZC["RZC STM32G474RE"]
+        SC["SC TMS570LC43x"]
+    end
+
+    DEV -->|"SSH"| PI
+    DEV -->|"Serial<br/>(flash/debug)"| HW
+    PI -->|"can0 (500 kbps)<br/>ISO-TP frames"| HW
+
+    style DEV fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style PI fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
+    style HW fill:#fce4ec,stroke:#c62828,stroke-width:2px
 ```
 
 | Service | Host | Role |
@@ -207,6 +225,7 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 
 | Path | Description |
 |------|-------------|
+| `docs/SYSTEM-SPECIFICATION.md` | **Single-file consolidated spec: architecture + requirements + safety + API + state machines** |
 | `docs/ARCHITECTURE.md` | arc42-format system design and deployment topology |
 | `docs/REQUIREMENTS.md` | FR/NFR/SR/SEC/COMP requirements, ASPICE-traceable |
 | `docs/TRADE-STUDIES.md` | 18 trade studies: every major technical decision with options, criteria, rationale |
@@ -217,9 +236,10 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 | `docs/DEPLOYMENT-GUIDE.md` | SIL / HIL / production topology, configuration, rollback |
 | `docs/GLOSSARY.md` | Domain terms: SOVD, UDS, DTC, DoIP, ASIL, DFM, and more |
 | `docs/adr/` | 18 Architecture Decision Records (ADR-0001 through ADR-0018) |
-| `CONTRIBUTING.md` | How to contribute, PR process, commit conventions |
-| `CODE_OF_CONDUCT.md` | Eclipse Community Code of Conduct |
-| `CHANGELOG.md` | Release history by phase |
+| `.github/CONTRIBUTING.md` | How to contribute, PR process, commit conventions |
+| `.github/CODE_OF_CONDUCT.md` | Eclipse Community Code of Conduct |
+| `.github/CHANGELOG.md` | Release history by phase |
+| `SYSTEM-SPECIFICATION.html` | Single-file visual spec (opens in any browser) |
 
 ## Relationship to upstream
 

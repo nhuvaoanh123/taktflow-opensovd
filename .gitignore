@@ -16,3 +16,8 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Working notes and execution artifacts (never commit)
+# Contains: TASKS.md, WORKING-LINES.md, prompts/, progress/, logs/,
+# phase-specific runs, HIL captures, architecture snapshots, scratch notes
+work/

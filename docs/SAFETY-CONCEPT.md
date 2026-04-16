@@ -19,28 +19,46 @@ enforced in this implementation through architectural isolation.
 The Fault Library is the single interface between the QM diagnostic stack and
 safety-relevant firmware. No other code path crosses the boundary.
 
-```
-  +--------------------------------------------------+
-  |                    QM Domain                      |
-  |                                                   |
-  |  SOVD Server  ->  DFM  ->  Diagnostic DB         |
-  |       ^                        ^                  |
-  |       |                        |                  |
-  |  SOVD Gateway              FaultSink              |
-  |       ^                   (Unix IPC)              |
-  |       |                        ^                  |
-  +-------|------------------------|----- boundary ---+
-          |                        |
-  +-------|------------------------|----- boundary ---+
-  |       v                        v                  |
-  |  CDA (UDS/DoIP)         Fault Library API         |
-  |       |                   (FaultShim_Report)      |
-  |       v                        ^                  |
-  |  Physical ECU              Firmware               |
-  |  (CAN bus)              (ASIL-D rated)            |
-  |                                                   |
-  |               Safety-Critical Domain              |
-  +--------------------------------------------------+
+```mermaid
+graph TB
+    subgraph QM ["QM Domain (no ASIL allocation)"]
+        direction TB
+        GW["SOVD Gateway"]
+        SRV["SOVD Server"]
+        DFM["DFM"]
+        DB[("Diagnostic DB<br/>SQLite")]
+        FS["FaultSink<br/>(Unix IPC)"]
+
+        GW --> SRV
+        SRV --> DFM
+        DFM --> DB
+        DFM --> FS
+    end
+
+    FS ~~~ BOUNDARY
+    CDA_UP ~~~ BOUNDARY
+
+    BOUNDARY["--- Safety Boundary ---<br/><i>Fault Library API is the ONLY crossing point</i>"]
+
+    subgraph SAFETY ["Safety-Critical Domain (ASIL-D)"]
+        direction TB
+        CDA_UP["CDA (UDS/DoIP)"]
+        FL["Fault Library API<br/>(FaultShim_Report)"]
+        ECU["Physical ECU<br/>(CAN bus)"]
+        FW["Firmware<br/>(ASIL-D rated)"]
+
+        CDA_UP --> ECU
+        FW --> FL
+    end
+
+    FS -->|"fault data<br/>(one-way only)"| FL
+    GW -->|"diagnostic request"| CDA_UP
+
+    style QM fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style SAFETY fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style BOUNDARY fill:#fff9c4,stroke:#f9a825,stroke-width:3px,stroke-dasharray: 5 5
+    style FL fill:#ffcdd2,stroke:#c62828,stroke-width:2px
+    style FS fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
 ```
 
 ### Boundary rules
@@ -93,6 +111,33 @@ The Fault Library has two implementations with identical API contracts:
 
 The Diagnostic Fault Manager (DFM) is QM software. Its failure must not
 propagate to safety-critical systems (SR-4.2).
+
+```mermaid
+stateDiagram-v2
+    [*] --> Normal : DFM online
+
+    Normal --> DfmCrash : process crash
+    Normal --> DfmHang : timeout
+    Normal --> NetLoss : Pi ↔ ECU disconnect
+
+    DfmCrash --> Normal : auto-restart (systemd)
+    DfmHang --> Normal : watchdog restart
+    NetLoss --> Normal : connectivity restored
+
+    state DfmCrash {
+        [*] --> PosixShimLogs : POSIX shim detects EPIPE
+        [*] --> Stm32Buffers : STM32 shim buffers to NvM
+        PosixShimLogs --> SafetyUnaffected : returns immediately
+        Stm32Buffers --> SafetyUnaffected : no blocking
+    }
+
+    state NetLoss {
+        [*] --> NvmRetains : NvM buffer retains records
+        NvmRetains --> GatewaySyncRetry : exponential backoff
+    }
+
+    note right of Normal : Safety supervisor heartbeats<br/>remain green in ALL failure modes
+```
 
 **Failure modes and containment:**
 

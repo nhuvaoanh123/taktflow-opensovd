@@ -3,6 +3,52 @@
 This document defines the testing approach for taktflow-opensovd: what is
 tested, how, at which level, and what gates a merge.
 
+## Test pyramid
+
+```mermaid
+graph TB
+    subgraph PYRAMID ["Test Pyramid"]
+        direction TB
+        HIL["<b>Level 5: HIL</b><br/>8 scenarios on physical bench<br/><i>Pi + STM32 + CAN bus</i>"]
+        INT["<b>Level 4: Integration</b><br/>25 test files<br/><i>end-to-end with real backends</i>"]
+        OA["<b>Level 3: OpenAPI Contract</b><br/>cargo xtask openapi-dump --check<br/><i>schema locked to ASAM SOVD v1.1</i>"]
+        SNAP["<b>Level 2: Snapshot</b><br/>36 golden JSON files<br/><i>wire format stability</i>"]
+        UNIT["<b>Level 1: Unit + Async</b><br/>5,680 tests<br/><i>#[test] + #[tokio::test]</i>"]
+    end
+
+    HIL ~~~ INT ~~~ OA ~~~ SNAP ~~~ UNIT
+
+    style HIL fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style INT fill:#fff3e0,stroke:#e65100
+    style OA fill:#fff9c4,stroke:#f9a825
+    style SNAP fill:#e8f5e9,stroke:#2e7d32
+    style UNIT fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
+```
+
+## CI pipeline overview
+
+```mermaid
+flowchart LR
+    PUSH["git push"] --> FMT["cargo fmt<br/>--check"]
+    FMT --> CLIP["clippy<br/>pedantic"]
+    CLIP --> DENY["cargo deny<br/>licenses + advisories"]
+    DENY --> TEST["cargo test<br/>(unit + integration)"]
+    TEST --> OAPI["openapi-dump<br/>--check"]
+    OAPI --> MATRIX{"Feature matrix"}
+
+    MATRIX --> ALL["--all-features"]
+    MATRIX --> MIN["--no-default-features"]
+    MATRIX --> MBED["--features mbedtls"]
+
+    ALL --> PASS(["CI Green"])
+    MIN --> PASS
+    MBED --> PASS
+
+    style PUSH fill:#fff3e0,stroke:#e65100
+    style PASS fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style MATRIX fill:#fff9c4,stroke:#f9a825
+```
+
 ## Test levels
 
 ### Level 1: Unit tests

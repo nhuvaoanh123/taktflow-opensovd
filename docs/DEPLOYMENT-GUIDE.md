@@ -151,7 +151,7 @@ kind = "local"
 [[gateway.hosts]]
 name = "remote-ecu"
 kind = "remote"
-url = "http://192.168.0.50:21002"
+url = "http://192.0.2.50:21002"
 components = ["ECU_A", "ECU_B"]
 ```
 

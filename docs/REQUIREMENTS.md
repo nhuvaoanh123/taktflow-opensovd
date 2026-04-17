@@ -1092,8 +1092,13 @@ may be valid future extensions:
   deferred). Physical ECUs are reached via the Pi CAN-to-DoIP proxy only.
 - O-6: Automatic ODX ingestion from OEM standards. Taktflow writes ODX by
   hand for each ECU and commits the result (MASTER-PLAN §3.1).
-- O-7: Off-the-shelf vehicle fleet back-office integration. Cloud
-  integration is a future step, deferred to post-2026.
+- O-7: Off-the-shelf vehicle fleet back-office integration. Full fleet
+  cloud integration remains a future step (post-2026). **Partial
+  scope pulled into Phase 5 per ADR-0024**: the HIL observer dashboard
+  reuses the existing `taktflow-embedded-production` cloud connector
+  (AWS IoT Core + Grafana/Timestream) for bench telemetry and fault
+  history. This covers demo/stakeholder observability only; production
+  fleet management remains out of scope.
 - O-8: Replacing existing Taktflow BSW modules (Dcm, Dem, NvM, etc.). We add
   new handlers inside existing modules; we do not rewrite them.
 - O-9: S-CORE-scale safety of the Fault Library (upstream ADR-001: S-CORE

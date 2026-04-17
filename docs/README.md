@@ -56,6 +56,7 @@ All paths are relative to the repository root
 | ADR-0021 | Taktflow MVP subset is a local conformance class | Accepted | `adr/0021-taktflow-mvp-subset-as-local-conformance-class.md` |
 | ADR-0022 | Lock lifecycle defaults to TTL, refresh, and auto-release | Accepted | `adr/0022-lock-lifecycle-ttl-refresh-expiry.md` |
 | ADR-0023 | Reduce HIL/SIL test bench from 7 ECUs to 3 ECUs (CVC + SC + BCM) | Accepted | `adr/0023-reduce-bench-to-3-ecus.md` |
+| ADR-0024 | Reuse embedded-production cloud connector + SvelteKit capability-showcase dashboard | Accepted | `adr/0024-reuse-embedded-production-cloud-connector.md` |
 
 Upstream ADRs referenced by this project:
 

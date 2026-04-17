@@ -699,9 +699,27 @@ subset (ISO 17978-3), with a routing Gateway.
    - Memory footprint: DFM + Server + Gateway on Pi
    - Targets: `/faults` read <100 ms, `GET /components/{id}/faults` P99 <500 ms, <200 MB RAM total on Pi (matches upstream CDA envelope)
 
+9. **Cloud-backed observer dashboard** (per ADR-0024, two stages)
+   - **Stage 1 — Local-only**: reuse `taktflow-embedded-production`
+     cloud_connector + ws_bridge on the Pi with `AWS_IOT_ENDPOINT=""`
+     (no AWS cost). Add `fault-sink-mqtt` crate publishing DFM events
+     to local Mosquitto. Build SvelteKit + Tailwind + shadcn-svelte
+     dashboard at `dashboard/`. Static build served by ws_bridge at
+     `http://<pi-ip>:8080/` — shows all 20 OpenSOVD use cases (UC1..UC20,
+     UC19 Grafana deferred to Stage 2).
+   - **Stage 2 — AWS IoT + Grafana**: provision SOVD-specific device id
+     `taktflow-sovd-hil-001` via `scripts/aws-iot-setup.sh`, enable
+     `AWS_IOT_ENDPOINT`, import `cloud_connector/grafana/dashboard.json`,
+     embed Grafana iframe in the observer for historical view.
+   - Exit: fault injected on bench visible in browser within 200 ms
+     (Stage 1); visible in Timestream within 30 s and in Grafana
+     dashboard panel (Stage 2).
+
 **Exit criteria:**
 - All 8 HIL scenarios green in nightly pipeline
 - Performance targets met
+- Observer dashboard (deliverable 9 Stage 1) serving all 20 use-case
+  widgets on the bench LAN
 - Demo video recorded for OpenSOVD community presentation
 
 **Owner:** Test lead + 2 test engineers + 1 Rust engineer + 1 embedded engineer.

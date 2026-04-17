@@ -362,14 +362,14 @@ mod tests {
             "forwarded faults should come from the mock CDA"
         );
 
-        let tcu_faults = server
+        let bcm_faults = server
             .dispatch_list_faults(
-                &ComponentId::new("tcu"),
+                &ComponentId::new("bcm"),
                 sovd_interfaces::spec::fault::FaultFilter::all(),
             )
             .await
-            .expect("local tcu faults");
-        assert!(tcu_faults.items.is_empty());
+            .expect("local bcm faults");
+        assert!(bcm_faults.items.is_empty());
 
         handle.abort();
     }

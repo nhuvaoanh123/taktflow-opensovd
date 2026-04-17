@@ -253,7 +253,7 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 | `.github/CONTRIBUTING.md` | How to contribute, PR process, commit conventions |
 | `.github/CODE_OF_CONDUCT.md` | Eclipse Community Code of Conduct |
 | `.github/CHANGELOG.md` | Release history by phase |
-| `SYSTEM-SPECIFICATION.html` | Single-file visual spec (opens in any browser) |
+| `ENGINEERING-SPECIFICATION.html` | Single-file browser engineering spec with system definition and development story |
 
 ## Relationship to upstream
 

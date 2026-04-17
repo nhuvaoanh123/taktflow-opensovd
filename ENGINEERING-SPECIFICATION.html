@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Taktflow OpenSOVD -- System Specification</title>
+<title>Taktflow OpenSOVD -- Engineering Specification</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <style>
   :root {
@@ -172,19 +172,20 @@
 </head>
 <body>
 
-<h1>Taktflow OpenSOVD &mdash; System Specification</h1>
+<h1>Taktflow OpenSOVD &mdash; Engineering Specification</h1>
 
 <div class="meta">
-  <span><strong>Document ID:</strong> TAKTFLOW-SOVD-SPEC</span>
-  <span><strong>Revision:</strong> 1.0</span>
+  <span><strong>Document ID:</strong> TAKTFLOW-SOVD-ENG-SPEC</span>
+  <span><strong>Revision:</strong> 1.2</span>
   <span><strong>Status:</strong> Draft</span>
-  <span><strong>Date:</strong> 2026-04-16</span>
+  <span><strong>Date:</strong> 2026-04-17</span>
   <span><strong>Owner:</strong> Taktflow SOVD workstream</span>
 </div>
 
 <blockquote>
-Single-document reference covering architecture, requirements, safety,
-and test strategy for the Taktflow Eclipse OpenSOVD diagnostic stack.
+Single-document browser reference covering product context, use-case flow,
+requirements, architecture, safety, security, verification, and delivery
+story for the Taktflow Eclipse OpenSOVD diagnostic stack.
 </blockquote>
 
 <nav class="toc">
@@ -203,8 +204,9 @@ and test strategy for the Taktflow Eclipse OpenSOVD diagnostic stack.
   <li><a href="#s11">Component Catalogue</a></li>
   <li><a href="#s12">Design Principles</a></li>
   <li><a href="#s13">Standards Compliance</a></li>
-  <li><a href="#s14">Related Documents</a></li>
-  <li><a href="#s15">Revision History</a></li>
+  <li><a href="#s14">Professional Development Story</a></li>
+  <li><a href="#s15">Related Documents</a></li>
+  <li><a href="#s16">Revision History</a></li>
 </ol>
 </nav>
 
@@ -1042,15 +1044,233 @@ graph TB
 <hr>
 
 <!-- ================================================================== -->
-<h2 id="s14">14. Related Documents</h2>
+<h2 id="s14">14. Professional Development Story</h2>
+
+<p>This section pulls the engineering narrative into the same browser document
+as the system specification so the product story, requirement flowdown,
+architecture, implementation seams, and verification model can be read
+end-to-end in one place.</p>
+
+<h3>14.1 Purpose and End-to-End Chain</h3>
+
+<p>This part explains the professional engineering story of the repo:</p>
+<ul>
+  <li>why the use cases exist</li>
+  <li>how use cases become formal requirements</li>
+  <li>how the architecture realizes those requirements</li>
+  <li>how ADRs constrain the design</li>
+  <li>how code is split across crates and runtime components</li>
+  <li>how tests and phase gates prove the system</li>
+</ul>
+
+<p>It complements, but does not replace, the canonical source documents:</p>
+<ul>
+  <li><a href="docs/USE-CASES.md">USE-CASES.md</a> for the capability catalog</li>
+  <li><a href="docs/REQUIREMENTS.md">REQUIREMENTS.md</a> for numbered contractual requirements</li>
+  <li><a href="docs/ARCHITECTURE.md">ARCHITECTURE.md</a> for arc42 design and runtime views</li>
+  <li><a href="docs/DEVELOPMENT-STORY.md">DEVELOPMENT-STORY.md</a> for the narrative bridge document</li>
+  <li><a href="MASTER-PLAN.md">MASTER-PLAN.md</a> for delivery phases, gates, and risks</li>
+</ul>
+
+<p>OpenSOVD is being built as a professional diagnostic product line, not just
+as a collection of services:</p>
+<p><code>stakeholder need -&gt; use case -&gt; requirement -&gt; architecture -&gt; ADR -&gt; implementation -&gt; verification -&gt; phase exit -&gt; release evidence</code></p>
+
+<h3>14.2 Starting Point: Why the Product Exists</h3>
+
+<p>The project starts from a business and engineering problem:</p>
+<ul>
+  <li>legacy diagnostics are expressed as UDS services over CAN, ISO-TP, and DoIP</li>
+  <li>those flows are difficult to consume from modern tools, cloud workflows, and multi-ECU zonal platforms</li>
+  <li>Taktflow wants the same underlying ECU diagnostics exposed through ASAM SOVD v1.1 OpenAPI / ISO 17978-3 without breaking the existing safety lifecycle</li>
+</ul>
+
+<p>So the real problem is not "invent an API." The actual product obligation is
+to keep legacy UDS and existing firmware behavior intact, add a modern REST
+diagnostic surface, and preserve safety boundaries plus upstream contribution
+discipline.</p>
+
+<h3>14.3 Development Flow</h3>
+
+<table>
+<thead><tr><th>Stage</th><th>Professional role</th><th>Primary artifact</th></tr></thead>
+<tbody>
+<tr><td>Use cases</td><td>Define customer-visible and observer-visible behavior</td><td><a href="docs/USE-CASES.md">docs/USE-CASES.md</a></td></tr>
+<tr><td>Requirements</td><td>Turn behavior into formal, testable obligations across FR, NFR, SR, SEC, and COMP classes</td><td><a href="docs/REQUIREMENTS.md">docs/REQUIREMENTS.md</a></td></tr>
+<tr><td>Architecture</td><td>Assign those obligations to runtime building blocks and collaborations</td><td><a href="docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></td></tr>
+<tr><td>ADRs</td><td>Freeze major decisions before they disappear into implementation detail</td><td><a href="docs/adr/">docs/adr/</a></td></tr>
+<tr><td>Implementation</td><td>Follow architecture seams instead of convenience-only module boundaries</td><td><code>sovd-server</code>, <code>sovd-gateway</code>, <code>sovd-dfm</code>, CDA, proxy, fault sinks</td></tr>
+<tr><td>Verification</td><td>Convert design intent into engineering evidence</td><td>unit, integration, SIL, HIL, and phase gates</td></tr>
+<tr><td>Delivery phases</td><td>Control maturity order and exit criteria across the program</td><td><a href="MASTER-PLAN.md">MASTER-PLAN.md</a></td></tr>
+</tbody>
+</table>
+
+<p>Implementation follows the architecture seams:</p>
+<ul>
+  <li><code>sovd-interfaces</code> owns pure contracts and shared types</li>
+  <li><code>sovd-server</code> owns the SOVD REST surface</li>
+  <li><code>sovd-gateway</code> owns routing and fan-out</li>
+  <li><code>sovd-dfm</code> owns fault ingest, debounce, operation-cycle gating, and DTC state</li>
+  <li><code>sovd-db-sqlite</code> owns persistence</li>
+  <li><code>fault-sink-*</code> owns transport from firmware-side fault reports into DFM</li>
+  <li>CDA owns UDS and DoIP adaptation for legacy ECUs</li>
+  <li>the Pi proxy owns CAN ISO-TP bridging for physical CAN-only ECUs</li>
+</ul>
+
+<h3>14.4 How Use Cases, Requirements, and Architecture Fit Together</h3>
+
+<p>The most useful professional reading path is to follow one use case through
+the full chain rather than reading each document in isolation.</p>
+
+<h3>14.4.1 UC1 -- Read DTCs via SOVD</h3>
+<table>
+<thead><tr><th>Layer</th><th>Story</th></tr></thead>
+<tbody>
+<tr><td>Use case</td><td>A tester wants <code>GET /sovd/v1/components/{id}/faults</code> and expects JSON DTCs, not raw UDS bytes.</td></tr>
+<tr><td>Requirements</td><td><code>FR-1.1</code> defines per-component DTC listing, <code>FR-1.5</code> defines cross-component aggregation, and <code>NFR-1.1</code> defines the latency target.</td></tr>
+<tr><td>Architecture</td><td><code>sovd-gateway</code> routes by component id, <code>sovd-server</code> serves the resource, DFM handles native DTC state, and CDA handles legacy UDS-backed ECUs.</td></tr>
+<tr><td>Implementation</td><td><code>sovd-server</code> handlers, <code>SovdBackend</code> dispatch, DFM query path, CDA integration, and the optional Pi proxy path for physical ECUs.</td></tr>
+<tr><td>Verification</td><td>Unit tests, integration tests, and <code>hil_sovd_01_read_faults_all.yaml</code>.</td></tr>
+</tbody>
+</table>
+
+<h3>14.4.2 UC2 -- Report Fault via Fault API</h3>
+<table>
+<thead><tr><th>Layer</th><th>Story</th></tr></thead>
+<tbody>
+<tr><td>Use case</td><td>An ECU-side software component reports a fault without blocking its time-critical path.</td></tr>
+<tr><td>Requirements</td><td><code>FR-4.1</code>, <code>FR-4.2</code>, and <code>FR-4.3</code> define the reporting path; <code>NFR-1.2</code> sets visibility latency; <code>SR-4.1</code> and <code>SR-4.2</code> protect the safety boundary.</td></tr>
+<tr><td>Architecture</td><td>Faults cross exactly one boundary through the Fault Library into DFM. DFM owns debounce, operation-cycle gating, DTC lifecycle, and persistence.</td></tr>
+<tr><td>Implementation</td><td>C shim on embedded, Rust-side sink, DFM pipeline, and SQLite storage.</td></tr>
+<tr><td>Verification</td><td><code>phase3_dfm_sqlite_roundtrip.rs</code> plus unit coverage on debounce and lifecycle logic.</td></tr>
+</tbody>
+</table>
+
+<h3>14.4.3 UC3 -- Clear DTCs</h3>
+<table>
+<thead><tr><th>Layer</th><th>Story</th></tr></thead>
+<tbody>
+<tr><td>Use case</td><td>An authenticated tester clears fault memory for a component.</td></tr>
+<tr><td>Requirements</td><td><code>FR-1.3</code> defines the functional operation; <code>SEC-2.1</code>, <code>SEC-2.2</code>, and <code>SEC-3.1</code> add authentication, authorization, and auditability.</td></tr>
+<tr><td>Architecture</td><td>Auth middleware sits in front of the route, Gateway resolves the backend, CDA maps to UDS <code>0x14</code> where needed, and the audit sink records the operation.</td></tr>
+<tr><td>Implementation</td><td>Auth module, route handler, backend clear path, audit sink, and CDA clear-fault translation.</td></tr>
+<tr><td>Verification</td><td><code>hil_sovd_02_clear_faults.yaml</code> plus audit checks.</td></tr>
+</tbody>
+</table>
+
+<h3>14.4.4 UC4 -- Reach a Legacy UDS ECU Through SOVD</h3>
+<table>
+<thead><tr><th>Layer</th><th>Story</th></tr></thead>
+<tbody>
+<tr><td>Use case</td><td>A tester addresses one SOVD endpoint and does not need to care whether the ECU is virtual DoIP or physical CAN-only hardware.</td></tr>
+<tr><td>Requirements</td><td><code>FR-5.1</code> covers the virtual DoIP path, <code>FR-5.2</code> the physical proxy path, <code>FR-5.3</code> CDA configuration, and <code>FR-5.4</code> session mirroring.</td></tr>
+<tr><td>Architecture</td><td>Gateway chooses the CDA backend, CDA speaks DoIP, and the Pi proxy adapts DoIP to CAN ISO-TP for physical ECUs.</td></tr>
+<tr><td>Implementation</td><td>CDA integration, proxy server, SocketCAN, route configuration, and backend wiring.</td></tr>
+<tr><td>Verification</td><td><code>phase2_cda_ecusim_smoke.rs</code>, HIL captures, and HIL fault-read scenarios.</td></tr>
+</tbody>
+</table>
+
+<h3>14.4.5 UC5 -- Trigger a Diagnostic Routine</h3>
+<table>
+<thead><tr><th>Layer</th><th>Story</th></tr></thead>
+<tbody>
+<tr><td>Use case</td><td>A tester starts a routine such as motor self-test and polls until completion.</td></tr>
+<tr><td>Requirements</td><td><code>FR-2.1</code> to <code>FR-2.3</code> define start, stop, and status; <code>SR-3.1</code> and <code>SR-3.2</code> define safety interlocks; <code>FR-5.5</code> requires UDS security mirroring on locked paths.</td></tr>
+<tr><td>Architecture</td><td>SOVD route to auth to gateway to CDA to UDS <code>0x31</code>; firmware enforces runtime preconditions and returns the correct failure mode.</td></tr>
+<tr><td>Implementation</td><td>Operation handlers, session and security checks, CDA routine translation, ECU routine handlers, and async execution state.</td></tr>
+<tr><td>Verification</td><td><code>hil_sovd_03_operation_execution.yaml</code> and supporting unit tests.</td></tr>
+</tbody>
+</table>
+
+<p>The professional mapping is consistent across all five MVP flows:</p>
+<ul>
+  <li>the use case defines the externally meaningful story</li>
+  <li>the requirement turns that story into a precise obligation</li>
+  <li>the architecture assigns responsibility to the correct runtime elements</li>
+  <li>the code follows those structural seams</li>
+  <li>the test proves the story in the intended topology</li>
+</ul>
+
+<h3>14.5 The Phase Story: How the Product Is Built Professionally</h3>
+
+<table>
+<thead><tr><th>Phase</th><th>Purpose</th><th>Professional meaning</th></tr></thead>
+<tbody>
+<tr><td>0 -- Foundation</td><td>Align toolchains, workspace conventions, and fork discipline</td><td>Control the engineering environment before adding features</td></tr>
+<tr><td>1 -- Embedded UDS + DoIP POSIX</td><td>Expose the minimum legacy diagnostic substrate SOVD will rely on</td><td>Do not design the facade before the substrate is viable</td></tr>
+<tr><td>2 -- CDA integration + CAN-to-DoIP proxy</td><td>Prove the path to both virtual and physical ECUs</td><td>Retire topology risk early</td></tr>
+<tr><td>3 -- Fault Library + DFM</td><td>Make fault ingest and DTC state real instead of mocked</td><td>Establish the central diagnostic data model before claiming the full REST surface</td></tr>
+<tr><td>4 -- SOVD Server + Gateway</td><td>Expose the ASAM SOVD MVP surface and make the five MVP use cases work in Docker</td><td>Only expose the customer-facing contract after data and adapter paths are solid</td></tr>
+<tr><td>5 -- End-to-end demo + HIL</td><td>Prove the same stories on real Taktflow hardware</td><td>Hardware remains the real integration truth beyond Docker success</td></tr>
+<tr><td>6 -- Hardening</td><td>Complete production-grade transport security, observability, performance controls, and release readiness</td><td>Separate MVP behavior from full product hardening</td></tr>
+</tbody>
+</table>
+
+<h3>14.6 Where Each Document Fits</h3>
+
+<table>
+<thead><tr><th>Document</th><th>Professional role in the story</th></tr></thead>
+<tbody>
+<tr><td><a href="MASTER-PLAN.md">MASTER-PLAN.md</a></td><td>Program-level delivery story, phases, risks, gates, staffing, and milestones</td></tr>
+<tr><td><a href="docs/USE-CASES.md">USE-CASES.md</a></td><td>Customer-visible and observer-visible behavior catalog</td></tr>
+<tr><td><a href="docs/REQUIREMENTS.md">REQUIREMENTS.md</a></td><td>Formal engineering contract and test basis</td></tr>
+<tr><td><a href="docs/ARCHITECTURE.md">ARCHITECTURE.md</a></td><td>Technical realization strategy and runtime collaboration</td></tr>
+<tr><td><a href="docs/TRADE-STUDIES.md">TRADE-STUDIES.md</a></td><td>Option analysis before committing to a direction</td></tr>
+<tr><td><a href="docs/adr/">docs/adr/</a></td><td>Frozen design decisions with rationale</td></tr>
+<tr><td><a href="docs/TEST-STRATEGY.md">TEST-STRATEGY.md</a></td><td>Verification approach and test-layer responsibilities</td></tr>
+<tr><td><a href="docs/SAFETY-CONCEPT.md">SAFETY-CONCEPT.md</a></td><td>Safety boundary and QM versus ASIL discipline</td></tr>
+<tr><td><a href="docs/security-concept.md">security-concept.md</a></td><td>Security control model and deferred hardening items</td></tr>
+<tr><td><a href="docs/SYSTEM-SPECIFICATION.md">SYSTEM-SPECIFICATION.md</a></td><td>Single-file executive engineering reference in Markdown form</td></tr>
+</tbody>
+</table>
+
+<h3>14.7 How to Read One Feature End-to-End</h3>
+
+<ol>
+  <li>Find the use case in <a href="docs/USE-CASES.md">USE-CASES.md</a>.</li>
+  <li>Open the linked requirement IDs in <a href="docs/REQUIREMENTS.md">REQUIREMENTS.md</a>.</li>
+  <li>Open the linked runtime view in <a href="docs/ARCHITECTURE.md">ARCHITECTURE.md</a>.</li>
+  <li>Check the relevant ADRs that constrain the design.</li>
+  <li>Locate the implementation crate or service named in the architecture.</li>
+  <li>Open the referenced integration or HIL test that verifies the flow.</li>
+  <li>Check the phase and exit criteria in <a href="MASTER-PLAN.md">MASTER-PLAN.md</a>.</li>
+</ol>
+
+<h3>14.8 What Makes This Story Professional</h3>
+
+<ul>
+  <li>it starts from stakeholder-visible use cases, not internal modules</li>
+  <li>it expresses those use cases as numbered requirements</li>
+  <li>it separates functional, non-functional, safety, security, and compliance demands</li>
+  <li>it uses architecture as realization, not as marketing</li>
+  <li>it records major decisions in ADRs before burying them in code</li>
+  <li>it aligns implementation boundaries with architectural boundaries</li>
+  <li>it verifies the system at unit, integration, SIL, and HIL levels</li>
+  <li>it uses phase exits and milestones instead of declaring everything done at once</li>
+  <li>it preserves the safety boundary instead of treating diagnostics as a free-for-all</li>
+  <li>it keeps an upstream contribution path open by design</li>
+</ul>
+
+<p><strong>Bottom line:</strong> use cases define the meaningful stories,
+requirements turn them into obligations, architecture assigns those
+obligations to runtime elements, ADRs freeze the key choices, implementation
+follows those seams, verification proves the result, and phase gates make the
+maturity story explicit.</p>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s15">15. Related Documents</h2>
 
 <table>
 <thead><tr><th>Document</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>ARCHITECTURE.md</td><td>Full arc42 architecture with detailed views</td></tr>
 <tr><td>REQUIREMENTS.md</td><td>Complete FR/NFR/SR/SEC/COMP with acceptance criteria</td></tr>
+<tr><td>docs/DEVELOPMENT-STORY.md</td><td>Narrative bridge from use case to requirements, architecture, implementation, verification, and phase gates</td></tr>
 <tr><td><a href="docs/USE-CASES.md">USE-CASES.md</a></td><td>Canonical UC1&ndash;UC20 catalog (source of truth for &sect;7 above)</td></tr>
 <tr><td>SAFETY-CONCEPT.md</td><td>Safety boundary, failure containment, MISRA</td></tr>
+<tr><td>docs/security-concept.md</td><td>Security control model, route protection, auditability, and deferred hardening items</td></tr>
 <tr><td>TEST-STRATEGY.md</td><td>Test levels, CI pipeline, coverage</td></tr>
 <tr><td>TRADE-STUDIES.md</td><td>18 trade studies for every major decision</td></tr>
 <tr><td>DEPLOYMENT-GUIDE.md</td><td>SIL/HIL/production deployment</td></tr>
@@ -1063,13 +1283,14 @@ graph TB
 <hr>
 
 <!-- ================================================================== -->
-<h2 id="s15">15. Revision History</h2>
+<h2 id="s16">16. Revision History</h2>
 
 <table>
 <thead><tr><th>Rev</th><th>Date</th><th>Author</th><th>Change</th></tr></thead>
 <tbody>
 <tr><td>1.0</td><td>2026-04-16</td><td>SOVD workstream</td><td>Initial consolidated specification</td></tr>
 <tr><td>1.1</td><td>2026-04-17</td><td>SOVD workstream</td><td>Section&nbsp;7 expanded to the full UC1&ndash;UC20 catalog with traceability matrix; mirrors new <code>docs/USE-CASES.md</code>.</td></tr>
+<tr><td>1.2</td><td>2026-04-17</td><td>SOVD workstream</td><td>Renamed the browser deliverable to <code>ENGINEERING-SPECIFICATION.html</code> and merged the standalone development story into Section&nbsp;14.</td></tr>
 </tbody>
 </table>
 

@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 # Taktflow Eclipse OpenSOVD -- Use Case Catalog
 
 - Document ID: TAKTFLOW-SOVD-UC
-- Revision: 1.0
+- Revision: 1.1
 - Status: Draft
 - Date: 2026-04-17
 - Owner: Taktflow SOVD workstream
@@ -346,6 +346,71 @@ routine lifecycle, not just a one-shot invocation.)
 - **Verified by**: `hil_sovd_06_concurrent_testers.yaml`
 - **Dashboard widget**: `UC20ConcurrentTesters.svelte` (footer strip)
 
+### UC21 -- Initiate OTA firmware update on CVC
+
+- **Actor**: Off-board tester (authenticated, privileged)
+- **Goal**: Start an over-the-air firmware update on the CVC
+  (STM32G474RE) via the ASAM SOVD v1.1 `bulk-data` endpoint.
+- **Main flow**:
+  1. Tester `POST /sovd/v1/components/cvc/bulk-data` with a signed
+     manifest, image size, and target slot hint.
+  2. Auth middleware checks mTLS cert + elevated session
+     (SEC-2.x, FR-7.2); audit log records the initiate (SEC-3.1).
+  3. SOVD Server returns 201 with a `transfer-id` and begins the UDS
+     0x34 RequestDownload handshake via CDA.
+  4. Tester streams chunks via `PUT .../bulk-data/{transfer-id}`
+     translated to UDS 0x36 TransferData (FR-8.2).
+  5. Server issues UDS 0x37 RequestTransferExit once the last chunk
+     is received; bootloader enters the `Verifying` state.
+- **Requirements**: FR-8.1, FR-8.2, FR-8.3, SR-6.1, SEC-2.x, SEC-3.1
+- **Verified by**: `hil_sovd_21_ota_initiate.yaml` (new, Phase 6)
+- **Dashboard widget**: `UC21OtaInitiate.svelte`
+- **Sequence diagram**: not yet; planned for ARCHITECTURE.md §6 per
+  ADR-0025 follow-ups
+
+### UC22 -- OTA progress reporting
+
+- **Actor**: Observer / off-board tester
+- **Goal**: Watch the OTA transfer progress and state transitions in
+  real time: `Idle` → `Downloading` → `Verifying` → `Committed`, with
+  `Failed` reachable from any pre-commit state.
+- **Main flow**:
+  1. Client polls `GET .../bulk-data/{transfer-id}/status` at a
+     client-chosen interval (dashboard uses 1 Hz).
+  2. Server returns `{state, bytes_received, total_bytes, reason?}`.
+  3. Dashboard renders a progress bar, the current state with colored
+     chip, and — on `Failed` — the reason code
+     (`SignatureInvalid`, `ChunkOutOfOrder`, `FlashWriteFailed`,
+     `PowerLoss`, `AbortRequested`, `Other`).
+- **Requirements**: FR-8.5
+- **Verified by**: `hil_sovd_22_ota_progress.yaml` (new, Phase 6);
+  Prometheus scrape of OTA state metric
+- **Dashboard widget**: `UC22OtaProgress.svelte` (progress bar +
+  state chip)
+
+### UC23 -- OTA abort and rollback
+
+- **Actor**: Off-board tester (privileged)
+- **Goal**: Cancel an in-flight OTA transfer, or roll back a
+  just-committed image that misbehaves after reboot.
+- **Main flow (abort pre-commit)**:
+  1. Tester `DELETE .../bulk-data/{transfer-id}` during
+     `Downloading` or `Verifying`.
+  2. Server returns 204; FR-8.5 subsequently reports `Failed` with
+     `AbortRequested`; no boot-selector flip occurs.
+- **Main flow (rollback post-commit)**:
+  1. Tester `DELETE .../bulk-data/{transfer-id}` after `Committed`.
+  2. Bootloader flips the boot-selector word back on the next reset.
+  3. FR-8.5 reports `Rolledback` after the reset.
+- **Main flow (automatic rollback)**:
+  1. New slot fails its post-boot self-check on N consecutive resets
+     (N = 5 per SR-6.5).
+  2. Bootloader auto-flips back to the prior slot; dashboard
+     reflects the rollback via the next `Rolledback` status read.
+- **Requirements**: FR-8.4, FR-8.6, SR-6.5
+- **Verified by**: `hil_sovd_23_ota_rollback.yaml` (new, Phase 6)
+- **Dashboard widget**: `UC23OtaRollback.svelte`
+
 ---
 
 ## 4. Traceability Matrix
@@ -377,6 +442,9 @@ the source of truth; this table is a convenience index.
 | UC18 | Gateway routing | FR-6.x, NFR-2.x | `phase4_sovd_gateway_cda_ecusim_bench.rs` | `UC18GatewayRouting.svelte` |
 | UC19 | Historical trends | NFR-3.x | Grafana live on HIL | `UC19Historical.svelte` |
 | UC20 | Concurrent testers | NFR-1.3 | `hil_sovd_06_concurrent_testers.yaml` | `UC20ConcurrentTesters.svelte` |
+| UC21 | OTA initiate (CVC) | FR-8.1 | `hil_sovd_21_ota_initiate.yaml` (Phase 6) | `UC21OtaInitiate.svelte` |
+| UC22 | OTA progress | FR-8.5 | `hil_sovd_22_ota_progress.yaml` (Phase 6) | `UC22OtaProgress.svelte` |
+| UC23 | OTA abort + rollback | FR-8.4, FR-8.6 | `hil_sovd_23_ota_rollback.yaml` (Phase 6) | `UC23OtaRollback.svelte` |
 
 ---
 
@@ -414,13 +482,16 @@ Every user-visible capability of the Taktflow OpenSOVD stack as of Phase
 - **Upstreaming to Eclipse OpenSOVD** -- a process, not a user-visible
   capability. Tracked in MASTER-PLAN §8.
 - **Upstream sync workflow** (weekly rebases) -- internal process.
-- **ECU flashing / software update** -- out of scope per REQ §8 O-1.
 - **AI/ML fault prediction** -- out of scope per REQ §8 O-2.
 - **AUTOSAR Adaptive native diagnostic** -- out of scope per REQ §8 O-3.
 - **Physical DoIP on STM32 / TMS570** -- deferred per ADR-0011 + REQ §8 O-5.
 - **UDS2SOVD Proxy** -- not on critical path, scaffolded only, REQ §8 O-10.
 - **Full fleet cloud integration** -- partially unblocked by ADR-0024
   Stage 2, but fleet-scale management remains post-2026 (REQ §8 O-7).
+- **ECU flashing / software update** -- *partially in scope* per
+  ADR-0025: STM32/CVC OTA is in scope (UC21-UC23) from Phase 6 on;
+  SC (TMS570) and BCM (POSIX virtual) OTA remain out of scope and
+  defer to a future ADR-0026.
 
 ### How to add a new use case
 
@@ -441,3 +512,4 @@ Every user-visible capability of the Taktflow OpenSOVD stack as of Phase
 | Rev | Date | Author | Change |
 |-----|------|--------|--------|
 | 1.0 | 2026-04-17 | SOVD workstream | Initial catalog. Consolidates the 5 MVP use cases from ARCHITECTURE.md §6 and the 20-use-case capability showcase set from ADR-0024 into a single canonical reference with full traceability. |
+| 1.1 | 2026-04-17 | SOVD workstream | Added UC21 (OTA initiate), UC22 (OTA progress), UC23 (OTA abort + rollback) per ADR-0025. §6.2 scope note flipped from "OTA out of scope" to "partially in scope — STM32/CVC only". |

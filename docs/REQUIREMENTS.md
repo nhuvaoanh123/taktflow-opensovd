@@ -599,6 +599,147 @@ tags list the primary beneficiaries.
 - Priority: MVP
 - Phase: 4 (scaffold), 6 (hardened)
 
+### 3.8 FR-8 — OTA firmware update (CVC only)
+
+Added 2026-04-17 by ADR-0025. Scope limited to the CVC (STM32G474RE,
+ASIL-B); SC and BCM OTA remain out of scope per §8 O-1 (reversed for
+CVC, still deferred for SC/BCM).
+
+#### FR-8.1 Initiate update via SOVD bulk-data endpoint
+- Title: Start an OTA transfer via ASAM SOVD v1.1 `bulk-data`.
+- Description: The SOVD Server SHALL expose
+  `POST /sovd/v1/components/{id}/bulk-data` accepting an OTA transfer
+  request (manifest + image size + target slot hint). The server
+  SHALL return a `transfer-id` that the client uses for all
+  subsequent FR-8.2..FR-8.6 calls. On CVC-backed components this
+  translates to UDS `0x34 RequestDownload` over CDA.
+- Rationale: ASAM SOVD v1.1 OpenAPI `bulk-data` resource; ADR-0025.
+- Acceptance criteria:
+  1. Valid request returns HTTP 201 with a `transfer-id` within
+     200 ms; subsequent status (FR-8.5) reports `Downloading`.
+  2. Request for a non-OTA-capable component returns HTTP 422 with
+     the capability-missing reason.
+  3. Unauthorized caller (SEC-2.x) receives 403 and no UDS 0x34 is
+     emitted.
+  4. Manifest parsing failures return HTTP 400 with a specific
+     `InvalidManifest` error.
+- Source: ASAM SOVD v1.1 OpenAPI `bulk-data`; ISO 14229 §14.2;
+  ADR-0025.
+- Stakeholder: S1, S4, S9
+- Priority: MVP-6 (Phase 6)
+- Phase: 6
+
+#### FR-8.2 Stream firmware payload (chunked, resumable)
+- Title: Transfer firmware payload in resumable chunks.
+- Description: The SOVD Server SHALL expose
+  `PUT /sovd/v1/components/{id}/bulk-data/{transfer-id}` accepting
+  binary chunks with `Content-Range`. The server SHALL translate
+  each chunk into UDS `0x36 TransferData` frames over CDA,
+  preserving block-sequence-counter ordering. Clients MAY resume an
+  interrupted transfer by re-issuing the same chunk range.
+- Rationale: ISO 14229 §14.3; field-reality of large images over
+  intermittent links; ADR-0025.
+- Acceptance criteria:
+  1. Ordered chunks producing a known-good image cause FR-8.5 to
+     report `Verifying` after the last chunk.
+  2. Out-of-order chunk rejected with HTTP 409.
+  3. Resume of a previously-transferred byte range is accepted
+     (idempotent for already-written data).
+  4. Progress (bytes-received) is queryable via FR-8.5 during the
+     transfer.
+- Source: ISO 14229 §14.3; ADR-0025.
+- Stakeholder: S1, S9
+- Priority: MVP-6
+- Phase: 6
+
+#### FR-8.3 Verify signature before commit
+- Title: Bootloader-level signature verification gates commit.
+- Description: Before the new slot is marked bootable, the CVC
+  bootloader SHALL verify the image signature against the baked-in
+  root key. An invalid or missing signature MUST fail the transfer
+  with a SOVD error translatable from UDS NRC `0x31
+  requestOutOfRange` or `0x72 generalProgrammingFailure`.
+- Rationale: SR-6.1 (safety); ADR-0025; upstream design.md §Security
+  Impact (integrity).
+- Acceptance criteria:
+  1. Unsigned or wrongly-signed image makes FR-8.5 transition to
+     `Failed` with `SignatureInvalid` reason; no slot switch occurs.
+  2. Signature verification completes in ≤ 3 s on STM32G474RE for
+     a ≤ 256 KB image.
+  3. The verification key is stored in write-protected flash; a
+     firmware build that accidentally exposes the signing key in a
+     debug export fails CI.
+- Source: SR-6.1; ADR-0025 §5; RFC 5652 (CMS envelope per ADR-0025
+  OQ-25.1).
+- Stakeholder: S4, S9
+- Priority: MVP-6
+- Phase: 6
+
+#### FR-8.4 A/B slot commit + rollback
+- Title: Atomic commit, atomic rollback.
+- Description: The CVC bootloader SHALL maintain two application
+  slots (A and B). Commit of a verified image flips the active slot
+  by writing a single boot-selector word atomically. Rollback
+  (manual via SOVD, or automatic per SR-6.5) flips it back. A
+  partial flash write MUST leave the previously-bootable slot
+  unchanged.
+- Rationale: SR-6.2, SR-6.3 (safety); ADR-0025 §5.
+- Acceptance criteria:
+  1. Commit sequence completes within 500 ms on CVC (SR-6.4).
+  2. Injecting a power cut mid-transfer leaves the ECU bootable on
+     the prior slot; FR-8.5 reports `Failed`.
+  3. Rollback via `DELETE .../bulk-data/{transfer-id}` post-commit
+     restores the prior slot on the next reset.
+  4. Boot-selector word layout and CRC are documented in the
+     bootloader interface note.
+- Source: SR-6.2, SR-6.3, SR-6.4; ADR-0025 §5.
+- Stakeholder: S4, S5
+- Priority: MVP-6
+- Phase: 6
+
+#### FR-8.5 Progress reporting via SOVD status polling
+- Title: OTA transfer exposes progress + state via SOVD.
+- Description: The SOVD Server SHALL expose
+  `GET /sovd/v1/components/{id}/bulk-data/{transfer-id}/status`
+  returning the current transfer state (`Idle`, `Downloading`,
+  `Verifying`, `Committed`, `Failed`, `Rolledback`), bytes
+  transferred, total bytes, and — if `Failed` — a reason code.
+- Rationale: ASAM SOVD v1.1 OpenAPI `bulk-data` status; UC22;
+  ADR-0025.
+- Acceptance criteria:
+  1. During an active transfer, poll returns monotonic
+     `bytes-received` values.
+  2. On failure, reason is one of the enumerated codes
+     (`SignatureInvalid`, `ChunkOutOfOrder`, `FlashWriteFailed`,
+     `PowerLoss`, `AbortRequested`, `Other`).
+  3. Status continues to be queryable after `Committed` or `Failed`
+     for at least one operation cycle for audit purposes.
+- Source: ASAM SOVD v1.1 OpenAPI; ADR-0025.
+- Stakeholder: S1, S7, S9
+- Priority: MVP-6
+- Phase: 6
+
+#### FR-8.6 Abort / cancel in any phase prior to commit
+- Title: Cancel an in-flight OTA transfer.
+- Description: The SOVD Server SHALL expose
+  `DELETE /sovd/v1/components/{id}/bulk-data/{transfer-id}` which,
+  if called before commit, aborts the transfer and frees the target
+  slot for reuse. Calling after commit triggers rollback per FR-8.4.
+  Cancel MUST be idempotent.
+- Rationale: ADR-0025; operator must be able to stop a bad transfer.
+- Acceptance criteria:
+  1. Cancel during `Downloading` or `Verifying` transitions state to
+     `Failed` with `AbortRequested`; no slot switch occurs.
+  2. Cancel after `Committed` triggers rollback; next reset returns
+     to the prior slot; FR-8.5 reports `Rolledback`.
+  3. Cancel on a non-existent `transfer-id` returns HTTP 404.
+  4. Repeated cancel on the same `transfer-id` is idempotent
+     (HTTP 204).
+- Source: ADR-0025; UC23.
+- Stakeholder: S4, S9
+- Priority: MVP-6
+- Phase: 6
+
 ---
 
 ## 4. Non-functional Requirements
@@ -928,6 +1069,107 @@ these SRs protect it.
 - Priority: MVP
 - Phase: 1
 
+#### SR-6.1 OTA signature verification is mandatory
+- Description: The CVC bootloader MUST verify the image signature
+  against the baked-in root key before marking the new slot bootable.
+  An unsigned or invalidly-signed image MUST NOT be executed under any
+  condition. The signature format is CMS (RFC 5652) over X.509,
+  anchored at the same PKI root as the device mTLS certificate chain
+  (two certificate purposes, one root — per ADR-0025 OQ-25.1).
+- Rationale: ADR-0025; upstream design.md §Security Impact; ISO 26262
+  integrity; OTA attack surface mitigation.
+- Acceptance criteria:
+  1. Unit test: bootloader refuses a known-tampered image.
+  2. HIL test: SOVD OTA flow with an invalid-signature image yields
+     FR-8.5 `Failed` with reason `SignatureInvalid`; the boot-selector
+     word is unchanged after reset.
+  3. Verification key is stored in write-protected flash; fuse or
+     option-byte lock prevents overwrite from runtime code.
+- Source: ADR-0025; FR-8.3.
+- Stakeholder: S4
+- Priority: MVP-6
+- Phase: 6
+
+#### SR-6.2 OTA power loss must not brick the ECU
+- Description: Power loss at any point in the OTA sequence MUST leave
+  the ECU bootable on the previously-active slot. The bootloader MUST
+  never transition both slots simultaneously into an invalid state.
+- Rationale: ADR-0025; availability + recoverability.
+- Acceptance criteria:
+  1. HIL fault-injection test: cut power during `Downloading`,
+     `Verifying`, and just before commit — on next power-up, CVC
+     boots the prior slot and FR-8.5 reports `Failed` with
+     `PowerLoss`.
+  2. Bootloader always finds at least one slot whose signature and
+     image CRC validate.
+- Source: ADR-0025; FR-8.4.
+- Stakeholder: S4, S5
+- Priority: MVP-6
+- Phase: 6
+
+#### SR-6.3 OTA commit is atomic
+- Description: Commit of a verified image MUST be atomic. A partial
+  write of the boot-selector word MUST be detected at boot and
+  treated as a failed transfer (stay on prior slot). No intermediate
+  state may be interpreted as "committed".
+- Rationale: ADR-0025; the boot-selector word is the single source of
+  truth for which slot runs next.
+- Acceptance criteria:
+  1. Boot-selector word layout uses CRC or duplicate-mirror pattern
+     so a mid-write crash is detectable.
+  2. Unit test on bootloader: corrupted boot-selector word forces
+     fallback to the prior slot.
+  3. Post-reset the firmware reports its running-slot via a DID so
+     testers and cloud can confirm the committed state.
+- Source: ADR-0025; FR-8.4.
+- Stakeholder: S4
+- Priority: MVP-6
+- Phase: 6
+
+#### SR-6.4 Safety functions remain active during OTA transfer phases
+- Description: OTA phases `Downloading` and `Verifying` MUST NOT
+  suspend any safety function on the CVC. Only the `Committed` step
+  (which includes the subsequent reset) may interrupt safety
+  functions, and only for at most 500 ms.
+- Rationale: ADR-0025; ISO 26262 ASIL-B availability on CVC.
+- Acceptance criteria:
+  1. HIL test: during an OTA transfer, heartbeat, watchdog, and safe-
+     state monitors all stay green.
+  2. Commit-to-reset window measured on the bench is ≤ 500 ms P99.
+  3. Safe-state fallback is honored if commit overruns.
+- Source: ADR-0025; SR-4.2 (isolation principle).
+- Stakeholder: S4
+- Priority: MVP-6
+- Phase: 6
+
+#### SR-6.5 Automatic rollback on consecutive post-boot failures
+- Description: If the new slot fails its post-boot self-check on N=5
+  consecutive resets, the bootloader MUST automatically roll back to
+  the prior slot.
+- Rationale: ADR-0025; a signed-but-broken image must still be
+  recoverable without a technician visit. N=5 is settled per
+  ADR-0025 OQ-25.2 (was provisionally 3); the higher threshold
+  absorbs transient post-boot flaps without giving up too early.
+- Acceptance criteria:
+  1. Bootloader maintains a post-boot-failure counter in the
+     persistent bootloader region.
+  2. HIL test: deploy an image whose self-check always fails;
+     observe automatic rollback on the 6th boot (N+1 with N=5);
+     FR-8.5 reports `Rolledback`.
+  3. Counter is reset to zero on a successful post-boot self-check.
+  4. N=5 is hard-coded at bootloader build time;
+     field-reconfigurability is out of scope for this requirement.
+  5. After a successful boot from the new slot, the bootloader emits
+     a signed boot-OK acknowledgement (commit witness) via the cloud
+     connector (per ADR-0025 OQ-25.3); failure to emit is logged but
+     does not itself trigger rollback.
+- Source: ADR-0025; OQ-25.2 (resolved); OQ-25.3 (resolved).
+- Stakeholder: S4
+- Priority: MVP-6
+- Phase: 6
+
+---
+
 ---
 
 ## 6. Security Requirements
@@ -1082,8 +1324,16 @@ these SRs protect it.
 The following are explicitly out of scope for this project, even though they
 may be valid future extensions:
 
-- O-1: ECU flashing / software update (`Flash Service App` in upstream
-  design.md §Out-of-scope components). Deferred indefinitely.
+- ~~O-1: ECU flashing / software update (`Flash Service App` in upstream
+  design.md §Out-of-scope components). Deferred indefinitely.~~
+  **Reversed 2026-04-17 by ADR-0025**: OTA firmware update is pulled
+  into scope **for the CVC (STM32G474RE) only** in Phase 6. See
+  FR-8.1..FR-8.6 (functional) and SR-6.1..SR-6.5 (safety). SC
+  (TMS570LC43x) and BCM (POSIX virtual) OTA remain out of scope and
+  are deferred to a future ADR-0026. The upstream-noted `Flash Service
+  App` itself stays out of scope; Taktflow implements the OTA path
+  using the standard ASAM SOVD v1.1 `bulk-data` endpoints and UDS
+  0x34 / 0x36 / 0x37 on the CVC application side.
 - O-2: AI/ML fault prediction or cloud-side analytics. Out of SOVD core.
 - O-3: AUTOSAR Adaptive native diagnostic stack integration. Listed in
   upstream design.md §Open Issues — not our work.

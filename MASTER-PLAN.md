@@ -699,21 +699,30 @@ subset (ISO 17978-3), with a routing Gateway.
    - Memory footprint: DFM + Server + Gateway on Pi
    - Targets: `/faults` read <100 ms, `GET /components/{id}/faults` P99 <500 ms, <200 MB RAM total on Pi (matches upstream CDA envelope)
 
-9. **Cloud-backed observer dashboard** (per ADR-0024, two stages)
-   - **Stage 1 — Local-only**: reuse `taktflow-embedded-production`
-     cloud_connector + ws_bridge on the Pi with `AWS_IOT_ENDPOINT=""`
-     (no AWS cost). Add `fault-sink-mqtt` crate publishing DFM events
-     to local Mosquitto. Build SvelteKit + Tailwind + shadcn-svelte
-     dashboard at `dashboard/`. Static build served by ws_bridge at
-     `http://<pi-ip>:8080/` — shows all 20 OpenSOVD use cases (UC1..UC20,
-     UC19 Grafana deferred to Stage 2).
-   - **Stage 2 — AWS IoT + Grafana**: provision SOVD-specific device id
-     `taktflow-sovd-hil-001` via `scripts/aws-iot-setup.sh`, enable
-     `AWS_IOT_ENDPOINT`, import `cloud_connector/grafana/dashboard.json`,
-     embed Grafana iframe in the observer for historical view.
-   - Exit: fault injected on bench visible in browser within 200 ms
-     (Stage 1); visible in Timestream within 30 s and in Grafana
-     dashboard panel (Stage 2).
+9. **Capability-showcase observer dashboard** (per ADR-0024, two stages;
+   decisions resolved 2026-04-17)
+   - **Stage 1 — Self-hosted, mTLS, zero cloud cost (blocking Phase 5 exit)**:
+     reuse `taktflow-embedded-production` cloud_connector + ws_bridge on
+     the Pi with `AWS_IOT_ENDPOINT=""`. Add `fault-sink-mqtt` crate
+     (JSON wire format) publishing DFM events to local Mosquitto. Add
+     Prometheus + Grafana on Pi for historical view (replaces the
+     Timestream path — $0 recurring cost). Add nginx for TLS termination
+     + mTLS client-cert auth aligned with SEC-2.1. Build SvelteKit +
+     Tailwind + shadcn-svelte dashboard at `dashboard/`, static build
+     served by nginx at `https://<pi-ip>/` — all 20 OpenSOVD use cases
+     live, including UC19 Prometheus-backed historical panel.
+   - **Stage 2 — Optional AWS fleet uplink (not blocking Phase 5 exit)**:
+     provision `DEVICE_ID=taktflow-sovd-hil-001` under the shared
+     embedded-production AWS account via `scripts/aws-iot-setup.sh`,
+     flip `AWS_IOT_ENDPOINT`, add `bench_id=sovd-hil` tag for data
+     attribution. No Timestream. Fleet-level cross-bench aggregation
+     lands here if/when multiple HIL rigs come online.
+   - Exit (Stage 1): fault injected on bench visible at `https://<pi-ip>/`
+     within 200 ms; 7 days of fault history in Grafana panel; nginx
+     rejects requests without valid client cert.
+   - Exit (Stage 2, optional): fault visible on AWS IoT Core test
+     console within 2 s on `vehicle/dtc/new` topic with
+     `bench_id=sovd-hil`.
 
 **Exit criteria:**
 - All 8 HIL scenarios green in nightly pipeline

@@ -278,15 +278,63 @@ point browser at `http://<pi-ip>:8080/` and the SPA:
   `taktflow-pi-001`. Multi-bench future work (several HIL rigs) needs a
   registry but Stage 1 and Stage 2 both work with a single device ID.
 
-## Open Questions
+## Resolved Decisions (user directive 2026-04-17)
 
-| # | Question | Resolution deadline | Owner |
-|---|----------|--------------------|-------|
-| OQ-24.1 | Shared AWS account with embedded-production, or a dedicated SOVD HIL account? | End of Stage 1 | Architect + DevOps |
-| OQ-24.2 | Timestream retention policy for SOVD HIL data? (embedded-production uses 1 day memory + 14 days magnetic) | Start of Stage 2 | DevOps |
-| OQ-24.3 | Observer HTML served by `ws_bridge`, or by a separate nginx container? | Stage 1 design review | Rust lead |
-| OQ-24.4 | Does the observer need authentication on a closed bench? (embedded-production WS bridge uses origin whitelist only) | Stage 1 design review | Security lead |
-| OQ-24.5 | `fault-sink-mqtt` — postcard over MQTT (for FFI consistency with ADR-0017) or plain JSON? | Before implementation starts | Rust lead |
+All five open questions were resolved in the same decision round that
+approved this ADR. Summary:
+
+| # | Question | Resolution |
+|---|----------|-----------|
+| OQ-24.1 | AWS account ownership | **Share the embedded-production AWS account.** Device identity stays separate (`taktflow-sovd-hil-001`) for data attribution, but the account, IAM roles, and billing line stay unified. Simpler ops, no parallel AWS provisioning. |
+| OQ-24.2 | Timestream retention | **Do not use Timestream. Replace with Prometheus + Grafana, both self-hosted on Pi.** Zero recurring cost. Prometheus is the dominant industry-standard time-series store in 2026. `sovd-tracing` already has OTLP hooks that partially align with Phase 6 observability work. If production fleet cloud later demands Timestream, it can be added as a secondary sink without ripping out Prometheus. |
+| OQ-24.3 | Observer HTML serving topology | **Separate nginx container.** Marginal cost is ~15 MB disk + ~5 MB RAM + ~10 lines of config. Upside: proper static-file serving (MIME, gzip, cache headers), natural TLS termination point, cleaner separation from `ws_bridge` which stays focused on WebSocket traffic. |
+| OQ-24.4 | Observer auth on closed bench | **mTLS client-certificate authentication, aligned with SEC-2.1 and ADR-0009.** Same cert authenticates the observer and the SOVD server itself. One identity, one trust store, one model — matches the story a customer auditor expects. Provisioning reuses the mTLS work already planned for Phase 6 SEC-2.1. Nginx does the TLS termination. |
+| OQ-24.5 | `fault-sink-mqtt` wire format | **JSON.** Preserves the existing embedded-production `vehicle/dtc/new` topic contract. Human-debuggable with `mosquitto_sub -v`. AWS IoT Rules, Prometheus exporters, and Grafana all expect JSON. postcard (ADR-0017) remains the format for the embedded-shim-to-DFM hop only — different layer, different constraints. |
+
+### Implications of the resolutions
+
+- **No Timestream means no Grafana-over-Timestream dashboard.** The
+  existing `cloud_connector/grafana/dashboard.json` uses a Timestream
+  datasource; it becomes a reference only. Grafana panels for SOVD HIL
+  are rewritten against Prometheus. The embedded-production team's
+  vehicle dashboard is untouched.
+- **mTLS on the observer pulls a small slice of Phase 6 forward.** Cert
+  provisioning scripts need to exist in Stage 1, not Stage 2/Phase 6.
+  This is ~half a day of work and aligns the dashboard with the SOVD
+  server's own auth, which was going to land anyway.
+- **Separate nginx container means one more systemd unit** (or docker-compose
+  entry) but cleaner TLS + static-file responsibilities.
+- **Stage 2 becomes AWS-optional.** With Prometheus as the historical
+  store, "Stage 2" now means "turn on AWS IoT if/when fleet upstream
+  is needed." The observer dashboard is feature-complete without AWS.
+
+### Updated Stage delineation
+
+**Stage 1 — Self-hosted, mTLS, zero cloud cost** (revised scope):
+
+- Local Mosquitto broker on Pi
+- cloud_connector container in local-only mode (AWS disabled)
+- ws_bridge container for WebSocket streams
+- Prometheus + Grafana containers on Pi for historical view
+- Nginx container for static dashboard + TLS termination + mTLS
+- SvelteKit dashboard covering all 20 use cases including
+  Prometheus-backed UC19 historical panel
+- mTLS cert provisioning script
+- Exit: fault injected on bench visible in browser within 200 ms; last
+  7 days of faults queryable in the Grafana panel; nginx rejects
+  requests without valid client cert.
+
+**Stage 2 — Optional AWS uplink** (deferred, not blocking Phase 5 exit):
+
+- Run `scripts/aws-iot-setup.sh` with `DEVICE_ID=taktflow-sovd-hil-001`
+- Enable `AWS_IOT_ENDPOINT` env var on cloud_connector
+- Add fleet-level AWS IoT topic rules (not Timestream)
+- Grafana gets an AWS IoT Core panel if/when needed
+
+This reshapes Stage 2 from "historical store in cloud" to "fleet uplink
+for cross-bench comparison." Most Phase 5 stakeholder value is now in
+Stage 1; Stage 2 becomes optional and can slip to Phase 6 or post-2026
+without blocking Phase 5 exit.
 
 ## Resolves
 
@@ -331,34 +379,55 @@ Stage 1 tasks (dashboard):
       UC19 Grafana; that lands in Stage 2)
 - [ ] T24.1.8  static build output served as `ws_bridge` static dir
 
-Stage 1 tasks (deploy):
+Stage 1 tasks (observability store):
 
-- [ ] T24.1.9   `deploy/pi/mosquitto.toml` + docker-compose addition
-- [ ] T24.1.10  deploy `cloud_connector` container on Pi in local-only mode
-      (`AWS_IOT_ENDPOINT=""`)
-- [ ] T24.1.11  deploy `ws_bridge` container on Pi with dashboard
-      static build mounted
-- [ ] T24.1.12  update `deploy/pi/phase5-full-stack.sh` to bring up
-      mosquitto + cloud_connector + ws_bridge alongside sovd-main + proxy
-- [ ] T24.1.13  origin whitelist update in `ws_bridge` to accept the
-      bench-LAN observer domains
+- [ ] T24.1.9   Prometheus container on Pi, `prometheus.yml` scraping
+      sovd-main, cloud_connector, ws_bridge, and mosquitto exporter
+- [ ] T24.1.10  Grafana container on Pi with Prometheus datasource
+      pre-provisioned; dashboard JSON for SOVD HIL (NOT the existing
+      Timestream-based one)
+- [ ] T24.1.11  sovd-tracing OTLP or Prometheus exporter wiring so
+      SOVD internal metrics hit Prometheus
+
+Stage 1 tasks (deploy + security):
+
+- [ ] T24.1.12  `deploy/pi/mosquitto.toml` + docker-compose addition
+- [ ] T24.1.13  deploy `cloud_connector` container on Pi in local-only
+      mode (`AWS_IOT_ENDPOINT=""`)
+- [ ] T24.1.14  deploy `ws_bridge` container on Pi (serves WS only;
+      static files move to nginx)
+- [ ] T24.1.15  **new:** nginx container for static dashboard + TLS
+      termination + mTLS client-cert verification
+- [ ] T24.1.16  mTLS cert provisioning script reusing the Phase 6
+      SEC-2.1 CA/cert pipeline (pulled forward)
+- [ ] T24.1.17  update `deploy/pi/phase5-full-stack.sh` to bring up
+      mosquitto + cloud_connector + ws_bridge + prometheus + grafana +
+      nginx alongside sovd-main + proxy
+- [ ] T24.1.18  origin/cert policy update so ws_bridge accepts only
+      nginx-proxied traffic
 
 Stage 1 exit criterion:
 
 - Injecting a fault via `FaultShim_Report` on the bench makes it appear
-  at `http://<pi-ip>:8080/` within 200 ms, with the DTC visible in the
-  per-ECU card (UC1) and the aggregated timeline (UC5).
-- All 20 UC widgets render with plausible live/canned data.
+  at `https://<pi-ip>/` (nginx TLS + mTLS-gated) within 200 ms, with
+  the DTC visible in the per-ECU card (UC1) and the aggregated
+  timeline (UC5).
+- Grafana panel shows last 7 days of faults (UC19 Prometheus-backed).
+- Nginx rejects requests without a valid client cert.
+- All 20 UC widgets render with live or plausible canned data.
 
-Stage 2 tasks:
+Stage 2 tasks (optional, not blocking Phase 5 exit):
 
-- [ ] T24.2.1  run `aws-iot-setup.sh` with SOVD device id
-- [ ] T24.2.2  add `bench_id` dimension to MQTT payload + Timestream
-      schema
-- [ ] T24.2.3  provision certs, deploy cloud_connector with live AWS
-      endpoint
-- [ ] T24.2.4  import dashboard.json into Grafana, rebind Timestream
-      datasource
-- [ ] T24.2.5  update observer HTML with Grafana link
-- [ ] T24.2.6  Stage 2 exit criterion: fault visible in Timestream
-      within 30 s, in Grafana dashboard panel
+- [ ] T24.2.1  run `aws-iot-setup.sh` with
+      `DEVICE_ID=taktflow-sovd-hil-001` (shared embedded-production AWS
+      account per OQ-24.1)
+- [ ] T24.2.2  add `bench_id=sovd-hil` tag to MQTT payloads so fleet
+      uplink keeps SOVD HIL data attributable
+- [ ] T24.2.3  provision certs, flip `AWS_IOT_ENDPOINT` env on
+      cloud_connector
+- [ ] T24.2.4  (optional) add an AWS IoT Core panel to the observer
+      dashboard — shows cross-bench aggregate if multiple HIL rigs
+      ever come online
+- [ ] T24.2.5  Stage 2 exit criterion: fault on the bench visible in
+      AWS IoT Core test console within 2 s on topic
+      `vehicle/dtc/new` with `bench_id=sovd-hil`.

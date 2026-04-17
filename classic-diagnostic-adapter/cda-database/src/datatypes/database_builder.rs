@@ -14,7 +14,9 @@
 // within a WipOffset<T> where we cannot provide a conversion for.
 // This is only the case for types where we have to be able to name the type, i.e.
 // for function parameters and return types.
-pub use dataformat::{DefaultCase, ParentRefType as DataFormatParentRefType, SwitchKey};
+pub use dataformat::{
+    DOP, DefaultCase, Param, ParentRefType as DataFormatParentRefType, SwitchKey,
+};
 use flatbuffers::UnionWIPOffset;
 pub use flatbuffers::WIPOffset;
 
@@ -108,6 +110,14 @@ pub struct EcuDataParams<'a> {
     pub feature_flags: Option<Vec<dataformat::FeatureFlag>>,
     pub functional_groups: Option<Vec<WIPOffset<dataformat::FunctionalGroup<'a>>>>,
     pub dtcs: Option<Vec<WIPOffset<dataformat::DTC<'a>>>>,
+}
+
+pub struct SimpleComParamEntry<'a> {
+    pub short_name: &'a str,
+    pub param_class: &'a str,
+    pub physical_default_value: Option<&'a str>,
+    pub dop: WIPOffset<dataformat::DOP<'a>>,
+    pub value: &'a str,
 }
 
 #[derive(Default)]
@@ -206,18 +216,13 @@ impl<'a> EcuDataBuilder<'a> {
         })
     }
 
-    /// Serialize the given [`EcuDataParams`] into a flatbuffer, wrap the result
-    /// in a [`DiagnosticDatabase`] and return it.  Consumes the builder.
+    /// Serialize the given [`EcuDataParams`] into a flatbuffer and return the
+    /// raw FlatBuffers blob. Consumes the builder.
     ///
-    /// [`DiagnosticDatabase`]: super::DiagnosticDatabase
-    ///
-    /// # Panics
-    /// Panics if the database cannot be created from the built ECU data.
-    ///
-    /// Using panic here, because the database builder is not intended for production use
-    /// and only is a helper to build databases for tests.
+    /// The builder primarily exists for tests and small local generators where
+    /// the caller may still want to wrap the bytes into an MDD container.
     #[must_use]
-    pub fn finish(mut self, params: EcuDataParams<'a>) -> super::DiagnosticDatabase {
+    pub fn finish_to_vec(mut self, params: EcuDataParams<'a>) -> Vec<u8> {
         let ecu_name_offset = self.fbb.create_string(params.ecu_name);
         let revision_offset = self.fbb.create_string(params.revision);
         let version_offset = self.fbb.create_string(params.version);
@@ -238,8 +243,22 @@ impl<'a> EcuDataBuilder<'a> {
 
         let ecu_data = dataformat::EcuData::create(&mut self.fbb, &ecu_data_args);
         self.fbb.finish(ecu_data, None);
-        let blob = self.fbb.finished_data().to_vec();
+        self.fbb.finished_data().to_vec()
+    }
 
+    /// Serialize the given [`EcuDataParams`] into a flatbuffer, wrap the result
+    /// in a [`DiagnosticDatabase`] and return it. Consumes the builder.
+    ///
+    /// [`DiagnosticDatabase`]: super::DiagnosticDatabase
+    ///
+    /// # Panics
+    /// Panics if the database cannot be created from the built ECU data.
+    ///
+    /// Using panic here, because the database builder is not intended for production use
+    /// and only is a helper to build databases for tests.
+    #[must_use]
+    pub fn finish(self, params: EcuDataParams<'a>) -> super::DiagnosticDatabase {
+        let blob = self.finish_to_vec(params);
         super::DiagnosticDatabase::new_from_vec(
             String::default(),
             blob,
@@ -500,6 +519,181 @@ impl<'a> EcuDataBuilder<'a> {
             short_name: Some(short_name_offset),
         };
         dataformat::FunctClass::create(&mut self.fbb, &funct_class_args)
+    }
+
+    pub fn create_simple_value(&mut self, value: &str) -> WIPOffset<dataformat::SimpleValue<'a>> {
+        let value_offset = self.fbb.create_string(value);
+        dataformat::SimpleValue::create(
+            &mut self.fbb,
+            &dataformat::SimpleValueArgs {
+                value: Some(value_offset),
+            },
+        )
+    }
+
+    pub fn create_complex_value(
+        &mut self,
+        entries: Vec<UnionWIPOffset<dataformat::SimpleOrComplexValueEntryUnionValue>>,
+    ) -> WIPOffset<dataformat::ComplexValue<'a>> {
+        let values = entries
+            .iter()
+            .map(|entry| entry.value_offset())
+            .collect::<Vec<_>>();
+        let types = entries.iter().map(|entry| entry.tag()).collect::<Vec<_>>();
+        let values_vector = self.fbb.create_vector(&values);
+        let types_vector = self.fbb.create_vector(&types);
+        dataformat::ComplexValue::create(
+            &mut self.fbb,
+            &dataformat::ComplexValueArgs {
+                entries_type: Some(types_vector),
+                entries: Some(values_vector),
+            },
+        )
+    }
+
+    pub fn create_complex_value_from_simple_values(
+        &mut self,
+        values: &[&str],
+    ) -> WIPOffset<dataformat::ComplexValue<'a>> {
+        let entries = values
+            .iter()
+            .map(|value| {
+                dataformat::SimpleOrComplexValueEntry::tag_as_simple_value(
+                    self.create_simple_value(value),
+                )
+            })
+            .collect::<Vec<_>>();
+        self.create_complex_value(entries)
+    }
+
+    pub fn create_regular_com_param(
+        &mut self,
+        short_name: &'a str,
+        param_class: &'a str,
+        physical_default_value: Option<&'a str>,
+        dop: WIPOffset<dataformat::DOP<'a>>,
+    ) -> WIPOffset<dataformat::ComParam<'a>> {
+        let short_name_offset = self.fbb.create_string(short_name);
+        let param_class_offset = self.fbb.create_string(param_class);
+        let physical_default_value_offset =
+            physical_default_value.map(|value| self.fbb.create_string(value));
+        let regular = dataformat::RegularComParam::create(
+            &mut self.fbb,
+            &dataformat::RegularComParamArgs {
+                physical_default_value: physical_default_value_offset,
+                dop: Some(dop),
+            },
+        );
+        dataformat::ComParam::create(
+            &mut self.fbb,
+            &dataformat::ComParamArgs {
+                com_param_type: dataformat::ComParamType::REGULAR,
+                short_name: Some(short_name_offset),
+                long_name: None,
+                param_class: Some(param_class_offset),
+                cp_type: dataformat::ComParamStandardisationLevel::STANDARD,
+                display_level: None,
+                cp_usage: dataformat::ComParamUsage::TESTER,
+                specific_data_type: dataformat::ComParamSpecificData::RegularComParam,
+                specific_data: Some(
+                    dataformat::ComParamSpecificData::tag_as_regular_com_param(regular)
+                        .value_offset(),
+                ),
+            },
+        )
+    }
+
+    pub fn create_complex_com_param(
+        &mut self,
+        short_name: &'a str,
+        param_class: &'a str,
+        com_params: Vec<WIPOffset<dataformat::ComParam<'a>>>,
+        allow_multiple_values: bool,
+    ) -> WIPOffset<dataformat::ComParam<'a>> {
+        let short_name_offset = self.fbb.create_string(short_name);
+        let param_class_offset = self.fbb.create_string(param_class);
+        let com_params_vector = self.fbb.create_vector(&com_params);
+        let complex = dataformat::ComplexComParam::create(
+            &mut self.fbb,
+            &dataformat::ComplexComParamArgs {
+                com_params: Some(com_params_vector),
+                complex_physical_default_values: None,
+                allow_multiple_values,
+            },
+        );
+        dataformat::ComParam::create(
+            &mut self.fbb,
+            &dataformat::ComParamArgs {
+                com_param_type: dataformat::ComParamType::COMPLEX,
+                short_name: Some(short_name_offset),
+                long_name: None,
+                param_class: Some(param_class_offset),
+                cp_type: dataformat::ComParamStandardisationLevel::STANDARD,
+                display_level: None,
+                cp_usage: dataformat::ComParamUsage::TESTER,
+                specific_data_type: dataformat::ComParamSpecificData::ComplexComParam,
+                specific_data: Some(
+                    dataformat::ComParamSpecificData::tag_as_complex_com_param(complex)
+                        .value_offset(),
+                ),
+            },
+        )
+    }
+
+    pub fn create_simple_com_param_ref(
+        &mut self,
+        short_name: &'a str,
+        param_class: &'a str,
+        physical_default_value: Option<&'a str>,
+        dop: WIPOffset<dataformat::DOP<'a>>,
+        protocol: WIPOffset<dataformat::Protocol<'a>>,
+        value: &'a str,
+    ) -> WIPOffset<dataformat::ComParamRef<'a>> {
+        let com_param =
+            self.create_regular_com_param(short_name, param_class, physical_default_value, dop);
+        let simple_value = self.create_simple_value(value);
+        self.create_com_param_ref(
+            Some(simple_value),
+            None,
+            Some(com_param),
+            Some(protocol),
+            None,
+        )
+    }
+
+    pub fn create_complex_com_param_ref_from_simple_entries(
+        &mut self,
+        short_name: &'a str,
+        param_class: &'a str,
+        protocol: WIPOffset<dataformat::Protocol<'a>>,
+        entries: Vec<SimpleComParamEntry<'a>>,
+        allow_multiple_values: bool,
+    ) -> WIPOffset<dataformat::ComParamRef<'a>> {
+        let mut nested_com_params = Vec::with_capacity(entries.len());
+        let mut entry_values = Vec::with_capacity(entries.len());
+        for entry in entries {
+            nested_com_params.push(self.create_regular_com_param(
+                entry.short_name,
+                entry.param_class,
+                entry.physical_default_value,
+                entry.dop,
+            ));
+            entry_values.push(entry.value);
+        }
+        let complex_com_param = self.create_complex_com_param(
+            short_name,
+            param_class,
+            nested_com_params,
+            allow_multiple_values,
+        );
+        let complex_value = self.create_complex_value_from_simple_values(&entry_values);
+        self.create_com_param_ref(
+            None,
+            Some(complex_value),
+            Some(complex_com_param),
+            Some(protocol),
+            None,
+        )
     }
 
     pub fn create_com_param_ref(

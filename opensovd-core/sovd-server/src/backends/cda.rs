@@ -37,6 +37,7 @@
 //! loudly and the caller sees the mismatch as a `SovdError::Transport`.
 
 use std::{
+    collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -48,14 +49,19 @@ use sovd_interfaces::{
     ComponentId, SovdError,
     spec::{
         component::EntityCapabilities,
+        error::{DataError, GenericError},
         fault::{FaultFilter, ListOfFaults},
-        operation::{StartExecutionAsyncResponse, StartExecutionRequest},
+        operation::{
+            Capability, ExecutionStatus, ExecutionStatusResponse, StartExecutionAsyncResponse,
+            StartExecutionRequest,
+        },
     },
     traits::backend::{BackendKind, SovdBackend},
     types::error::Result,
 };
 use tokio::sync::Mutex;
 use url::Url;
+use uuid::Uuid;
 
 /// ADR-0018 rule 2: retry policy for `CdaBackend` wire calls. The
 /// numbers are inlined here (not a generic middleware) so the
@@ -108,6 +114,20 @@ struct CdaAuthBody {
     access_token: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct CdaSyncExecutionResponse {
+    #[serde(default)]
+    parameters: Option<serde_json::Value>,
+    #[serde(default)]
+    errors: Vec<DataError>,
+}
+
+#[derive(Debug, Clone)]
+struct CdaExecutionRecord {
+    operation_id: String,
+    status: ExecutionStatusResponse,
+}
+
 /// Forwarding backend that turns [`SovdBackend`] trait calls into SOVD
 /// HTTP requests against an upstream CDA.
 ///
@@ -139,6 +159,10 @@ pub struct CdaBackend {
     /// Cached downstream CDA Bearer token. Populated lazily on the
     /// first forwarded request that discovers CDA auth is enabled.
     auth_token: Arc<Mutex<Option<String>>>,
+    /// Synchronous downstream CDA operations are bridged into the
+    /// SOVD async start/poll contract by caching their final result
+    /// under a generated execution id.
+    executions: Arc<Mutex<HashMap<String, CdaExecutionRecord>>>,
 }
 
 impl CdaBackend {
@@ -223,6 +247,7 @@ impl CdaBackend {
             path_prefix: normalise_prefix(path_prefix),
             http,
             auth_token: Arc::new(Mutex::new(None)),
+            executions: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -277,6 +302,7 @@ impl CdaBackend {
             path_prefix: normalise_prefix(path_prefix),
             http,
             auth_token: Arc::new(Mutex::new(None)),
+            executions: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -436,7 +462,7 @@ impl CdaBackend {
         }
     }
 
-    async fn send_with_auth_retry<F>(&self, build: F) -> Result<reqwest::Response>
+    async fn send_with_auth_retry_response<F>(&self, build: F) -> Result<reqwest::Response>
     where
         F: Fn(Option<&str>) -> reqwest::RequestBuilder,
     {
@@ -455,10 +481,75 @@ impl CdaBackend {
                 auth_refreshed = true;
                 continue;
             }
-            return response
-                .error_for_status()
-                .map_err(|e| map_reqwest_err(&self.component_id, &e));
+            return Ok(response);
         }
+    }
+
+    async fn send_with_auth_retry<F>(&self, build: F) -> Result<reqwest::Response>
+    where
+        F: Fn(Option<&str>) -> reqwest::RequestBuilder,
+    {
+        self.send_with_auth_retry_response(build)
+            .await?
+            .error_for_status()
+            .map_err(|e| map_reqwest_err(&self.component_id, &e))
+    }
+
+    fn failed_execution_status_from_http(
+        &self,
+        status: StatusCode,
+        body: &[u8],
+    ) -> ExecutionStatusResponse {
+        let error = serde_json::from_slice::<GenericError>(body)
+            .ok()
+            .unwrap_or_else(|| {
+                let message = String::from_utf8_lossy(body);
+                GenericError {
+                    error_code: "transport.error".to_owned(),
+                    vendor_code: None,
+                    message: if message.trim().is_empty() {
+                        format!(
+                            "CDA start_execution for component {} returned {} with an empty body",
+                            self.component_id, status
+                        )
+                    } else {
+                        format!(
+                            "CDA start_execution for component {} returned {}: {}",
+                            self.component_id,
+                            status,
+                            message.trim()
+                        )
+                    },
+                    translation_id: None,
+                    parameters: None,
+                }
+            });
+        ExecutionStatusResponse {
+            status: Some(ExecutionStatus::Failed),
+            capability: Capability::Execute,
+            parameters: None,
+            schema: None,
+            error: Some(vec![DataError {
+                path: "/".to_owned(),
+                error: Some(error),
+            }]),
+        }
+    }
+
+    async fn store_execution_status(
+        &self,
+        operation_id: &str,
+        status: ExecutionStatusResponse,
+    ) -> String {
+        let execution_id = Uuid::new_v4().to_string();
+        self.executions.lock().await.insert(
+            execution_id.clone(),
+            CdaExecutionRecord {
+                operation_id: operation_id.to_owned(),
+                status,
+            },
+        );
+        execution_id
     }
 }
 
@@ -728,7 +819,7 @@ impl SovdBackend for CdaBackend {
     ) -> Result<StartExecutionAsyncResponse> {
         let url = self.component_url(&format!("operations/{operation_id}/executions"))?;
         let resp = self
-            .send_with_auth_retry(|token| {
+            .send_with_auth_retry_response(|token| {
                 let request_builder = self.http.post(url.clone()).json(&request);
                 match token {
                     Some(token) => request_builder.bearer_auth(token),
@@ -736,9 +827,107 @@ impl SovdBackend for CdaBackend {
                 }
             })
             .await?;
-        resp.json::<StartExecutionAsyncResponse>()
+        let status = resp.status();
+        let body = resp
+            .bytes()
             .await
-            .map_err(|e| map_reqwest_err(&self.component_id, &e))
+            .map_err(|e| map_reqwest_err(&self.component_id, &e))?;
+        if status == StatusCode::NOT_FOUND {
+            return Err(SovdError::NotFound {
+                entity: format!("cda:{}:operation:{operation_id}", self.component_id),
+            });
+        }
+        if status.is_server_error() || status == StatusCode::REQUEST_TIMEOUT {
+            let execution_id = self
+                .store_execution_status(
+                    operation_id,
+                    self.failed_execution_status_from_http(status, body.as_ref()),
+                )
+                .await;
+            return Ok(StartExecutionAsyncResponse {
+                id: execution_id,
+                status: Some(ExecutionStatus::Running),
+            });
+        }
+        if !status.is_success() {
+            let text = String::from_utf8_lossy(body.as_ref());
+            return Err(SovdError::Transport(format!(
+                "CDA start_execution for component {} returned {}: {}",
+                self.component_id,
+                status,
+                text.trim()
+            )));
+        }
+        if body.is_empty() {
+            let execution_id = self
+                .store_execution_status(
+                    operation_id,
+                    ExecutionStatusResponse {
+                        status: Some(ExecutionStatus::Completed),
+                        capability: Capability::Execute,
+                        parameters: None,
+                        schema: None,
+                        error: None,
+                    },
+                )
+                .await;
+            return Ok(StartExecutionAsyncResponse {
+                id: execution_id,
+                status: Some(ExecutionStatus::Running),
+            });
+        }
+
+        if let Ok(async_started) = serde_json::from_slice::<StartExecutionAsyncResponse>(&body) {
+            return Ok(async_started);
+        }
+
+        let sync_started =
+            serde_json::from_slice::<CdaSyncExecutionResponse>(&body).map_err(|e| {
+                SovdError::Transport(format!(
+                    "CDA start_execution response decode for component {}: {e}",
+                    self.component_id
+                ))
+            })?;
+        let final_status = if sync_started.errors.is_empty() {
+            ExecutionStatus::Completed
+        } else {
+            ExecutionStatus::Failed
+        };
+        let execution_id = self
+            .store_execution_status(
+                operation_id,
+                ExecutionStatusResponse {
+                    status: Some(final_status),
+                    capability: Capability::Execute,
+                    parameters: sync_started.parameters,
+                    schema: None,
+                    error: (!sync_started.errors.is_empty()).then_some(sync_started.errors),
+                },
+            )
+            .await;
+        Ok(StartExecutionAsyncResponse {
+            id: execution_id,
+            status: Some(ExecutionStatus::Running),
+        })
+    }
+
+    async fn execution_status(
+        &self,
+        operation_id: &str,
+        execution_id: &str,
+    ) -> Result<ExecutionStatusResponse> {
+        let guard = self.executions.lock().await;
+        let Some(record) = guard.get(execution_id) else {
+            return Err(SovdError::NotFound {
+                entity: format!("execution \"{execution_id}\""),
+            });
+        };
+        if record.operation_id != operation_id {
+            return Err(SovdError::NotFound {
+                entity: format!("execution \"{execution_id}\" of operation \"{operation_id}\""),
+            });
+        }
+        Ok(record.status.clone())
     }
 
     async fn entity_capabilities(&self) -> Result<EntityCapabilities> {
@@ -1158,6 +1347,214 @@ mod tests {
         assert_eq!(started.id, "exec-1");
         assert_eq!(state.authorize_calls.load(Ordering::SeqCst), 1);
         assert_eq!(state.execution_calls.load(Ordering::SeqCst), 2);
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn sync_execution_response_is_bridged_into_async_poll_contract() {
+        use std::sync::{
+            Arc as StdArc,
+            atomic::{AtomicU32, Ordering},
+        };
+
+        use axum::{
+            extract::State,
+            response::{IntoResponse, Response},
+            routing::post,
+        };
+
+        #[derive(Clone)]
+        struct SyncExecutionState {
+            authorize_calls: StdArc<AtomicU32>,
+            execution_calls: StdArc<AtomicU32>,
+        }
+
+        async fn authorize(State(state): State<SyncExecutionState>) -> Json<serde_json::Value> {
+            state.authorize_calls.fetch_add(1, Ordering::SeqCst);
+            Json(serde_json::json!({
+                "access_token": "phase5-token",
+                "token_type": "Bearer",
+                "expires_in": 2_000_000_000u64,
+            }))
+        }
+
+        async fn start_execution(
+            State(state): State<SyncExecutionState>,
+            headers: HeaderMap,
+        ) -> Response {
+            state.execution_calls.fetch_add(1, Ordering::SeqCst);
+            let Some(value) = headers.get(AUTHORIZATION) else {
+                return HttpStatusCode::UNAUTHORIZED.into_response();
+            };
+            if value != "Bearer phase5-token" {
+                return HttpStatusCode::FORBIDDEN.into_response();
+            }
+            Json(serde_json::json!({
+                "parameters": {
+                    "result": "passed",
+                },
+                "errors": [],
+            }))
+            .into_response()
+        }
+
+        let state = SyncExecutionState {
+            authorize_calls: StdArc::new(AtomicU32::new(0)),
+            execution_calls: StdArc::new(AtomicU32::new(0)),
+        };
+        let app = Router::new()
+            .route("/vehicle/v15/authorize", post(authorize))
+            .route(
+                "/vehicle/v15/components/rzc/operations/motor_self_test/executions",
+                post(start_execution),
+            )
+            .with_state(state.clone());
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve mock CDA");
+        });
+
+        let backend = CdaBackend::new(
+            ComponentId::new("rzc"),
+            Url::parse(&format!("http://{addr}/")).expect("parse mock CDA URL"),
+        )
+        .expect("construct backend");
+        let started = backend
+            .start_execution(
+                "motor_self_test",
+                StartExecutionRequest {
+                    timeout: Some(30),
+                    parameters: Some(serde_json::json!({ "mode": "quick" })),
+                    proximity_response: None,
+                },
+            )
+            .await
+            .expect("start_execution");
+        let status = backend
+            .execution_status("motor_self_test", &started.id)
+            .await
+            .expect("execution_status");
+
+        assert_eq!(started.status, Some(ExecutionStatus::Running));
+        assert_eq!(status.status, Some(ExecutionStatus::Completed));
+        assert_eq!(
+            status.parameters,
+            Some(serde_json::json!({
+                "result": "passed",
+            }))
+        );
+        assert_eq!(state.authorize_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.execution_calls.load(Ordering::SeqCst), 2);
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn server_error_execution_is_bridged_into_failed_async_poll_contract() {
+        use std::sync::{
+            Arc as StdArc,
+            atomic::{AtomicU32, Ordering},
+        };
+
+        use axum::{
+            extract::State,
+            response::{IntoResponse, Response},
+            routing::post,
+        };
+
+        #[derive(Clone)]
+        struct FailedExecutionState {
+            authorize_calls: StdArc<AtomicU32>,
+            execution_calls: StdArc<AtomicU32>,
+        }
+
+        async fn authorize(State(state): State<FailedExecutionState>) -> Json<serde_json::Value> {
+            state.authorize_calls.fetch_add(1, Ordering::SeqCst);
+            Json(serde_json::json!({
+                "access_token": "phase5-token",
+                "token_type": "Bearer",
+                "expires_in": 2_000_000_000u64,
+            }))
+        }
+
+        async fn start_execution(
+            State(state): State<FailedExecutionState>,
+            headers: HeaderMap,
+        ) -> Response {
+            state.execution_calls.fetch_add(1, Ordering::SeqCst);
+            let Some(value) = headers.get(AUTHORIZATION) else {
+                return HttpStatusCode::UNAUTHORIZED.into_response();
+            };
+            if value != "Bearer phase5-token" {
+                return HttpStatusCode::FORBIDDEN.into_response();
+            }
+            (
+                HttpStatusCode::GATEWAY_TIMEOUT,
+                Json(GenericError {
+                    error_code: "vendor-specific".to_owned(),
+                    vendor_code: Some("gateway-timeout".to_owned()),
+                    message: "Ecu [3] offline".to_owned(),
+                    translation_id: None,
+                    parameters: None,
+                }),
+            )
+                .into_response()
+        }
+
+        let state = FailedExecutionState {
+            authorize_calls: StdArc::new(AtomicU32::new(0)),
+            execution_calls: StdArc::new(AtomicU32::new(0)),
+        };
+        let app = Router::new()
+            .route("/vehicle/v15/authorize", post(authorize))
+            .route(
+                "/vehicle/v15/components/rzc/operations/motor_self_test/executions",
+                post(start_execution),
+            )
+            .with_state(state.clone());
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve mock CDA");
+        });
+
+        let backend = CdaBackend::new(
+            ComponentId::new("rzc"),
+            Url::parse(&format!("http://{addr}/")).expect("parse mock CDA URL"),
+        )
+        .expect("construct backend");
+        let started = backend
+            .start_execution(
+                "motor_self_test",
+                StartExecutionRequest {
+                    timeout: Some(30),
+                    parameters: Some(serde_json::json!({ "mode": "quick" })),
+                    proximity_response: None,
+                },
+            )
+            .await
+            .expect("start_execution");
+        let status = backend
+            .execution_status("motor_self_test", &started.id)
+            .await
+            .expect("execution_status");
+
+        assert_eq!(started.status, Some(ExecutionStatus::Running));
+        assert_eq!(status.status, Some(ExecutionStatus::Failed));
+        assert_eq!(state.authorize_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.execution_calls.load(Ordering::SeqCst), 2);
+        let errors = status.error.expect("failed status should include errors");
+        assert!(!errors.is_empty(), "failed status should keep a data error");
+        assert_eq!(errors[0].path, "/");
+        assert_eq!(
+            errors[0]
+                .error
+                .as_ref()
+                .and_then(|error| error.vendor_code.as_deref()),
+            Some("gateway-timeout")
+        );
 
         handle.abort();
     }

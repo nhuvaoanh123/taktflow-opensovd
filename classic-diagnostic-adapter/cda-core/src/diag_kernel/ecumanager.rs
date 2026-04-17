@@ -2294,6 +2294,7 @@ impl<S: SecurityPlugin> EcuManager<S> {
         F: Fn(&datatypes::DiagService) -> bool,
     {
         self.variant()
+            .or_else(|| self.diag_database.base_variant().ok())
             .and_then(|v| v.diag_layer().map(|dl| (dl, v.parent_refs())))
             .map_or(<_>::default(), |(diag_layer, parent_refs)| {
                 Self::get_services_from_diag_layer_and_parent_refs(

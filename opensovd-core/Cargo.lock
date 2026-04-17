@@ -3924,6 +3924,7 @@ dependencies = [
  "cda-database",
  "cda-interfaces",
  "clap",
+ "prost",
  "sovd-server",
  "tempfile",
  "utoipa",

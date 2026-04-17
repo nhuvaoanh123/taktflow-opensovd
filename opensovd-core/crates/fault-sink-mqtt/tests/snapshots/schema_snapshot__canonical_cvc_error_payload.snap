@@ -1,0 +1,13 @@
+---
+source: crates/fault-sink-mqtt/tests/schema_snapshot.rs
+assertion_line: 53
+expression: pretty
+---
+{
+  "component_id": "cvc",
+  "dtc": "P0A1F",
+  "severity": 2,
+  "status": "confirmed",
+  "timestamp": "2026-04-17T19:00:00Z",
+  "bench_id": "sovd-hil"
+}

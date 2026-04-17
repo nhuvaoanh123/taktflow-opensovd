@@ -20,6 +20,37 @@ use serde::{Deserialize, Serialize};
 use sovd_dfm::DfmBackendConfig;
 use sovd_server::backends::cda::DEFAULT_CDA_PATH_PREFIX;
 
+/// Optional `[mqtt]` TOML section for the `fault-sink-mqtt` backend.
+///
+/// Only consulted when the `fault-sink-mqtt` Cargo feature is enabled
+/// **and** this section appears in the TOML config.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct MqttConfig {
+    /// Hostname or IP address of the MQTT broker.
+    pub broker_host: String,
+    /// TCP port of the MQTT broker (default: 1883).
+    #[serde(default = "default_mqtt_broker_port")]
+    pub broker_port: u16,
+    /// MQTT topic to publish fault records on.
+    #[serde(default = "default_mqtt_topic")]
+    pub topic: String,
+    /// Deployment-specific bench identifier embedded in published JSON.
+    #[serde(default = "default_mqtt_bench_id")]
+    pub bench_id: String,
+}
+
+fn default_mqtt_broker_port() -> u16 {
+    1883
+}
+
+fn default_mqtt_topic() -> String {
+    "vehicle/dtc/new".to_owned()
+}
+
+fn default_mqtt_bench_id() -> String {
+    "sovd-hil".to_owned()
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Configuration {
     pub server: ServerConfig,
@@ -45,6 +76,11 @@ pub struct Configuration {
     /// Optional CDA-backed forwards registered at startup.
     #[serde(default, rename = "cda_forward")]
     pub cda_forwards: Vec<CdaForwardConfig>,
+    /// Optional MQTT backend configuration. When present **and** the
+    /// `fault-sink-mqtt` Cargo feature is enabled, `MqttFaultSink` is
+    /// registered as a fault-sink alongside the DFM.
+    #[serde(default)]
+    pub mqtt: Option<MqttConfig>,
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -105,6 +141,7 @@ impl Default for Configuration {
             dfm_component_id: default_dfm_component_id(),
             local_demo_components: default_local_demo_components(),
             cda_forwards: Vec::new(),
+            mqtt: None,
         }
     }
 }

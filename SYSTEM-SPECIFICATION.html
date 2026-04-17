@@ -196,7 +196,7 @@ and test strategy for the Taktflow Eclipse OpenSOVD diagnostic stack.
   <li><a href="#s4">Requirements Summary</a></li>
   <li><a href="#s5">Safety Boundary</a></li>
   <li><a href="#s6">State Machines</a></li>
-  <li><a href="#s7">Key Use Cases</a></li>
+  <li><a href="#s7">Use Case Catalog (UC1&ndash;UC20)</a></li>
   <li><a href="#s8">API Surface</a></li>
   <li><a href="#s9">Deployment Topologies</a></li>
   <li><a href="#s10">Test Strategy</a></li>
@@ -680,7 +680,16 @@ stateDiagram-v2
 <hr>
 
 <!-- ================================================================== -->
-<h2 id="s7">7. Key Use Cases</h2>
+<h2 id="s7">7. Use Case Catalog (UC1&ndash;UC20)</h2>
+
+<p>
+  This section mirrors the canonical catalog at
+  <a href="docs/USE-CASES.md"><code>docs/USE-CASES.md</code></a>.
+  The five MVP flows (UC1&ndash;UC5) have full sequence diagrams below;
+  the extended capability-showcase set (UC6&ndash;UC20) is summarized in the
+  traceability table in &sect;7.5. Every UC ID is stable and referenced from
+  requirements, tests, ADR-0024 dashboard widgets, and HIL scenarios.
+</p>
 
 <h3>7.1 UC1 &mdash; Read DTCs (FR-1.1, FR-1.5)</h3>
 <pre class="mermaid">
@@ -759,6 +768,51 @@ sequenceDiagram
         GW-->>-T: 202 Accepted
     end
 </pre>
+
+<h3>7.5 Full traceability matrix (UC &times; REQ &times; Test &times; Dashboard)</h3>
+
+<p>
+  One row per use case. UC1&ndash;UC5 are the MVP set diagrammed above;
+  UC6&ndash;UC20 are the extended capability-showcase set exposed by the
+  Phase 5 observer dashboard per
+  <a href="docs/adr/0024-reuse-embedded-production-cloud-connector.md">ADR-0024</a>.
+  Complete traceability (UC &times; REQ &times; Test &times; Source &times; Widget)
+  lives in <code>tools/traceability/</code> per COMP-4.1; this table is a
+  convenience index.
+</p>
+
+<table>
+<thead><tr><th>UC</th><th>Title</th><th>Primary REQ</th><th>Primary Test</th><th>Dashboard Widget</th></tr></thead>
+<tbody>
+<tr><td>UC1</td><td>Read DTCs</td><td>FR-1.1</td><td><code>hil_sovd_01_read_faults_all.yaml</code></td><td><code>UC01DtcList.svelte</code></td></tr>
+<tr><td>UC2</td><td>Report fault</td><td>FR-4.1</td><td><code>phase3_dfm_sqlite_roundtrip.rs</code></td><td><code>UC11FaultPipeline.svelte</code></td></tr>
+<tr><td>UC3</td><td>Clear DTCs</td><td>FR-1.3</td><td><code>hil_sovd_02_clear_faults.yaml</code></td><td><code>UC03ClearFaults.svelte</code></td></tr>
+<tr><td>UC4</td><td>Reach UDS ECU via CDA</td><td>FR-5.1, FR-5.2</td><td><code>phase2_cda_ecusim_smoke.rs</code></td><td><code>UC14CdaTopology.svelte</code></td></tr>
+<tr><td>UC5</td><td>Trigger routine</td><td>FR-2.1</td><td><code>hil_sovd_03_operation_execution.yaml</code></td><td><code>UC06Operations.svelte</code></td></tr>
+<tr><td>UC6</td><td>Start / stop / poll routine</td><td>FR-2.1&ndash;2.3</td><td>same as UC5</td><td><code>UC06Operations.svelte</code></td></tr>
+<tr><td>UC7</td><td>Routine catalog discovery</td><td>FR-2.4</td><td>unit tests</td><td><code>UC07RoutineCatalog.svelte</code></td></tr>
+<tr><td>UC8</td><td>List components w/ capability badges</td><td>FR-3.1, FR-3.4</td><td><code>hil_sovd_05_components_metadata.yaml</code></td><td><code>UC08ComponentCards.svelte</code></td></tr>
+<tr><td>UC9</td><td>HW / SW version</td><td>FR-3.2</td><td><code>hil_sovd_05_components_metadata.yaml</code></td><td><code>UC09HwSwVersion.svelte</code></td></tr>
+<tr><td>UC10</td><td>Read data identifier (DID)</td><td>FR-3.3</td><td>unit tests</td><td><code>UC10LiveDidReads.svelte</code></td></tr>
+<tr><td>UC11</td><td>Fault pipeline visualization</td><td>FR-4.x</td><td><code>phase3_dfm_sqlite_roundtrip.rs</code></td><td><code>UC11FaultPipeline.svelte</code></td></tr>
+<tr><td>UC12</td><td>Operation cycle state</td><td>FR-4.3</td><td>opcycle-taktflow unit tests</td><td><code>UC12OperationCycle.svelte</code></td></tr>
+<tr><td>UC13</td><td>DTC lifecycle visualization</td><td>&sect;6.1 (this doc)</td><td>DtcLifecycle unit tests</td><td><code>UC13DtcLifecycle.svelte</code></td></tr>
+<tr><td>UC14</td><td>CDA topology view</td><td>FR-5.1, FR-5.2</td><td>manual during HIL</td><td><code>UC14CdaTopology.svelte</code></td></tr>
+<tr><td>UC15</td><td>Session management</td><td>FR-7.1, SEC-4.1</td><td>unit tests</td><td><code>UC15Session.svelte</code></td></tr>
+<tr><td>UC16</td><td>Audit log</td><td>SEC-3.1, ADR-0014</td><td>manual audit sink check</td><td><code>UC16AuditLog.svelte</code></td></tr>
+<tr><td>UC17</td><td>Safety boundary indicator</td><td>SR-1.x, SR-4.x</td><td>DFM crash/recovery test</td><td><code>UC17SafetyBoundary.svelte</code></td></tr>
+<tr><td>UC18</td><td>Gateway routing + fan-out</td><td>FR-6.x, NFR-2.x</td><td><code>phase4_sovd_gateway_cda_ecusim_bench.rs</code></td><td><code>UC18GatewayRouting.svelte</code></td></tr>
+<tr><td>UC19</td><td>Historical trends</td><td>NFR-3.x</td><td>Grafana live on HIL</td><td><code>UC19Historical.svelte</code></td></tr>
+<tr><td>UC20</td><td>Concurrent tester support</td><td>NFR-1.3</td><td><code>hil_sovd_06_concurrent_testers.yaml</code></td><td><code>UC20ConcurrentTesters.svelte</code></td></tr>
+</tbody>
+</table>
+
+<p class="muted">
+  <strong>How to add a new use case:</strong> pick the next free UC ID (UC21+),
+  write the entry in <code>docs/USE-CASES.md</code>, add the row here, and
+  &mdash; if it's an MVP flow &mdash; add a sequence diagram to ARCHITECTURE.md
+  &sect;6 and mirror it above.
+</p>
 
 <hr>
 
@@ -995,13 +1049,14 @@ graph TB
 <tbody>
 <tr><td>ARCHITECTURE.md</td><td>Full arc42 architecture with detailed views</td></tr>
 <tr><td>REQUIREMENTS.md</td><td>Complete FR/NFR/SR/SEC/COMP with acceptance criteria</td></tr>
+<tr><td><a href="docs/USE-CASES.md">USE-CASES.md</a></td><td>Canonical UC1&ndash;UC20 catalog (source of truth for &sect;7 above)</td></tr>
 <tr><td>SAFETY-CONCEPT.md</td><td>Safety boundary, failure containment, MISRA</td></tr>
 <tr><td>TEST-STRATEGY.md</td><td>Test levels, CI pipeline, coverage</td></tr>
 <tr><td>TRADE-STUDIES.md</td><td>18 trade studies for every major decision</td></tr>
 <tr><td>DEPLOYMENT-GUIDE.md</td><td>SIL/HIL/production deployment</td></tr>
 <tr><td>DEVELOPER-GUIDE.md</td><td>Build, run, and test instructions</td></tr>
 <tr><td>GLOSSARY.md</td><td>Domain terminology</td></tr>
-<tr><td>docs/adr/</td><td>23 Architecture Decision Records</td></tr>
+<tr><td>docs/adr/</td><td>24 Architecture Decision Records (ADR-0001 &hellip; ADR-0024)</td></tr>
 </tbody>
 </table>
 
@@ -1014,6 +1069,7 @@ graph TB
 <thead><tr><th>Rev</th><th>Date</th><th>Author</th><th>Change</th></tr></thead>
 <tbody>
 <tr><td>1.0</td><td>2026-04-16</td><td>SOVD workstream</td><td>Initial consolidated specification</td></tr>
+<tr><td>1.1</td><td>2026-04-17</td><td>SOVD workstream</td><td>Section&nbsp;7 expanded to the full UC1&ndash;UC20 catalog with traceability matrix; mirrors new <code>docs/USE-CASES.md</code>.</td></tr>
 </tbody>
 </table>
 

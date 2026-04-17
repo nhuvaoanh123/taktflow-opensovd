@@ -374,10 +374,59 @@ to wire test material into our `opensovd-core` workspace.
 
 ---
 
+## Section F — Public body-of-knowledge research (added 2026-04-16)
+
+AI research agent pass on 2026-04-16 produced a curated research folder at
+`external/asam-public/iso-17978-research/` covering everything freely
+available about ISO 17978 / ASAM SOVD, so the team can understand the
+standard's scope and structure without paying for the normative text.
+
+All URLs were accessed via WebSearch + WebFetch; each file cites its
+sources. Nothing in the folder republishes copyrighted text beyond short
+fair-use quotations.
+
+### F.1 `external/asam-public/iso-17978-research/` files
+
+| File | Size | Covers |
+|---|---|---|
+| `README.md` | ~14K | Executive summary. Part 1/2/3 scope statements (verbatim public snippets), key concepts (entities, resources, capability description, modes, locks, faults, operations, software updates, bulk data, logging, subscriptions, discovery, AuthN/AuthZ), publication history, gap analysis, legally-ambiguous sources skipped. |
+| `sources.md` | ~12K | Annotated bibliography. Every URL visited, access type (free / paywalled / login / blocked), what was obtained. Grouped by: ISO official pages, mirror-site resellers, ASAM public, Eclipse OpenSOVD, AUTOSAR, vendor pages, analyst pages, academic, encyclopedic, related-standards, deliberately-skipped. |
+| `iso-official-pages.md` | ~4K | ISO 17978-1/2/3 scope text verbatim from public search snippets (ISO's `iso.org/standard/*` pages themselves 403 on WebFetch). Confirms Part 3 is 225 pp per DIN Media. |
+| `asam-sovd-overview.md` | ~4K | Transcript of ASAM's public SOVD page. Version 1.0.0 2022-06-30. 21 authoring companies. Cross-referenced with the ASAM Wikipedia article for organisational context. |
+| `eclipse-opensovd-intro.md` | ~7K | Eclipse OpenSOVD project proposal, creation review, README, `docs/design/design.md` transcripts. Entity hierarchy example. Security + safety posture (QM). Phase 1/2/3 milestones. List of 11 Eclipse OpenSOVD repos. |
+| `vendor-overviews.md` | ~11K | Transcripts from Vector, ETAS, Softing, ACTIA IME, DSA (product + ASAM-conference press release), Sibros (two articles). Each records what the vendor *asserts is in the standard* — a useful proxy for the normative prose. |
+| `academic-and-sae.md` | ~4K | Abstracts of SAE 2024-01-7036 (Boehlen/Fischer/Wang, DSA) and SAE 2025-01-8081 (Mayer/Bschor/Fieth, Softing). Sibros podcast metadata with Ben Engel + Ahmed Sadek of ASAM. |
+| `related-standards.md` | ~8K | UDS / DoIP / ODX / MVCI / ExVe / 21434 / R155/R156 relationship. Includes an inferred UDS-SID → SOVD-resource mapping table (non-normative — derived from the OpenSOVD CDA code + AUTOSAR EXP_SOVD structure). |
+| `paywall-gap-detail.md` | ~6K | Every gap: paywalled normative text (~138 CHF per ISO part), login-walled `code.asam.net/diagnostics/sovd/capability-description-example`, CDN-blocked Vector whitepapers, academic paper paywalls, things that don't exist in any free form (no Wikipedia page for SOVD; no public production-ECU capability description). |
+
+### F.2 What this research adds on top of Section B
+
+Section B on 2026-04-14 collected the **artifacts** (PDFs, OpenAPI YAMLs,
+free downloadables). Section F on 2026-04-16 collected the **context
+around those artifacts** — the prose body-of-knowledge that lets a reader
+understand what the standard covers *without opening any paywalled PDF*.
+The two sections complement rather than overlap.
+
+### F.3 Recommended read order for a new team member
+
+1. `iso-17978-research/README.md` — 15-min orientation.
+2. `iso-17978-research/related-standards.md` — to situate SOVD in the
+   ISO/ASAM/AUTOSAR ecosystem.
+3. `asam-public/AUTOSAR_AP_R24-11_EXP_SOVD.pdf` (on disk) — the richest
+   free prose explanation of the architecture. Open in a real PDF viewer
+   (not via the AI agent, which can't decode the byte streams).
+4. `asam-public/ISO_17978-3_openapi/openapi-specification-1.1.0-rc1/sovd-api.yaml`
+   (on disk) — the normative API surface in YAML form.
+5. `iso-17978-research/paywall-gap-detail.md` — to understand exactly
+   what questions cannot yet be answered from free sources.
+
+---
+
 ## Closing note
 
-The single most valuable find of this acquisition pass is the **ISO 17978-3
-OpenAPI YAML template** at `external/asam-public/ISO_17978-3_openapi/`. It
+The single most valuable find of the 2026-04-14 acquisition pass is the
+**ISO 17978-3 OpenAPI YAML template** at
+`external/asam-public/ISO_17978-3_openapi/`. It
 is the only freely accessible, machine-readable, full-surface SOVD API
 contract that exists, and it covers all 22 SOVD resource families. Used
 together with the **CDA `testcontainer/`** ECU simulator and the

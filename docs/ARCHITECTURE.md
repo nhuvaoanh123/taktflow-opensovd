@@ -33,9 +33,10 @@ architectural element in this document traces back to one or more requirements
 
 The top three things the system must do:
 
-1. Serve ISO 17978 SOVD REST endpoints for every Taktflow ECU (virtual and
-   physical) with DTC read, clear, routine start/stop/status, and component
-   metadata — REQ FR-1.x, FR-2.x, FR-3.x, FR-5.x.
+1. Serve ASAM SOVD v1.1 OpenAPI (ISO 17978-3) REST endpoints for every
+   Taktflow ECU (virtual and physical) with DTC read, clear,
+   routine start/stop/status, and component metadata — REQ FR-1.x,
+   FR-2.x, FR-3.x, FR-5.x.
 2. Ingest faults from application and platform code on any ECU through a
    framework-agnostic Fault Library shim and surface them through the SOVD
    API — REQ FR-4.x.
@@ -51,7 +52,7 @@ The top three things the system must do:
 | 2 | Max-sync with upstream Eclipse OpenSOVD code | NFR-6.1, NFR-6.2, NFR-6.3; MP §C.2 |
 | 3 | Observable end-to-end (trace, logs, audit) | NFR-3.1, NFR-3.2, NFR-3.3, SEC-3.1 |
 | 4 | Portable across SIL / HIL / prod without rebuild | NFR-4.1, NFR-4.2 |
-| 5 | Latency within ISO 17978-compatible bounds | NFR-1.1, NFR-1.2, NFR-1.3 |
+| 5 | Latency within target bounds for the exposed SOVD API | NFR-1.1, NFR-1.2, NFR-1.3 |
 | 6 | Security by default (TLS, authn, authz, rate) | SEC-1.1, SEC-2.x, SEC-5.1 |
 
 ### 1.3 Stakeholders
@@ -60,6 +61,26 @@ See REQ §2. The same stakeholder set applies here. Specifically, the
 architecture must remain coherent for S2 (upstream OpenSOVD maintainers) and
 S3 (S-CORE integration) because max-sync (NFR-6.1) and the Fault Library
 boundary (ADR-SCORE) are non-negotiable.
+
+### 1.4 Conformance scope
+
+This project is explicit about the SOVD scope it can verify today.
+
+- **What we verify:** the ASAM SOVD v1.1 OpenAPI wire contract published for
+  ISO 17978-3, locked by `sovd-interfaces` schema snapshots and
+  `cargo xtask openapi-dump --check`.
+- **What we align with:** public scope statements and design descriptions for
+  ISO 17978 Parts 1 and 2 from ASAM/ISO public pages, AUTOSAR `EXP_SOVD`,
+  the Eclipse OpenSOVD `design.md` and `mvp.md`, the public Eclipse OpenSOVD
+  CDA code when behavior is ambiguous, and the research notes in
+  `external/asam-public/iso-17978-research/`.
+- **What we do not claim:** full normative conformance to ISO 17978 Parts 1
+  and 2, or any paywalled Part 3 prose that the team has not acquired yet
+  (for example conformance classes, complete lock/session state diagrams, or
+  normative error-taxonomy text).
+
+Accordingly, this architecture claims implementation of the ASAM SOVD v1.1
+OpenAPI MVP subset (ISO 17978-3), not blanket ISO 17978 conformance.
 
 ---
 
@@ -110,7 +131,7 @@ graph TB
     T["<b>Off-board SOVD Tester</b><br/>(laptop / Postman / curl)"]
     F["<b>Fleet / Cloud Operator</b><br/>(future)"]
 
-    T -->|"HTTPS (ISO 17978)"| Stack
+    T -->|"HTTPS (ASAM v1.1 / ISO 17978-3)"| Stack
     F -->|"HTTPS (future)"| Stack
 
     subgraph Stack ["Taktflow SOVD Stack &mdash; Pi Gateway Host"]
@@ -124,8 +145,8 @@ graph TB
     Stack -->|"DoIP / TCP"| VE
     Stack -->|"CAN / ISO-TP<br/>(via proxy)"| PE
 
-    VE["<b>Virtual ECUs</b><br/>BCM &middot; ICU &middot; TCU<br/>(POSIX + DoIP)"]
-    PE["<b>Physical ECUs</b><br/>CVC &middot; FZC &middot; RZC &middot; SC<br/>(STM32G4 + TMS570)"]
+    VE["<b>Virtual ECU</b><br/>BCM<br/>(POSIX + DoIP)"]
+    PE["<b>Physical ECUs</b><br/>CVC &middot; SC<br/>(STM32G4 + TMS570)"]
 
     style Stack fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
     style T fill:#fff3e0,stroke:#e65100
@@ -152,7 +173,7 @@ Protocols and wire formats, all rooted in REQ and master plan decisions:
 
 | Hop | Protocol | Notes |
 |-----|----------|-------|
-| Tester -> Gateway/Server | HTTPS (ISO 17978 SOVD REST) | TLS (SEC-1.1), mTLS (SEC-2.1), JSON bodies, correlation id header |
+| Tester -> Gateway/Server | HTTPS (ASAM SOVD v1.1 OpenAPI / ISO 17978-3) | TLS (SEC-1.1), mTLS (SEC-2.1), JSON bodies, correlation id header |
 | Gateway -> Server | in-process fn / async channel | same host, single Tokio runtime |
 | Gateway -> DFM | in-process fn via `SovdBackend` | `sovd-interfaces` trait |
 | Gateway -> CDA | HTTP (CDA is an axum service) | in-proc or over loopback depending on topology |
@@ -184,7 +205,7 @@ The project-level strategy is fixed by MP §C and condensed here.
    upstream-owned files.
 4. **Concrete before abstract (MP §C.3).** The first SOVD Server realization
    targets one CVC virtual ECU in Docker. Only after UC1 is green end-to-end
-   do we fan out to 7 ECUs.
+   do we fan out to 3 ECUs (ADR-0023).
 5. **Fork, track upstream, build extras on top (MP §C.2c).** `upstream-sync`
    cron rebases our `opensovd-core` fork weekly. Conflicts are resolved
    inside 24 h.
@@ -227,8 +248,8 @@ graph TB
     PROXY -->|"SocketCAN<br/>(can0 / vcan0)"| PE
     CDA -->|"DoIP TCP"| VE
 
-    VE["<b>Virtual POSIX ECUs</b><br/>BCM &middot; ICU &middot; TCU<br/>CVC/FZC/RZC (POSIX)"]
-    PE["<b>Physical ECUs</b><br/>CVC &middot; FZC &middot; RZC &middot; SC<br/>(STM32G4 + TMS570)"]
+    VE["<b>Virtual POSIX ECU</b><br/>BCM"]
+    PE["<b>Physical ECUs</b><br/>CVC &middot; SC<br/>(STM32G4 + TMS570)"]
 
     style PI fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
     style TESTER fill:#fff3e0,stroke:#e65100
@@ -662,7 +683,7 @@ sequenceDiagram
     participant GW as sovd-gateway
     participant CDA as CDA
     participant PX as Proxy
-    participant ECU as RZC (STM32)
+    participant ECU as CVC (STM32)
     participant SWC as Swc_Motor
 
     T->>+AUTH: POST .../operations/motor_self_test/start<br/>(raw arg bytes)
@@ -716,8 +737,6 @@ graph TB
     subgraph HOST ["Host Linux (x86_64) &mdash; docker compose up"]
         subgraph ECUS ["POSIX ECU Containers (DoIP :13400)"]
             CVC["cvc"]
-            FZC["fzc"]
-            RZC["rzc"]
             BCM["bcm"]
         end
 
@@ -766,7 +785,7 @@ graph TB
     PI -->|"SocketCAN can0<br/>(500 kbps)"| PE
 
     VE["<b>Virtual ECU</b><br/>containers<br/>(Pi or dev laptop)"]
-    PE["<b>Physical Harness</b><br/>CVC &middot; FZC &middot; RZC &middot; SC<br/>(STM32G4 / TMS570)"]
+    PE["<b>Physical Harness</b><br/>CVC &middot; SC<br/>(STM32G4 / TMS570)"]
 
     style PI fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
     style VE fill:#e8f5e9,stroke:#2e7d32
@@ -910,7 +929,7 @@ REQ requirements it exercises and names the measurable outcome.
 
 - Source: off-board tester, nominal network (<1 ms latency).
 - Stimulus: GET /sovd/v1/components/cvc/faults, 500 iterations.
-- Artifact: Pi production topology, full 7-ECU harness.
+- Artifact: Pi production topology, 3-ECU harness (ADR-0023).
 - Environment: HIL nightly.
 - Response: response arrives with valid JSON DTC list.
 - Measure: P99 latency <= 500 ms. Asserted in

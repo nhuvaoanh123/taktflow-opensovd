@@ -246,7 +246,7 @@ boundary between the two projects.
 ```
                                            Off-board SOVD Tester
                                                     |
-                                                    | HTTPS (ISO 17978 SOVD REST)
+                                                    | HTTPS (ASAM v1.1 OpenAPI / ISO 17978-3)
                                                     v
 +-----------------------------------------------------------------------+
 |                    Raspberry Pi Gateway Host                          |
@@ -270,18 +270,20 @@ boundary between the two projects.
     +------------+------------+       +-----+-----+-----+   |
     |            |            |       |     |     |     |   |
     v            v            v       v     v     v     v   |
-  +---+        +---+        +---+   +---+ +---+ +---+ +---+ |
-  |BCM|        |ICU|        |TCU|   |CVC| |FZC| |RZC| |SC | |
-  +---+        +---+        +---+   +---+ +---+ +---+ +---+ |
-  (POSIX+DoIP)            (POSIX+DoIP)   (STM32, CAN only) (TMS570)
-         \___virtual ECUs___/               \____physical ECUs____/
-          All 7 ECUs run Fault Lib shim ---> DFM via IPC (from POSIX builds)
+  +---+                            +---+           +---+      |
+  |BCM|                            |CVC|           |SC |      |
+  +---+                            +---+           +---+      |
+  (POSIX+DoIP)                 (STM32, CAN)        (TMS570)
+   \_virtual_/                   \______physical______/
+          3-ECU bench per ADR-0023; all 3 run Fault Lib shim ---> DFM via IPC
 ```
 
 **Key design decisions:**
 
-1. **Virtual ECUs (BCM/ICU/TCU) speak DoIP directly.** They run on POSIX, TCP is free.
-2. **Physical ECUs (CVC/FZC/RZC/SC) speak CAN.** A Rust `CAN-to-DoIP proxy` on the Pi bridges.
+1. **Virtual ECU (BCM) speaks DoIP directly.** It runs on POSIX, TCP is free.
+   *(Original topology included ICU and TCU as additional virtual ECUs; retired per ADR-0023.)*
+2. **Physical ECUs (CVC, SC) speak CAN.** A Rust `CAN-to-DoIP proxy` on the Pi bridges.
+   *(Original topology included FZC and RZC as additional STM32 physical ECUs; retired per ADR-0023.)*
 3. **Fault Library shim is C, not Rust**, on the embedded side. Rust is used for the POSIX/Pi
    components only. This avoids dragging the Rust toolchain into ASIL-D firmware.
 4. **DFM uses SQLite for persistence.** DTC data is relational; SQLite is proven and zero-ops.
@@ -386,7 +388,7 @@ Tester POST /sovd/v1/components/rzc/operations/motor_self_test/executions
 
 | Item | Effort |
 |------|--------|
-| CVC/FZC/RZC ODX → MDD pipeline wired into Taktflow CI | 3 days |
+| CVC ODX → MDD pipeline wired into Taktflow CI (ADR-0023; FZC/RZC retired) | 3 days |
 | CDA configured for Taktflow topology | 2 days |
 | SIL scenario: CDA smoke test against Docker CVC | 2 days |
 | SIL scenario: full SOVD → CDA → ECU round-trip | 3 days |
@@ -462,7 +464,7 @@ Each phase has: entry criteria, deliverables, exit criteria, owner.
 - All new Dcm handlers pass unit tests
 - MISRA clean (zero violations in CI)
 - HIL suite passes with new tests added
-- `odx-converter` produces valid MDDs for all 7 ECUs
+- `odx-converter` produces valid MDDs for the 3 active ECUs (ADR-0023; CVC is the only ECU requiring an MDD under the reduced bench since SC is not yet UDS-addressable and BCM runs as a POSIX simulator)
 - Docker-based CVC accepts DoIP connection on localhost:13400 and responds to UDS 0x19
 
 **Owner:** Embedded lead + 2 embedded engineers.
@@ -572,7 +574,8 @@ Each phase has: entry criteria, deliverables, exit criteria, owner.
 
 ### Phase 4 — SOVD Server + Gateway (Aug 16 – Oct 15, 2026)
 
-**Goal:** Full SOVD Server implementing the MVP ISO 17978 subset, with a routing Gateway.
+**Goal:** Full SOVD Server implementing the MVP ASAM SOVD v1.1 OpenAPI
+subset (ISO 17978-3), with a routing Gateway.
 
 **Entry:** Phase 3 complete; DFM serving DTCs.
 
@@ -648,7 +651,7 @@ Each phase has: entry criteria, deliverables, exit criteria, owner.
    - Log aggregation to DLT (Phase 6 wiring)
 
 2. **HIL test suite** — `test/hil/scenarios/hil_sovd_*.yaml` (8 scenarios, SOVD per-component shape per ISO 17978-3)
-   - `hil_sovd_01_read_faults_all.yaml` — GET /sovd/v1/components/{id}/faults across all 7 ECUs
+   - `hil_sovd_01_read_faults_all.yaml` — GET /sovd/v1/components/{id}/faults across all 3 ECUs (CVC, SC, BCM; ADR-0023)
    - `hil_sovd_02_clear_faults.yaml` — DELETE /sovd/v1/components/{id}/faults, verify via separate read
    - `hil_sovd_03_operation_motor_test.yaml` — POST /sovd/v1/components/rzc/operations/motor_self_test/executions
    - `hil_sovd_04_fault_injection.yaml` — inject CAN bus off, observe fault propagation through DFM
@@ -972,7 +975,7 @@ Remaining 6 on other Taktflow workstreams (not diluted by SOVD).
 
 - [ ] All 5 OpenSOVD MVP use cases pass against Taktflow hardware in SIL and HIL
 - [ ] SOVD Server, Gateway, DFM, CAN-to-DoIP proxy all running on Raspberry Pi in production mode
-- [ ] DTC round-trip latency <500 ms at P99 across all 7 ECUs
+- [ ] DTC round-trip latency <500 ms at P99 across all 3 active ECUs (ADR-0023)
 - [ ] Zero MISRA violations on new embedded code
 - [ ] Zero clippy pedantic violations on new Rust code
 - [ ] Full safety case delta approved by safety engineer

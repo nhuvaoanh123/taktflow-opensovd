@@ -20,15 +20,16 @@ SPDX-License-Identifier: Apache-2.0
 
 ## 1. Executive Summary
 
-Taktflow OpenSOVD is a general-purpose SOVD (ISO 17978) diagnostic stack for
-**multi-ECU zonal architectures**. It replaces legacy UDS/CAN diagnostics
-with modern REST/HTTP so that every ECU -- virtual or physical, regardless
-of role or zone -- becomes addressable via standard HTTP tooling instead of
-proprietary diagnostic hardware and binary protocols.
+Taktflow OpenSOVD is a general-purpose SOVD diagnostic stack for
+**multi-ECU zonal architectures**. It implements the ASAM SOVD v1.1 OpenAPI
+(ISO 17978-3) wire contract so that every ECU -- virtual or physical,
+regardless of role or zone -- becomes addressable via standard HTTP tooling
+instead of proprietary diagnostic hardware and binary protocols.
 
-The HIL test bench uses a BMS zonal topology (CVC / FZC / RZC / SC) as the
-reference integration, but the stack itself is architecture-agnostic within
-automotive diagnostics.
+The HIL test bench is a minimal 3-ECU setup (CVC central + SC safety + BCM
+virtual body, per ADR-0023) that covers every architectural code path in the
+stack. The stack itself is architecture-agnostic within automotive
+diagnostics and scales to arbitrary ECU counts without code change.
 
 | Dimension | UDS (legacy) | SOVD (this system) |
 |-----------|-------------|---------------------|
@@ -41,6 +42,19 @@ automotive diagnostics.
 **Current status:** Phase 5 -- Hardware-in-the-Loop (April 2026). Full stack
 running on Raspberry Pi with physical STM32 ECUs on CAN bus.
 
+### 1.1 Conformance scope
+
+- **What we verify:** the ASAM SOVD v1.1 OpenAPI wire contract published for
+  ISO 17978-3, locked by `sovd-interfaces` schema snapshots and
+  `cargo xtask openapi-dump --check`.
+- **What we align with:** public scope statements for ISO 17978 Parts 1 and 2
+  from ASAM/ISO public pages, AUTOSAR `EXP_SOVD`, the Eclipse OpenSOVD
+  `design.md` and `mvp.md`, the public Eclipse OpenSOVD CDA code when
+  behavior is ambiguous, and the local research notes under
+  `external/asam-public/iso-17978-research/`.
+- **What we do not claim:** full normative conformance to ISO 17978 Parts 1
+  and 2, or paywalled Part 3 prose that has not been acquired yet.
+
 ---
 
 ## 2. System Architecture
@@ -52,7 +66,7 @@ graph TB
     T["<b>Off-board SOVD Tester</b><br/>(laptop / Postman / curl)"]
     F["<b>Fleet / Cloud Operator</b><br/>(future)"]
 
-    T -->|"HTTPS (ISO 17978)"| Stack
+    T -->|"HTTPS (ASAM v1.1 / ISO 17978-3)"| Stack
     F -->|"HTTPS (future)"| Stack
 
     subgraph Stack ["Taktflow SOVD Stack -- Pi Gateway Host"]
@@ -66,8 +80,8 @@ graph TB
     Stack -->|"DoIP / TCP"| VE
     Stack -->|"CAN / ISO-TP<br/>(via proxy)"| PE
 
-    VE["<b>Virtual ECUs</b><br/>BCM, ICU, TCU<br/>(POSIX + DoIP)"]
-    PE["<b>Physical ECUs</b><br/>CVC, FZC, RZC, SC<br/>(STM32G4 + TMS570)"]
+    VE["<b>Virtual ECU</b><br/>BCM<br/>(POSIX + DoIP)"]
+    PE["<b>Physical ECUs</b><br/>CVC + SC<br/>(STM32G4 + TMS570)"]
 
     style Stack fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
     style T fill:#fff3e0,stroke:#e65100
@@ -102,8 +116,8 @@ graph TB
     PROXY -->|"SocketCAN<br/>(can0 / vcan0)"| PE
     CDA -->|"DoIP TCP"| VE
 
-    VE["<b>Virtual POSIX ECUs</b><br/>BCM, ICU, TCU"]
-    PE["<b>Physical ECUs</b><br/>CVC, FZC, RZC, SC"]
+    VE["<b>Virtual POSIX ECU</b><br/>BCM"]
+    PE["<b>Physical ECUs</b><br/>CVC + SC"]
 
     style PI fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
     style TESTER fill:#fff3e0,stroke:#e65100
@@ -145,7 +159,7 @@ graph BT
 
 | Hop | Protocol | Notes |
 |-----|----------|-------|
-| Tester -> Gateway/Server | HTTPS (ISO 17978 SOVD REST) | TLS, mTLS, JSON, correlation id |
+| Tester -> Gateway/Server | HTTPS (ASAM SOVD v1.1 OpenAPI / ISO 17978-3) | TLS, mTLS, JSON, correlation id |
 | Gateway -> Server | in-process fn / async channel | same Tokio runtime |
 | Gateway -> DFM | in-process via `SovdBackend` trait | `sovd-interfaces` |
 | Gateway -> CDA | HTTP (Axum service) | in-proc or loopback |
@@ -547,7 +561,7 @@ sequenceDiagram
 
 ## 8. API Surface
 
-### 8.1 REST endpoints (ISO 17978)
+### 8.1 REST endpoints (ASAM SOVD v1.1 OpenAPI / ISO 17978-3)
 
 | Method | Endpoint | Description | Req |
 |--------|----------|-------------|-----|
@@ -585,8 +599,9 @@ flowchart TD
 
 ### 8.3 OpenAPI contract
 
-The API schema is snapshot-locked to ASAM SOVD v1.1. Any schema change is
-detected by `cargo xtask openapi-dump --check` and fails CI.
+The API schema is snapshot-locked to ASAM SOVD v1.1 OpenAPI
+(ISO 17978-3). Any schema change is detected by
+`cargo xtask openapi-dump --check` and fails CI.
 
 - 36 golden JSON snapshot files verify wire format stability
 - Schema regeneration is a PR gate
@@ -611,26 +626,24 @@ detected by `cargo xtask openapi-dump --check` and fails CI.
 ```mermaid
 graph LR
     subgraph DEV ["Dev Host (Windows)"]
-        STL["3x ST-LINK"]
+        STL["1x ST-LINK"]
         XDS["1x XDS110"]
         GS["GS_USB (CAN)"]
     end
 
     subgraph PI ["Raspberry Pi (gateway host)"]
         SM["sovd-main"]
-        SIM["ecu-sim"]
+        SIM["ecu-sim<br/>(BCM POSIX)"]
         PX["can-to-doip proxy"]
     end
 
-    subgraph HW ["Physical ECUs"]
-        CVC["CVC STM32G474RE"]
-        FZC["FZC STM32G474RE"]
-        RZC["RZC STM32G474RE"]
-        SC["SC TMS570LC43x"]
+    subgraph HW ["Physical ECUs (2)"]
+        CVC["CVC STM32G474RE<br/>(central)"]
+        SC["SC TMS570LC43x<br/>(safety)"]
     end
 
     DEV -->|"SSH"| PI
-    DEV -->|"Serial (flash/debug)"| HW
+    DEV -->|"ST-LINK / XDS110<br/>(flash)"| HW
     PI -->|"can0 (500 kbps)"| HW
 
     style DEV fill:#fff3e0,stroke:#e65100,stroke-width:2px
@@ -730,7 +743,8 @@ graph TB
    possible. Clippy pedantic + deny enforced in CI.
 2. **Trait boundaries, not frameworks.** `sovd-interfaces` defines all contracts
    with zero I/O. Implementations are swappable.
-3. **Spec-locked API surface.** OpenAPI schema snapshot-tested against ASAM SOVD v1.1.
+3. **Spec-locked API surface.** OpenAPI schema snapshot-tested against ASAM
+   SOVD v1.1 OpenAPI (ISO 17978-3).
 4. **Build first, contribute later.** No upstream PRs during early phases.
 5. **Extras on top, never inside mirrored code.** Taktflow customizations live
    in layered crates, not inline edits to upstream files.
@@ -743,7 +757,7 @@ graph TB
 
 | Standard | Relevance |
 |----------|-----------|
-| ISO 17978 (SOVD) | Primary API specification. MVP subset conformance. |
+| ISO 17978 (SOVD) | Part 3 OpenAPI wire contract verified; Parts 1/2 aligned from public sources, full normative conformance not yet claimed. |
 | ISO 14229 (UDS) | Legacy diagnostic protocol via CDA bridge. |
 | ISO 26262 | Safety lifecycle. OpenSOVD is QM; firmware is ASIL-D. |
 | ISO 13400 (DoIP) | Diagnostic transport over IP. |
@@ -767,7 +781,7 @@ graph TB
 | [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md) | SIL/HIL/production deployment |
 | [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md) | Build, run, and test instructions |
 | [GLOSSARY.md](GLOSSARY.md) | Domain terminology |
-| [docs/adr/](adr/) | 18 Architecture Decision Records |
+| [docs/adr/](adr/) | 23 Architecture Decision Records |
 
 ---
 

@@ -50,14 +50,21 @@ Domain-specific terms used in taktflow-opensovd documentation and source code.
 
 ## Hardware
 
+Per ADR-0023, the active test bench comprises **CVC + SC + BCM** (3 ECUs).
+Retired ECU labels (FZC, RZC, ICU, TCU) are kept here for historical context
+and for readers navigating older commits or ADRs.
+
 | Term | Definition |
 |------|-----------|
-| **CVC** | Central Vehicle Controller. One of the physical ECUs on the test bench (STM32G474RE). |
-| **FZC** | Front Zone Controller. Physical ECU on the test bench (STM32G474RE). |
+| **CVC** | Central Vehicle Controller. Active physical ECU on the test bench (STM32G474RE). |
+| **SC** | Safety Controller. Active physical ECU on the test bench (TMS570LC43x). |
+| **BCM** | Body Control Module. Active virtual ECU (POSIX build). |
+| **FZC** | *(retired, ADR-0023)* Front Zone Controller. STM32G474RE. |
+| **RZC** | *(retired, ADR-0023)* Rear Zone Controller. STM32G474RE. |
+| **ICU** | *(retired, ADR-0023)* Instrument Cluster Unit. Virtual POSIX. |
+| **TCU** | *(retired, ADR-0023)* Telematic Control Unit. Virtual POSIX. |
 | **GS_USB** | USB-to-CAN adapter using the gs_usb Linux kernel driver. |
-| **RZC** | Rear Zone Controller. Physical ECU on the test bench (STM32G474RE). |
-| **SC** | Safety Controller. Physical ECU on the test bench (TMS570LC43x). |
 | **ST-LINK** | STMicroelectronics debug probe for STM32 microcontrollers. |
-| **STM32G474RE** | ARM Cortex-M4F microcontroller (STMicroelectronics). Used for CVC, FZC, RZC ECUs. |
-| **TMS570LC43x** | ARM Cortex-R5F microcontroller (Texas Instruments). Used for the safety controller. |
+| **STM32G474RE** | ARM Cortex-M4F microcontroller (STMicroelectronics). Used for CVC. |
+| **TMS570LC43x** | ARM Cortex-R5F microcontroller (Texas Instruments). Used for SC. |
 | **XDS110** | Texas Instruments debug probe for TMS570 microcontrollers. |

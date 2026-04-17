@@ -51,6 +51,11 @@ All paths are relative to the repository root
 | ADR-0016 | Pluggable S-CORE backends behind standalone defaults | Accepted | `adr/0016-pluggable-score-backends.md` |
 | ADR-0017 | FaultSink wire protocol — postcard + WireFaultRecord shadow | Accepted | `adr/0017-faultsink-wire-protocol-postcard-shadow.md` |
 | ADR-0018 | Never hard fail — log-and-continue for backend impls | Accepted | `adr/0018-never-hard-fail-in-backends.md` |
+| ADR-0019 | SOVD session model derived from UDS modes | Accepted | `adr/0019-sovd-session-model-from-uds.md` |
+| ADR-0020 | SOVD wire errors follow the Part 3 OpenAPI envelopes | Accepted | `adr/0020-sovd-wire-errors-from-part3-openapi.md` |
+| ADR-0021 | Taktflow MVP subset is a local conformance class | Accepted | `adr/0021-taktflow-mvp-subset-as-local-conformance-class.md` |
+| ADR-0022 | Lock lifecycle defaults to TTL, refresh, and auto-release | Accepted | `adr/0022-lock-lifecycle-ttl-refresh-expiry.md` |
+| ADR-0023 | Reduce HIL/SIL test bench from 7 ECUs to 3 ECUs (CVC + SC + BCM) | Accepted | `adr/0023-reduce-bench-to-3-ecus.md` |
 
 Upstream ADRs referenced by this project:
 

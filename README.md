@@ -1,7 +1,8 @@
 # taktflow-opensovd
 
-Open-source **SOVD diagnostic stack** (ISO 17978) -- from REST API to physical
-ECU, tested on real automotive hardware.
+Open-source **SOVD diagnostic stack** implementing the ASAM SOVD v1.1
+OpenAPI (ISO 17978-3) -- from REST API to physical ECU, tested on real
+automotive hardware.
 
 Built by [Taktflow](https://github.com/Taktflow-Systems). Targeting upstream
 contribution to [Eclipse OpenSOVD](https://github.com/eclipse-opensovd) and
@@ -14,9 +15,10 @@ zonal architectures**. Every ECU -- regardless of role or zone -- becomes
 reachable via standard HTTP tooling (`curl`, Postman, cloud fleet APIs)
 instead of proprietary diagnostic hardware and binary protocols.
 
-Taktflow's HIL bench uses a BMS zonal topology (CVC / FZC / RZC / SC) as
-the reference test setup, but the stack is architecture-agnostic within
-automotive diagnostics.
+Taktflow's HIL bench uses a minimal 3-ECU zonal setup (CVC central + SC
+safety + BCM virtual body) as the reference test integration (see ADR-0023).
+The stack itself is architecture-agnostic within automotive diagnostics and
+scales to arbitrary ECU counts without code change.
 
 | Dimension | UDS (legacy) | SOVD (modern) |
 |-----------|-------------|---------------|
@@ -30,13 +32,14 @@ automotive diagnostics.
 
 **In scope:**
 
-- SOVD Server -- REST API implementing ISO 17978, async Rust (Tokio + Axum)
+- SOVD Server -- REST API implementing the ASAM SOVD v1.1 OpenAPI
+  (ISO 17978-3), async Rust (Tokio + Axum)
 - SOVD Gateway -- federated routing across local and remote diagnostic hosts
 - Diagnostic Fault Manager (DFM) -- fault ingestion, persistence, operation-cycle gating
 - Classic Diagnostic Adapter (CDA) -- SOVD-to-UDS/DoIP bridge for legacy ECUs
 - Fault ingestion IPC -- Unix sockets / Windows named pipes, no_std-compatible wire format
 - ODX-to-MDD converter -- diagnostic database format tooling
-- Hardware-in-the-loop test bench -- STM32 + TMS570 physical ECUs on CAN bus
+- Hardware-in-the-loop test bench -- 3 ECUs (CVC STM32G4 + SC TMS570 + BCM POSIX virtual), ADR-0023
 
 **Out of scope:**
 
@@ -52,7 +55,8 @@ automotive diagnostics.
   (SovdBackend, FaultSink, SovdDb, OperationCycle) with zero I/O. Implementations
   are swappable: SQLite or S-CORE KV for persistence, Unix sockets or LoLa
   shared-memory for fault transport, Taktflow or S-CORE lifecycle for operation cycles.
-- **Spec-locked API surface.** OpenAPI schema is snapshot-tested against ASAM SOVD v1.1.
+- **Spec-locked API surface.** OpenAPI schema is snapshot-tested against ASAM
+  SOVD v1.1 (ISO 17978-3).
   `cargo xtask openapi-dump --check` gates every PR.
 - **Build first, contribute later.** No upstream PRs during early phases. When we
   upstream, we upstream finished, tested, working systems.
@@ -69,8 +73,8 @@ automotive diagnostics.
 | Fault ingestion IPC | Unix sockets + postcard wire format (no_std-compatible) |
 | Classic Diagnostic Adapter | 68k LoC Rust, DoIP + UDS session management, MDD database |
 | CAN-to-DoIP proxy | Bridging physical STM32 ECUs to SOVD stack |
-| Embedded UDS (STM32) | FZC SingleFrame F191 round-trip proven live on real hardware |
-| OpenAPI contract | Snapshot-locked to ASAM SOVD v1.1, xtask regeneration |
+| Embedded UDS (STM32) | CVC SingleFrame F191 round-trip proven live on real hardware |
+| OpenAPI contract | Snapshot-locked to ASAM SOVD v1.1 OpenAPI (ISO 17978-3), xtask regeneration |
 
 Previous phases delivered: upstream code-style alignment (Phase 0), workspace
 scaffolding + CDA integration (Phase 1-2), DFM + diagnostic DB + gateway
@@ -81,7 +85,7 @@ routing (Phase 3-4), OpenAPI contract tests, Pi full-stack deploy (Phase 5 D1).
 | Layer | What | Count |
 |-------|------|-------|
 | Unit + async | `#[test]` + `#[tokio::test]` across all Rust crates | 5,680 |
-| Snapshot | `insta` schema snapshots (sovd-interfaces, locked to ASAM SOVD v1.1) | 36 files |
+| Snapshot | `insta` schema snapshots (sovd-interfaces, locked to ASAM SOVD v1.1 OpenAPI / ISO 17978-3) | 36 files |
 | OpenAPI contract | Schema regeneration gate (`cargo xtask openapi-dump --check`) | per PR |
 | Integration | End-to-end flows: in-memory MVP, CDA+ECU-sim, DFM SQLite roundtrip, gateway routing | 25 test files |
 | HIL | Live CAN captures on physical STM32 bench (vcan0 smoke, real CAN, proxy) | 3 capture logs |
@@ -99,7 +103,7 @@ graph TB
 
     UDS -->|"UDS over DoIP"| PROXY["UDS2SOVD Proxy"]
     PROXY -->|"SOVD REST"| GW
-    SOVD_CLI -->|"SOVD REST<br/>(ISO 17978)"| GW
+    SOVD_CLI -->|"SOVD REST<br/>(ASAM v1.1 / ISO 17978-3)"| GW
 
     subgraph STACK ["SOVD Gateway"]
         GW["<b>sovd-gateway</b>"]
@@ -143,32 +147,42 @@ graph LR
         PX["can-to-doip proxy"]
     end
 
-    subgraph HW ["Physical ECUs"]
-        CVC["CVC STM32G474RE"]
-        FZC["FZC STM32G474RE"]
-        RZC["RZC STM32G474RE"]
-        SC["SC TMS570LC43x"]
+    subgraph HW ["Physical ECUs (2)"]
+        CVC["CVC STM32G474RE<br/>(central)"]
+        SC["SC TMS570LC43x<br/>(safety)"]
+    end
+
+    subgraph VIRT ["Virtual ECU (1)"]
+        BCM["BCM (POSIX)<br/>on Pi or Docker"]
     end
 
     DEV -->|"SSH"| PI
-    DEV -->|"Serial<br/>(flash/debug)"| HW
+    DEV -->|"ST-LINK / XDS110<br/>(flash)"| HW
     PI -->|"can0 (500 kbps)<br/>ISO-TP frames"| HW
+    PI -->|"DoIP / TCP"| VIRT
 
     style DEV fill:#fff3e0,stroke:#e65100,stroke-width:2px
     style PI fill:#e8f4fd,stroke:#1a73e8,stroke-width:2px
     style HW fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style VIRT fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
 ```
 
 | Service | Host | Role |
 |---------|------|------|
 | sovd-main | Pi | SOVD REST API |
-| ecu-sim | Pi | Virtual ECU simulator (POSIX builds of CVC/FZC/RZC) |
+| ecu-sim | Pi | Virtual ECU simulator (POSIX build of BCM) |
 | can-to-doip proxy | Pi | Bridges CAN ISO-TP to DoIP for physical ECUs |
 
-**Physical ECUs:** 3x STM32G474RE (CVC, FZC, RZC) + 1x TMS570LC43x (SC),
-all on CAN bus at 500 kbps via ISO-TP. Flashed via ST-LINK and XDS110.
+**3-ECU bench (ADR-0023):**
 
-**Virtual ECUs:** BCM, ICU, TCU run as POSIX builds on the Pi or in Docker.
+- **CVC** — STM32G474RE, central vehicle controller, ST-LINK flashing
+- **SC** — TMS570LC43x, safety controller, XDS110 flashing (different vendor,
+  proves no accidental ST-lock-in)
+- **BCM** — POSIX virtual, DoIP-direct path (no proxy)
+
+The 3-ECU set covers every architectural code path in the stack. The stack
+itself is not hardcoded to this count — additional ECUs can be added via
+config without code change.
 
 **Deployment:** `deploy/pi/phase5-full-stack.sh` cross-compiles for aarch64,
 rsyncs to Pi, installs systemd units, and verifies with a health check.
@@ -235,7 +249,7 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 | `docs/DEVELOPER-GUIDE.md` | Build prerequisites, toolchain setup, run and test instructions |
 | `docs/DEPLOYMENT-GUIDE.md` | SIL / HIL / production topology, configuration, rollback |
 | `docs/GLOSSARY.md` | Domain terms: SOVD, UDS, DTC, DoIP, ASIL, DFM, and more |
-| `docs/adr/` | 18 Architecture Decision Records (ADR-0001 through ADR-0018) |
+| `docs/adr/` | 23 Architecture Decision Records (ADR-0001 through ADR-0023) |
 | `.github/CONTRIBUTING.md` | How to contribute, PR process, commit conventions |
 | `.github/CODE_OF_CONDUCT.md` | Eclipse Community Code of Conduct |
 | `.github/CHANGELOG.md` | Release history by phase |

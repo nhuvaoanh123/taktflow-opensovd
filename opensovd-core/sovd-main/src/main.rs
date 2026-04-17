@@ -313,14 +313,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_in_memory_server_supports_tcu_local_plus_cda_forward() {
+    async fn build_in_memory_server_supports_bcm_local_plus_cda_forward() {
+        // 3-ECU bench per ADR-0023: bcm is the virtual/local surface;
+        // cvc is forwarded to CDA. Replaces the earlier tcu-local variant.
         let (base_url, handle) = start_mock_cda().await;
         let defaults = crate::config::default_config();
         let config = Configuration {
             server: defaults.server,
             backend: defaults.backend,
             dfm_component_id: Some(String::new()),
-            local_demo_components: vec!["tcu".to_owned()],
+            local_demo_components: vec!["bcm".to_owned()],
             cda_forwards: vec![CdaForwardConfig {
                 component_id: "cvc".to_owned(),
                 remote_component_id: None,
@@ -339,11 +341,12 @@ mod tests {
             .iter()
             .map(|item| (item.id.clone(), item.name.clone()))
             .collect();
+        // list_entities returns in alphabetical order (bcm, cvc).
         assert_eq!(
             ids,
             vec![
+                ("bcm".to_owned(), "Body Control Module".to_owned()),
                 ("cvc".to_owned(), "cvc".to_owned()),
-                ("tcu".to_owned(), "tcu".to_owned()),
             ]
         );
 

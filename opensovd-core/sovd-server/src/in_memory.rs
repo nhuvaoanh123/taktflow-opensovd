@@ -169,9 +169,9 @@ impl InMemoryServer {
     /// Build an in-memory server with exactly the requested demo components.
     ///
     /// This is the configuration-facing constructor used by `sovd-main`
-    /// when a deployment wants a narrower local surface than the legacy
-    /// `cvc/fzc/rzc` trio. Today the supported ids are `cvc`, `fzc`,
-    /// `rzc`, and `tcu`.
+    /// when a deployment wants a narrower local surface than the default
+    /// 3-ECU bench. Per ADR-0023 the supported ids are `cvc`, `sc`, and
+    /// `bcm`; earlier ids (`fzc`, `rzc`, `icu`, `tcu`) are retired.
     ///
     /// # Errors
     ///
@@ -958,7 +958,8 @@ mod tests {
         let server = InMemoryServer::new_with_demo_data();
         let entities = server.list_entities().await.expect("list entities");
         let ids: Vec<String> = entities.items.iter().map(|e| e.id.clone()).collect();
-        assert_eq!(ids, vec!["cvc", "sc", "bcm"]);
+        // list_entities returns in alphabetical order.
+        assert_eq!(ids, vec!["bcm", "cvc", "sc"]);
     }
 
     #[tokio::test]
@@ -1082,13 +1083,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn configurable_demo_components_support_tcu_only() {
-        let server = InMemoryServer::new_with_demo_components(["tcu"]).expect("build");
+    async fn configurable_demo_components_support_bcm_only() {
+        // ADR-0023: bcm is the virtual ECU in the 3-ECU bench, standing in
+        // for the earlier tcu-only configuration used by hybrid deploys.
+        let server = InMemoryServer::new_with_demo_components(["bcm"]).expect("build");
         let entities = server.list_entities().await.expect("list entities");
         assert_eq!(entities.items.len(), 1);
-        let first = entities.items.first().expect("tcu entity");
-        assert_eq!(first.id, "tcu");
-        assert_eq!(first.name, "tcu");
+        let first = entities.items.first().expect("bcm entity");
+        assert_eq!(first.id, "bcm");
+        assert_eq!(first.name, "Body Control Module");
     }
 
     #[test]

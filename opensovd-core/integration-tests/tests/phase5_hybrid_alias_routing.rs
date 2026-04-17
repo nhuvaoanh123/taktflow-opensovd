@@ -217,12 +217,13 @@ async fn phase5_hybrid_alias_routing_keeps_external_ids_and_uses_remote_aliases(
     assert_eq!(response.status(), StatusCode::OK);
     let entities: DiscoveredEntities = response.json().await.expect("parse discovered entities");
     let ids: Vec<String> = entities.items.into_iter().map(|item| item.id).collect();
+    // list_entities returns in alphabetical order (bcm, cvc, sc).
     assert_eq!(
         ids,
         vec![
+            "bcm".to_owned(),
             "cvc".to_owned(),
             "sc".to_owned(),
-            "bcm".to_owned(),
         ]
     );
 

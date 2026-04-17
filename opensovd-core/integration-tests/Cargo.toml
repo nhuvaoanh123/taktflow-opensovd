@@ -24,6 +24,14 @@ workspace = true
 [lib]
 path = "src/lib.rs"
 
+[features]
+# ADR-0024 T24.2.x: opt-in MQTT fan-out integration test flag.
+# The rumqttd / rumqttc / fault-sink-mqtt dev-deps are always linked
+# (Cargo does not support truly optional dev-dependencies), but the
+# test file `adr0024_fault_mqtt_fanout.rs` itself is gated by this
+# feature so the in-process broker only starts when requested.
+fault-sink-mqtt = []
+
 [dependencies]
 
 [dev-dependencies]
@@ -42,3 +50,7 @@ serde_json = { workspace = true }
 tempfile = { workspace = true }
 url = { workspace = true }
 utoipa = { workspace = true, features = ["yaml"] }
+# ADR-0024 T24.2.x — MQTT fan-out test dependencies.
+fault-sink-mqtt = { workspace = true }
+rumqttd = { version = "0.20", default-features = false }
+rumqttc = { workspace = true }

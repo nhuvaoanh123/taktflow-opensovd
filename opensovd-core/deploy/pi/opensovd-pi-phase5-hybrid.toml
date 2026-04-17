@@ -36,3 +36,28 @@ path_prefix = "vehicle/v15"
 
 [logging.otel]
 enabled = false
+
+# ---------------------------------------------------------------------------
+# ADR-0024 Stage 1 — MQTT fault-sink fan-out (disabled by default).
+#
+# When this section is uncommented AND sovd-main is built with the
+# `fault-sink-mqtt` Cargo feature, every DFM-ingested fault is ALSO
+# published as JSON to `vehicle/dtc/new` on the local Mosquitto broker
+# so the Stage 1 observer dashboard (ws_bridge + SvelteKit) can pick
+# it up.
+#
+# TLS/mTLS is intentionally off for Stage 1 — the broker is
+# loopback-only on the Pi and TLS termination is handled by the nginx
+# fronting layer in ADR-0024 §"Resolved Decisions" OQ-24.3/OQ-24.4.
+#
+# TODO(T24.1.12 / T24.1.13): Mosquitto broker deployment on the Pi
+# (eclipse-mosquitto:2 container) ships in a later task group along
+# with the cloud_connector + ws_bridge + nginx compose stack. Do NOT
+# uncomment until the broker is actually running locally, otherwise
+# the buffered drain will log a WARN flood on every boot.
+#
+# [mqtt]
+# broker_host = "127.0.0.1"
+# broker_port = 1883
+# topic       = "vehicle/dtc/new"
+# bench_id    = "sovd-hil"

@@ -34,7 +34,7 @@ use sovd_db_sqlite::SqliteSovdDb;
 use sovd_dfm::{Dfm, FaultSinkBackend, OperationCycleBackend, PersistenceBackend};
 use sovd_interfaces::{
     ComponentId, SovdBackend,
-    traits::{operation_cycle::OperationCycle, sovd_db::SovdDb},
+    traits::{fault_sink::FaultSink, operation_cycle::OperationCycle, sovd_db::SovdDb},
 };
 use sovd_server::{CdaBackend, InMemoryServer};
 use url::Url;
@@ -221,18 +221,31 @@ fn build_cda_forward(forward: &CdaForwardConfig) -> Result<CdaBackend, Box<dyn s
     )?)
 }
 
+/// Result of assembling the server surface: the in-memory server + the
+/// DFM instance (if any) that was registered as a forward. The DFM is
+/// returned as a separate `Arc` so that additional [`FaultSink`]
+/// secondaries (e.g. `MqttFaultSink`) can be fanned out alongside it
+/// per ADR-0024.
+#[derive(Debug)]
+struct AssembledServer {
+    server: Arc<InMemoryServer>,
+    dfm: Option<Arc<Dfm>>,
+}
+
 async fn build_in_memory_server(
     config: &Configuration,
-) -> Result<Arc<InMemoryServer>, Box<dyn std::error::Error>> {
+) -> Result<AssembledServer, Box<dyn std::error::Error>> {
     validate_component_topology(config)?;
     let server = Arc::new(InMemoryServer::new_with_demo_components(
         &config.local_demo_components,
     )?);
 
+    let mut dfm_arc: Option<Arc<Dfm>> = None;
     if let Some(component_id) = configured_dfm_component_id(config) {
-        let dfm = build_dfm(config, component_id).await?;
+        let dfm = Arc::new(build_dfm(config, component_id).await?);
         tracing::info!(component = %component_id, "Registering DFM as forward backend");
-        server.register_forward(Arc::new(dfm)).await?;
+        server.register_forward(Arc::clone(&dfm) as Arc<_>).await?;
+        dfm_arc = Some(dfm);
     }
 
     for forward in &config.cda_forwards {
@@ -246,7 +259,10 @@ async fn build_in_memory_server(
         server.register_forward(Arc::new(backend)).await?;
     }
 
-    Ok(server)
+    Ok(AssembledServer {
+        server,
+        dfm: dfm_arc,
+    })
 }
 
 /// Build an `MqttFaultSink` from a `MqttConfig`.
@@ -265,6 +281,48 @@ fn build_mqtt_fault_sink(
     Ok(fault_sink_mqtt::MqttFaultSink::new(mqtt_cfg)?)
 }
 
+/// Assemble the write-side [`FaultSink`] from the DFM (primary) and any
+/// configured secondary sinks (MQTT behind a feature gate).
+///
+/// Returns `None` when no DFM is configured, i.e. the deployment runs
+/// local demo / CDA-forward only and has no persistence of its own.
+///
+/// ADR-0018 "never hard fail" applies: if the MQTT sink cannot be
+/// constructed we log at WARN and fall through to DFM-only ingestion
+/// rather than failing boot.
+fn assemble_fault_sink(
+    dfm: Option<Arc<Dfm>>,
+    #[cfg(feature = "fault-sink-mqtt")] mqtt_cfg: Option<&MqttConfig>,
+) -> Option<Arc<dyn FaultSink>> {
+    let dfm = dfm?;
+
+    #[cfg(feature = "fault-sink-mqtt")]
+    if let Some(mqtt_cfg) = mqtt_cfg {
+        match build_mqtt_fault_sink(mqtt_cfg) {
+            Ok(mqtt_sink) => {
+                tracing::info!(
+                    broker_host = %mqtt_cfg.broker_host,
+                    broker_port = mqtt_cfg.broker_port,
+                    topic = %mqtt_cfg.topic,
+                    bench_id = %mqtt_cfg.bench_id,
+                    "MQTT FaultSink registered as secondary in fan-out (ADR-0024)"
+                );
+                let fan = fault_sink_mqtt::FanOutFaultSink::new(dfm as Arc<dyn FaultSink>)
+                    .with_secondary(Arc::new(mqtt_sink) as Arc<dyn FaultSink>);
+                return Some(Arc::new(fan) as Arc<dyn FaultSink>);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    err = %e,
+                    "MQTT FaultSink construction failed — continuing with DFM-only ingestion"
+                );
+            }
+        }
+    }
+
+    Some(dfm as Arc<dyn FaultSink>)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -279,7 +337,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     args.update_config(&mut config);
 
-    let app = match config.server.mode {
+    let (app, dfm_for_fanout) = match config.server.mode {
         ServerMode::InMemory => {
             tracing::info!(
                 local_demo_components = ?config.local_demo_components,
@@ -287,40 +345,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cda_forward_count = config.cda_forwards.len(),
                 "Booting InMemoryServer with configured local demo surface and forwards"
             );
-            let server = build_in_memory_server(&config).await?;
-            sovd_server::routes::app_with_server(server)
+            let assembled = build_in_memory_server(&config).await?;
+            let app = sovd_server::routes::app_with_server(Arc::clone(&assembled.server));
+            (app, assembled.dfm)
         }
         ServerMode::HelloWorld => {
             tracing::info!("Booting hello-world router (health endpoint only)");
-            sovd_server::app()
+            (sovd_server::app(), None)
         }
     };
 
-    // Register MqttFaultSink when the feature is compiled in AND the
-    // [mqtt] section appears in the TOML config.
-    #[cfg(feature = "fault-sink-mqtt")]
-    if let Some(mqtt_cfg) = &config.mqtt {
-        match build_mqtt_fault_sink(mqtt_cfg) {
-            Ok(sink) => {
-                tracing::info!(
-                    broker_host = %mqtt_cfg.broker_host,
-                    broker_port = mqtt_cfg.broker_port,
-                    topic = %mqtt_cfg.topic,
-                    bench_id = %mqtt_cfg.bench_id,
-                    "MQTT FaultSink registered"
-                );
-                // The sink is intentionally not wired into the DFM in
-                // Stage 1 — it is constructed and logged so that the
-                // background drain task starts. Full DFM integration is
-                // ADR-0024 Stage 2 (T24.2.x).
-                // Keep the Arc alive for the process lifetime.
-                std::mem::forget(sink);
-            }
-            Err(e) => {
-                tracing::warn!(err = %e, "MQTT FaultSink could not be created — skipping");
-            }
-        }
-    }
+    // ADR-0024 T24.2.x: build the write-side fan-out sink. The DFM is
+    // the primary FaultSink (owns persistence and read side); when the
+    // `fault-sink-mqtt` feature is enabled and [mqtt] is configured, an
+    // `MqttFaultSink` is appended as a secondary so every record_fault
+    // call fans out to the local Mosquitto broker as well.
+    //
+    // The assembled sink is stored in an `Arc` and held for the process
+    // lifetime — in Stage 1 sovd-main itself does not run an IPC reader
+    // task that calls `record_fault`, but keeping the sink alive also
+    // keeps the MQTT background drain task alive so any caller that
+    // obtains the DFM Arc (tests, future IPC wiring) gets both the
+    // persistence and the MQTT publish leg.
+    let _assembled_sink: Option<Arc<dyn FaultSink>> = assemble_fault_sink(
+        dfm_for_fanout,
+        #[cfg(feature = "fault-sink-mqtt")]
+        config.mqtt.as_ref(),
+    );
 
     let addr: SocketAddr = format!("{}:{}", config.server.address, config.server.port).parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -376,9 +427,10 @@ mod tests {
             mqtt: None,
         };
 
-        let server = build_in_memory_server(&config)
+        let assembled = build_in_memory_server(&config)
             .await
             .expect("hybrid server should build");
+        let server = assembled.server;
 
         let discovered = server.list_entities().await.expect("list entities");
         let ids: Vec<(String, String)> = discovered

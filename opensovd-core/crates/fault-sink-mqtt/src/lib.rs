@@ -46,6 +46,9 @@
 
 pub mod buffer;
 pub mod codec;
+pub mod fanout;
+
+pub use fanout::FanOutFaultSink;
 
 use std::{sync::Arc, time::Duration};
 

@@ -724,6 +724,24 @@ subset (ISO 17978-3), with a routing Gateway.
      console within 2 s on `vehicle/dtc/new` topic with
      `bench_id=sovd-hil`.
 
+   **Stage 1 progress as of 2026-04-17** (single session sprint):
+
+   Merged to `main`:
+   - [x] `fault-sink-mqtt` crate scaffolded (`6df34fb`)
+   - [x] `fault-sink-mqtt` wired into DFM dispatch fan-out, in-process `rumqttd` round-trip test green — T24.2.x (`3d3d040` + `4743dc8`)
+   - [x] `ws-bridge` crate — MQTT→WebSocket relay, bearer-token auth, `/metrics` endpoint, end-to-end round-trip test green — T24.1.14 (`0263422`)
+   - [x] SvelteKit dashboard scaffold, 20 widgets, canned stubs (`e52267e`)
+
+   On `feat/mqtt-broker-deploy` (local, unpushed):
+   - [x] Mosquitto broker deployment kit — conf.d drop-in, ACL, systemd-unit reuse, cert-provisioning + install scripts, TLS 1.2 floor, 3650/825-day cert validity (`27019d2c`)
+
+   Remaining for Stage 1 exit:
+   - [ ] Dashboard data-wiring — replace canned stubs with real REST + WS, append `?token=` in `wsClient.ts` (~3–5 days)
+   - [ ] nginx TLS + mTLS terminator container — T24.1.15 (~1 day)
+   - [ ] Prometheus scrape config + Grafana dashboards on Pi — T24.1.9 (~1 day)
+   - [ ] Pin MQTT wire contract with `insta` snapshots across crate boundaries (~1 h)
+   - [ ] Merge `feat/mqtt-broker-deploy` into `main`
+
 **Exit criteria:**
 - All 8 HIL scenarios green in nightly pipeline
 - Performance targets met
@@ -782,11 +800,29 @@ subset (ISO 17978-3), with a routing Gateway.
    - Checklist from §12.2 applied
    - If go: open PRs in the priority order of §8.2
 
+8. **OTA firmware update on CVC** (per ADR-0025, accepted 2026-04-17)
+   - Target: STM32G474RE dual-bank A/B bootloader, CMS/X.509 signing
+     sharing the device mTLS PKI root, N=5 rollback threshold, signed
+     boot-OK witness over MQTT to cloud
+   - Surface: ASAM SOVD v1.1 `bulk-data` endpoints + UDS 0x34/0x36/0x37
+     transfer handler, flash state machine (Idle → Downloading →
+     Verifying → Committed ↔ Rollback)
+   - Requirements: FR-8.1..8.6 + SR-6.1..6.5 (ASPICE-append; DoIP
+     isolation stays at SR-5.1)
+   - Use cases: UC21 initiate / UC22 progress / UC23 abort+rollback,
+     widgets `UC21OtaInitiate.svelte` / `UC22OtaProgress.svelte` /
+     `UC23OtaRollback.svelte`
+   - SC and BCM OTA remain deferred (future ADR-0026 if/when pulled in)
+   - Effort: ~4–6 weeks CVC-only
+
 **Exit criteria:**
 - All phases' exit criteria still hold
 - Safety case delta approved
 - Integrator guide complete (pushed upstream only if team decides per step 7)
 - Contribution decision recorded in `docs/adr/phase-6-contribution-decision.md`
+- OTA on CVC demonstrable end-to-end: signed image uploaded via SOVD
+  bulk-data, flashed to inactive slot, committed after signature pass,
+  boot-OK witness acknowledged at cloud
 
 **Owner:** All hands — lead by architect.
 

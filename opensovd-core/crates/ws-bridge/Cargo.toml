@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+
+[package]
+name = "ws-bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+publish = false
+description = "MQTT -> WebSocket relay for the ADR-0024 capability-showcase dashboard (T24.1.14)."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ws-bridge"
+path = "src/main.rs"
+
+[lib]
+name = "ws_bridge"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal"] }
+axum = { workspace = true, features = ["http1", "tokio", "query", "ws"] }
+tower-http = { workspace = true, features = ["trace"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+rumqttc = { workspace = true }
+futures-util = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync"] }
+# Raw WS client for the round-trip test. Pairs with rumqttd so the
+# whole integration spins up in-process.
+tokio-tungstenite = { workspace = true }
+# Pinned directly (not `workspace = true`) because the workspace entry
+# pulls in native-tls by default; we want rustls only for the HTTP
+# probes we may add later.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+rumqttd = { version = "0.20", default-features = false }
+serde_json = { workspace = true }

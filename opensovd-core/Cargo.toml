@@ -36,6 +36,7 @@ members = [
   "crates/fault-sink-mqtt",
   "crates/opcycle-taktflow",
   "crates/opcycle-score-lifecycle",
+  "crates/ws-bridge",
 ]
 
 [workspace.dependencies]
@@ -53,6 +54,7 @@ fault-sink-lola = { path = "crates/fault-sink-lola" }
 fault-sink-mqtt = { path = "crates/fault-sink-mqtt" }
 opcycle-taktflow = { path = "crates/opcycle-taktflow" }
 opcycle-score-lifecycle = { path = "crates/opcycle-score-lifecycle" }
+ws-bridge = { path = "crates/ws-bridge" }
 
 # ---- common crates ----
 async-trait = "0.1.89"
@@ -154,9 +156,17 @@ postcard = { version = "1.1", default-features = false, features = ["use-std"] }
 # ---- MQTT client (fault-sink-mqtt) ----
 rumqttc = "0.24"
 
+# ---- ws-bridge (ADR-0024 T24.1.14) ----
+# `anyhow` is only used by the `ws-bridge` binary entrypoint; library
+# crates in this workspace use `thiserror` + typed errors.
+anyhow = "1.0"
+futures-util = { version = "0.3", default-features = false }
+
 # ---- test-only helpers ----
 tempfile = "3.14"
 insta = "1"
+# ws-bridge roundtrip test uses tokio-tungstenite as a raw WS client.
+tokio-tungstenite = "0.24"
 
 # ---- utility crates ----
 const_format = "0.2.35" # compile time string formatting

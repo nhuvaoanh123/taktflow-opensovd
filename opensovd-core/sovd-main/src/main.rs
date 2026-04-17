@@ -40,6 +40,8 @@ use sovd_server::{CdaBackend, InMemoryServer};
 use url::Url;
 
 use crate::config::configfile::{CdaForwardConfig, Configuration, ServerMode};
+#[cfg(feature = "fault-sink-mqtt")]
+use crate::config::configfile::MqttConfig;
 
 mod config;
 
@@ -247,6 +249,22 @@ async fn build_in_memory_server(
     Ok(server)
 }
 
+/// Build an `MqttFaultSink` from a `MqttConfig`.
+///
+/// Separated so the `#[cfg(feature)]` guard stays minimal.
+#[cfg(feature = "fault-sink-mqtt")]
+fn build_mqtt_fault_sink(
+    cfg: &MqttConfig,
+) -> Result<fault_sink_mqtt::MqttFaultSink, Box<dyn std::error::Error>> {
+    let mqtt_cfg = fault_sink_mqtt::MqttConfig {
+        broker_host: cfg.broker_host.clone(),
+        broker_port: cfg.broker_port,
+        topic: cfg.topic.clone(),
+        bench_id: cfg.bench_id.clone(),
+    };
+    Ok(fault_sink_mqtt::MqttFaultSink::new(mqtt_cfg)?)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -277,6 +295,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             sovd_server::app()
         }
     };
+
+    // Register MqttFaultSink when the feature is compiled in AND the
+    // [mqtt] section appears in the TOML config.
+    #[cfg(feature = "fault-sink-mqtt")]
+    if let Some(mqtt_cfg) = &config.mqtt {
+        match build_mqtt_fault_sink(mqtt_cfg) {
+            Ok(sink) => {
+                tracing::info!(
+                    broker_host = %mqtt_cfg.broker_host,
+                    broker_port = mqtt_cfg.broker_port,
+                    topic = %mqtt_cfg.topic,
+                    bench_id = %mqtt_cfg.bench_id,
+                    "MQTT FaultSink registered"
+                );
+                // The sink is intentionally not wired into the DFM in
+                // Stage 1 — it is constructed and logged so that the
+                // background drain task starts. Full DFM integration is
+                // ADR-0024 Stage 2 (T24.2.x).
+                // Keep the Arc alive for the process lifetime.
+                std::mem::forget(sink);
+            }
+            Err(e) => {
+                tracing::warn!(err = %e, "MQTT FaultSink could not be created — skipping");
+            }
+        }
+    }
 
     let addr: SocketAddr = format!("{}:{}", config.server.address, config.server.port).parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -329,6 +373,7 @@ mod tests {
                 base_url: base_url.to_string(),
                 path_prefix: "sovd/v1".to_owned(),
             }],
+            mqtt: None,
         };
 
         let server = build_in_memory_server(&config)
@@ -389,6 +434,7 @@ mod tests {
                 base_url: base_url.to_string(),
                 path_prefix: "sovd/v1".to_owned(),
             }],
+            mqtt: None,
         };
 
         let err = build_in_memory_server(&config)

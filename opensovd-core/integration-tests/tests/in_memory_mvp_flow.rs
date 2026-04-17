@@ -82,7 +82,7 @@ async fn in_memory_mvp_flow_round_trips_spec_types() {
     let ids: Vec<String> = entities.items.iter().map(|e| e.id.clone()).collect();
     assert_eq!(
         ids,
-        vec!["cvc".to_string(), "fzc".to_string(), "rzc".to_string()]
+        vec!["cvc".to_string(), "sc".to_string(), "bcm".to_string()]
     );
 
     // 2. GET /sovd/v1/components/cvc/faults -> ListOfFaults with 2 items.

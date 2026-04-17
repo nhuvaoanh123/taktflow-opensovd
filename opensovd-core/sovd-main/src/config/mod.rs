@@ -71,7 +71,7 @@ mod tests {
         assert_eq!(config.server.port, 20002);
         assert_eq!(
             config.local_demo_components,
-            vec!["cvc".to_owned(), "fzc".to_owned(), "rzc".to_owned()]
+            vec!["cvc".to_owned(), "sc".to_owned(), "bcm".to_owned()]
         );
         assert_eq!(config.dfm_component_id.as_deref(), Some("dfm"));
         assert!(config.cda_forwards.is_empty());
@@ -96,7 +96,7 @@ port = 20004
     fn toml_parses_hybrid_phase5_overrides() -> Result<(), Box<dyn std::error::Error>> {
         let config_str = r#"
 dfm_component_id = ""
-local_demo_components = ["tcu"]
+local_demo_components = ["bcm"]
 
 [[cda_forward]]
 component_id = "cvc"
@@ -108,7 +108,7 @@ path_prefix = "vehicle/v15"
             .merge(Toml::string(config_str));
         let config: Configuration = figment.extract()?;
         assert_eq!(config.dfm_component_id.as_deref(), Some(""));
-        assert_eq!(config.local_demo_components, vec!["tcu".to_owned()]);
+        assert_eq!(config.local_demo_components, vec!["bcm".to_owned()]);
         assert_eq!(config.cda_forwards.len(), 1);
         let first = config
             .cda_forwards
@@ -133,15 +133,16 @@ path_prefix = "vehicle/v15"
             .merge(Toml::file(&template));
         let config: Configuration = figment.extract()?;
         assert_eq!(config.dfm_component_id.as_deref(), Some(""));
-        assert_eq!(config.local_demo_components, vec!["tcu".to_owned()]);
-        assert_eq!(config.cda_forwards.len(), 3);
+        // 3-ECU bench per ADR-0023: BCM local, CVC+SC forwarded to CDA.
+        assert_eq!(config.local_demo_components, vec!["bcm".to_owned()]);
+        assert_eq!(config.cda_forwards.len(), 2);
         assert_eq!(
             config
                 .cda_forwards
                 .iter()
                 .map(|forward| forward.component_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["cvc", "fzc", "rzc"]
+            vec!["cvc", "sc"]
         );
         assert_eq!(
             config
@@ -149,7 +150,7 @@ path_prefix = "vehicle/v15"
                 .iter()
                 .map(|forward| forward.remote_component_id.as_deref())
                 .collect::<Vec<_>>(),
-            vec![Some("cvc00000"), Some("fzc00000"), Some("rzc00000")]
+            vec![Some("cvc00000"), Some("sc00000")]
         );
         assert!(
             config

@@ -53,7 +53,9 @@ fn default_dfm_component_id() -> Option<String> {
 }
 
 fn default_local_demo_components() -> Vec<String> {
-    vec!["cvc".to_owned(), "fzc".to_owned(), "rzc".to_owned()]
+    // 3-ECU bench per ADR-0023: CVC (physical STM32, central),
+    // SC (physical TMS570, safety), BCM (POSIX virtual, body control).
+    vec!["cvc".to_owned(), "sc".to_owned(), "bcm".to_owned()]
 }
 
 fn default_cda_path_prefix() -> String {

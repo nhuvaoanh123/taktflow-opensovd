@@ -11,9 +11,10 @@
 # Phase 5 Line A D7 - HIL scenario 06: concurrent testers.
 #
 # Two independent reqwest clients exercise overlapping fault-read and
-# clear flows concurrently against the same Pi sovd-main instance. The
-# scenario remains bench-gated because it needs the real bench fleet plus
-# pre-seeded faults on every referenced component.
+# clear flows concurrently against the same Pi sovd-main instance on the
+# 3-ECU bench (ADR-0023: CVC, SC, BCM). Tester A hits the two physical
+# ECUs (CVC, SC); Tester B hits the virtual ECU (BCM) plus a second CVC
+# pass so both testers produce overlapping traffic on the same component.
 
 name: hil_sovd_06_concurrent_testers
 
@@ -25,16 +26,15 @@ gate:
   tcp_addr: 192.0.2.10:21002
   base_url: http://192.0.2.10:21002
   not_ready_reason: >-
-    Line B Phase 5 has not yet declared the full bench fleet ready.
-    Keep D7 gated until Pi sovd-main can serve concurrent fault flows
-    across the populated bench fleet.
+    Line B Phase 5 has not yet declared the bench ready. Keep D7 gated
+    until Pi sovd-main can serve concurrent fault flows across the
+    3-ECU bench with pre-seeded faults.
 
 fleet:
   expected_components:
     - cvc
-    - fzc
-    - rzc
-    - tcu
+    - sc
+    - bcm
 
 precondition:
   kind: fault-lib-injection
@@ -57,17 +57,17 @@ testers:
       - id: cvc
         list_path: /sovd/v1/components/cvc/faults
         clear_path: /sovd/v1/components/cvc/faults
-      - id: rzc
-        list_path: /sovd/v1/components/rzc/faults
-        clear_path: /sovd/v1/components/rzc/faults
+      - id: sc
+        list_path: /sovd/v1/components/sc/faults
+        clear_path: /sovd/v1/components/sc/faults
   - name: tester_b
     components:
-      - id: fzc
-        list_path: /sovd/v1/components/fzc/faults
-        clear_path: /sovd/v1/components/fzc/faults
-      - id: tcu
-        list_path: /sovd/v1/components/tcu/faults
-        clear_path: /sovd/v1/components/tcu/faults
+      - id: bcm
+        list_path: /sovd/v1/components/bcm/faults
+        clear_path: /sovd/v1/components/bcm/faults
+      - id: cvc
+        list_path: /sovd/v1/components/cvc/faults
+        clear_path: /sovd/v1/components/cvc/faults
 
 faults_call_contract:
   list_method: GET

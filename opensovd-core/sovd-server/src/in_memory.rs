@@ -159,7 +159,8 @@ impl InMemoryServer {
     /// fallible instead of panicking.
     #[must_use]
     pub fn new_with_demo_data() -> Self {
-        match Self::new_with_demo_components(["cvc", "fzc", "rzc"]) {
+        // 3-ECU bench per ADR-0023: CVC central, SC safety, BCM virtual body.
+        match Self::new_with_demo_components(["cvc", "sc", "bcm"]) {
             Ok(server) => server,
             Err(err) => panic!("hardcoded demo component set must stay valid: {err}"),
         }
@@ -890,29 +891,31 @@ fn demo_component_state(id: &str) -> Option<ComponentState> {
                 ),
             ],
         )),
-        "fzc" => Some(demo_component(
-            "fzc",
-            "Front Zone Controller",
+        "sc" => Some(demo_component(
+            "sc",
+            "Safety Controller",
             &[demo_fault(
                 "U0100",
                 "Lost communication with ECU",
                 2,
                 "active",
             )],
+            &[demo_op("safe_state_check", "Safe-state supervisor check", false)],
+            &[("hw_revision", serde_json::json!("TMS570LC43x-B"))],
+        )),
+        "bcm" => Some(demo_component(
+            "bcm",
+            "Body Control Module",
+            &[],
             &[
                 demo_op("relay_self_test", "Relay self test", true),
                 demo_op("read_vin", "Read VIN", false),
             ],
             &[("vin", serde_json::json!("WDD2031411F123456"))],
         )),
-        "rzc" => Some(demo_component(
-            "rzc",
-            "Rear Zone Controller",
-            &[],
-            &[demo_op("relay_self_test", "Relay self test", true)],
-            &[],
-        )),
-        "tcu" => Some(demo_component("tcu", "tcu", &[], &[], &[])),
+        // Retired demo components (ADR-0023). Left as fall-through so an
+        // older config naming an ECU that was removed from the bench still
+        // returns None (no entity) rather than panicking during config load.
         _ => None,
     }
 }
@@ -955,7 +958,7 @@ mod tests {
         let server = InMemoryServer::new_with_demo_data();
         let entities = server.list_entities().await.expect("list entities");
         let ids: Vec<String> = entities.items.iter().map(|e| e.id.clone()).collect();
-        assert_eq!(ids, vec!["cvc", "fzc", "rzc"]);
+        assert_eq!(ids, vec!["cvc", "sc", "bcm"]);
     }
 
     #[tokio::test]

@@ -10,11 +10,11 @@
 #
 # Phase 5 Line A D3 - HIL scenario 02: clear faults and verify.
 #
-# Per docs/prompts/phase-5-line-a.md, this scenario must inject a fault
-# before issuing DELETE .../faults so the bench has something real to clear.
-# Line A does not own the physical injection path, so the injection is
-# recorded here as an explicit precondition. The integration test fails if
-# the component fault list is empty before the clear step.
+# 3-ECU bench per ADR-0023 (CVC, SC, BCM). The scenario must inject a
+# fault before issuing DELETE .../faults so the bench has something real
+# to clear. Line A does not own the physical injection path, so the
+# injection is recorded here as an explicit precondition. The integration
+# test fails if the component fault list is empty before the clear step.
 
 name: hil_sovd_02_clear_faults
 
@@ -26,16 +26,15 @@ gate:
   tcp_addr: 192.0.2.10:21002
   base_url: http://192.0.2.10:21002
   not_ready_reason: >-
-    Line B Phase 5 has not yet declared the full bench fleet ready.
+    Line B Phase 5 has not yet declared the bench fleet ready.
     Keep D3 gated until the bench can both expose all components and
     inject at least one clearable fault per component.
 
 fleet:
   expected_components:
     - cvc
-    - fzc
-    - rzc
-    - tcu
+    - sc
+    - bcm
 
 precondition:
   kind: fault-lib-injection
@@ -64,32 +63,22 @@ calls:
     expect_clear_status: 204
     expect_type: sovd_interfaces::spec::fault::ListOfFaults
 
-  - name: fzc_clear_faults
-    component_id: fzc
+  - name: sc_clear_faults
+    component_id: sc
     list_method: GET
-    list_path: /sovd/v1/components/fzc/faults
+    list_path: /sovd/v1/components/sc/faults
     expect_list_status: 200
     clear_method: DELETE
-    clear_path: /sovd/v1/components/fzc/faults
+    clear_path: /sovd/v1/components/sc/faults
     expect_clear_status: 204
     expect_type: sovd_interfaces::spec::fault::ListOfFaults
 
-  - name: rzc_clear_faults
-    component_id: rzc
+  - name: bcm_clear_faults
+    component_id: bcm
     list_method: GET
-    list_path: /sovd/v1/components/rzc/faults
+    list_path: /sovd/v1/components/bcm/faults
     expect_list_status: 200
     clear_method: DELETE
-    clear_path: /sovd/v1/components/rzc/faults
-    expect_clear_status: 204
-    expect_type: sovd_interfaces::spec::fault::ListOfFaults
-
-  - name: tcu_clear_faults
-    component_id: tcu
-    list_method: GET
-    list_path: /sovd/v1/components/tcu/faults
-    expect_list_status: 200
-    clear_method: DELETE
-    clear_path: /sovd/v1/components/tcu/faults
+    clear_path: /sovd/v1/components/bcm/faults
     expect_clear_status: 204
     expect_type: sovd_interfaces::spec::fault::ListOfFaults

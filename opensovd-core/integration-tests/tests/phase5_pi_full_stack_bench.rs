@@ -60,8 +60,8 @@ const BENCH_ENV: &str = "TAKTFLOW_BENCH";
 /// data (see `sovd-server::InMemoryServer::new_with_demo_data`). A
 /// Pi-side deploy that runs `sovd-main` without wiring a real DFM
 /// backend still exposes these three component ids, which is the
-/// minimum D1 green signal.
-const EXPECTED_COMPONENTS: &[&str] = &["cvc", "fzc", "rzc"];
+/// minimum D1 green signal. 3-ECU bench per ADR-0023.
+const EXPECTED_COMPONENTS: &[&str] = &["cvc", "sc", "bcm"];
 
 /// Result of the preflight probe.
 enum Preflight {

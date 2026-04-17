@@ -835,7 +835,9 @@ mod tests {
         gateway
             .register_host(Arc::new(DeadHost {
                 name: "dead".into(),
-                components: vec![ComponentId::new("fzc"), ComponentId::new("rzc")],
+                // Arbitrary IDs for the unreachable-host test; intentionally
+                // not an active bench ECU (ADR-0023 keeps only cvc/sc/bcm).
+                components: vec![ComponentId::new("ghost_a"), ComponentId::new("ghost_b")],
             }))
             .unwrap();
         let discovered = gateway
@@ -856,7 +858,7 @@ mod tests {
         unreachable_sorted.sort();
         assert_eq!(
             unreachable_sorted,
-            vec!["fzc".to_owned(), "rzc".to_owned()],
+            vec!["ghost_a".to_owned(), "ghost_b".to_owned()],
             "dead host's components must be reported in host_unreachable"
         );
         assert!(extras.stale, "stale flag must be set on partial outage");

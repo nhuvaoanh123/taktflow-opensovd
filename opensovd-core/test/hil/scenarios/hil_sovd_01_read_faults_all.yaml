@@ -10,9 +10,9 @@
 #
 # Phase 5 Line A D2 - HIL scenario 01: read faults across all bench ECUs.
 #
-# Per docs/prompts/phase-5-line-a.md, this scenario must exist now but it
-# must remain gated on PHASE5_BENCH_READY=1 until Line B declares the full
-# hardware fleet ready. The D2 integration test loads this file directly.
+# 3-ECU bench per ADR-0023: CVC (physical STM32 central), SC (physical
+# TMS570 safety), BCM (POSIX virtual body). Gated on PHASE5_BENCH_READY=1
+# until Line B declares hardware ready.
 
 name: hil_sovd_01_read_faults_all
 
@@ -24,16 +24,15 @@ gate:
   tcp_addr: 192.0.2.10:21002
   base_url: http://192.0.2.10:21002
   not_ready_reason: >-
-    Line B Phase 5 has not yet declared the full bench fleet ready.
-    Keep D2 gated until CVC, FZC, RZC, and TCU are all provisioned and
-    reachable through Pi sovd-main.
+    Line B Phase 5 has not yet declared the bench fleet ready.
+    Keep D2 gated until CVC, SC, and BCM (per ADR-0023) are all
+    provisioned and reachable through Pi sovd-main.
 
 fleet:
   expected_components:
     - cvc
-    - fzc
-    - rzc
-    - tcu
+    - sc
+    - bcm
 
 inventory_call:
   name: list_components
@@ -50,23 +49,16 @@ calls:
     expect_status: 200
     expect_type: sovd_interfaces::spec::fault::ListOfFaults
 
-  - name: fzc_faults
+  - name: sc_faults
     method: GET
-    component_id: fzc
-    path: /sovd/v1/components/fzc/faults
+    component_id: sc
+    path: /sovd/v1/components/sc/faults
     expect_status: 200
     expect_type: sovd_interfaces::spec::fault::ListOfFaults
 
-  - name: rzc_faults
+  - name: bcm_faults
     method: GET
-    component_id: rzc
-    path: /sovd/v1/components/rzc/faults
-    expect_status: 200
-    expect_type: sovd_interfaces::spec::fault::ListOfFaults
-
-  - name: tcu_faults
-    method: GET
-    component_id: tcu
-    path: /sovd/v1/components/tcu/faults
+    component_id: bcm
+    path: /sovd/v1/components/bcm/faults
     expect_status: 200
     expect_type: sovd_interfaces::spec::fault::ListOfFaults

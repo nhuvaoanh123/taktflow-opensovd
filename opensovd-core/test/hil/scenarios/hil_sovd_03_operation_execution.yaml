@@ -8,8 +8,11 @@
 # terms of the Apache License Version 2.0 which is available at
 # https://www.apache.org/licenses/LICENSE-2.0
 #
-# Phase 5 Line A D4 - HIL scenario 03: operation execution via RZC motor
-# self-test. The integration test loads this file directly.
+# Phase 5 Line A D4 - HIL scenario 03: operation execution.
+#
+# 3-ECU bench per ADR-0023. Motor self-test is reassigned from the retired
+# RZC to CVC (which now carries the motor-control role on the reduced
+# bench). The integration test loads this file directly.
 
 name: hil_sovd_03_operation_execution
 
@@ -21,9 +24,8 @@ gate:
   tcp_addr: 192.0.2.10:21002
   base_url: http://192.0.2.10:21002
   not_ready_reason: >-
-    Line B Phase 5 has not yet declared the full bench fleet ready.
-    Keep D4 gated until the RZC operation surface is reachable through
-    Pi sovd-main.
+    Line B Phase 5 has not yet declared the bench ready. Keep D4 gated
+    until the CVC operation surface is reachable through Pi sovd-main.
 
 inventory_call:
   name: list_components
@@ -33,12 +35,12 @@ inventory_call:
   expect_type: sovd_interfaces::spec::component::DiscoveredEntities
 
 target:
-  component_id: rzc
+  component_id: cvc
   operation_id: motor_self_test
 
 start_call:
   method: POST
-  path: /sovd/v1/components/rzc/operations/motor_self_test/executions
+  path: /sovd/v1/components/cvc/operations/motor_self_test/executions
   body:
     timeout: 30
     parameters:
@@ -50,7 +52,7 @@ start_call:
 
 status_call:
   method: GET
-  path_template: /sovd/v1/components/rzc/operations/motor_self_test/executions/{execution_id}
+  path_template: /sovd/v1/components/cvc/operations/motor_self_test/executions/{execution_id}
   expect_status: 200
   expect_type: sovd_interfaces::spec::operation::ExecutionStatusResponse
   accepted_terminal_statuses:

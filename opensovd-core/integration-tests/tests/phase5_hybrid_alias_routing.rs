@@ -12,23 +12,24 @@
 
 //! Phase 5 Line A - local hybrid alias routing proof.
 //!
-//! This is the repo-side end-to-end proof for the new Phase 5 topology:
+//! This is the repo-side end-to-end proof for the new Phase 5 topology
+//! (3-ECU bench, ADR-0023):
 //!
 //! ```text
 //!   client -> OpenSOVD frontend
-//!              |- local demo component: tcu
-//!              `- CDA forwards: cvc/fzc/rzc
+//!              |- local demo component: bcm
+//!              `- CDA forwards: cvc, sc
 //!                                |
 //!                                `-> downstream CDA ids:
-//!                                    cvc00000/fzc00000/rzc00000
+//!                                    cvc00000, sc00000
 //! ```
 //!
 //! The test stands up a mock CDA under `/vehicle/v15`, registers
-//! aliased `CdaBackend`s for `cvc/fzc/rzc`, and verifies two important
+//! aliased `CdaBackend`s for `cvc` and `sc`, and verifies two important
 //! guarantees:
 //!
 //! 1. `OpenSOVD` still exposes the external Taktflow ids
-//!    (`cvc/fzc/rzc/tcu`) to clients.
+//!    (`cvc/sc/bcm`) to clients.
 //! 2. The forwarded HTTP traffic actually targets the downstream alias
 //!    ids (`cvc00000/...`) instead of the external ids.
 
@@ -186,12 +187,11 @@ async fn phase5_hybrid_alias_routing_keeps_external_ids_and_uses_remote_aliases(
         Url::parse(&format!("{}/", mock_cda.base_url)).expect("parse mock CDA base URL");
 
     let server = Arc::new(
-        InMemoryServer::new_with_demo_components(["tcu"]).expect("build TCU-only local surface"),
+        InMemoryServer::new_with_demo_components(["bcm"]).expect("build BCM-only local surface"),
     );
     for (local_component_id, remote_component_id) in [
         ("cvc", "cvc00000"),
-        ("fzc", "fzc00000"),
-        ("rzc", "rzc00000"),
+        ("sc", "sc00000"),
     ] {
         let backend = CdaBackend::new_with_remote_component_and_path_prefix(
             ComponentId::new(local_component_id),
@@ -221,9 +221,8 @@ async fn phase5_hybrid_alias_routing_keeps_external_ids_and_uses_remote_aliases(
         ids,
         vec![
             "cvc".to_owned(),
-            "fzc".to_owned(),
-            "rzc".to_owned(),
-            "tcu".to_owned(),
+            "sc".to_owned(),
+            "bcm".to_owned(),
         ]
     );
 
@@ -284,12 +283,12 @@ async fn phase5_hybrid_alias_routing_keeps_external_ids_and_uses_remote_aliases(
         "frontend must not leak local component id into downstream CDA paths; got {seen_paths:?}"
     );
 
-    let local_tcu_faults = server
-        .dispatch_list_faults(&ComponentId::new("tcu"), FaultFilter::all())
+    let local_bcm_faults = server
+        .dispatch_list_faults(&ComponentId::new("bcm"), FaultFilter::all())
         .await
-        .expect("local TCU faults");
+        .expect("local BCM faults");
     assert!(
-        local_tcu_faults.items.is_empty(),
-        "local TCU component should still be served by the in-memory store"
+        local_bcm_faults.items.is_empty(),
+        "local BCM component should still be served by the in-memory store"
     );
 }

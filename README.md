@@ -257,10 +257,15 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 
 ## Relationship to upstream
 
-This repo consolidates forks of the individual
-[eclipse-opensovd](https://github.com/eclipse-opensovd) repositories into a
-single monorepo. Each component tracks its upstream and can be split back out
-for contribution. OpenSOVD is the designated diagnostic layer for
+Taktflow implementation of the Eclipse OpenSOVD architecture. `opensovd-core/`
+(SOVD Server, Gateway, DFM, Diagnostic DB) is Taktflow-owned — upstream
+[eclipse-opensovd/opensovd-core](https://github.com/eclipse-opensovd/opensovd-core)
+is an empty stub, so we built it ourselves. `classic-diagnostic-adapter/` is
+vendored verbatim from upstream and used as-is for the SOVD→UDS/DoIP bridge.
+Individual crates can be split out via `git subtree split` for upstream
+contribution when the team decides to contribute.
+
+OpenSOVD is the designated diagnostic layer for
 [Eclipse S-CORE](https://projects.eclipse.org/projects/automotive.score) v1.0
 (target: end of 2026).
 

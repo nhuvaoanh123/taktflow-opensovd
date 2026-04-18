@@ -20,7 +20,7 @@ achievement:
   - Phase 2 CDA integration complete — CAN-to-DoIP proxy reaches physical CVC, SIL + HIL smoke green
   - Phase 3 Fault Lib + DFM complete — embedded Fault Shim → DFM SQLite → SOVD GET round-trip <100 ms in Docker
   - Phase 4 SOVD Server + Gateway complete — 5 MVP use cases pass in Docker Compose, every crate upstream-ready (no PRs opened)
-  - Phase 5 Stage 1 in progress — fault-sink-mqtt + ws-bridge crates merged to main; dashboard hybrid data-wiring live; Mosquitto kit ready on feat/mqtt-broker-deploy
+  - Phase 5 Stage 1 in progress — fault-sink-mqtt + ws-bridge + live observer dashboard/overlay work merged to main; Mosquitto kit ready on feat/mqtt-broker-deploy
   - doip-codec evaluation spike complete — partial migration plan documented (docs/doip-codec-evaluation.md), CDA fork pins captured
   - ADR-0023 trimmed physical bench to 3 ECUs (CVC, SC, BCM); FZC/RZC retired
   - ADR-0024 capability-showcase observer dashboard accepted — two-stage plan (self-hosted mTLS first, optional AWS later)
@@ -33,9 +33,9 @@ decisions_with_rationale:
     rationale: Owning finished, tested code avoids upstream churn, design-by-committee, and maintainer-responsiveness dependencies
     how_to_apply: All Phase 0–3 work lives in local feature branches; nothing pushed to our forks without explicit team approval
 
-  - decision: Mirror upstream CDA wholesale, layer Taktflow extras on top
-    rationale: Keeps `git diff upstream/main -- <mirrored-files>` ≈ 0; CI failures on unimplemented parts become our implementation backlog
-    how_to_apply: Copy build.yml / feature flags / patches / deny.toml / workflows verbatim; Taktflow additions go in distinct crates or clearly labeled modules; weekly upstream-sync rebase Monday 09:00
+  - decision: Taktflow owns opensovd-core; CDA is vendored as-is from upstream (scope change 2026-04-19)
+    rationale: Upstream `eclipse-opensovd/opensovd-core` is an empty stub — we built DFM, sovd-gateway, SOVD Server, fault-sink-mqtt, ws-bridge, observer API, dashboard here; the architecture is ours. CDA is real upstream code we use unmodified as the SOVD→UDS/DoIP bridge for legacy ECUs. Keeping opensovd-core nested under its own git history was enforcing synchronization discipline for content that only exists downstream — removed 2026-04-19.
+    how_to_apply: opensovd-core/ has no nested .git — it's a normal monorepo subdirectory under taktflow-opensovd. Contributions upstream (when team decides, §8) go via `git subtree split --prefix=opensovd-core/<crate>` into a throwaway branch pushed to a fresh fork of eclipse-opensovd/opensovd-core. CDA (`classic-diagnostic-adapter/`) stays mirrored verbatim: copy build.yml / feature flags / patches / deny.toml / workflows untouched; any CDA modifications land in separate Taktflow crates or external patches, never inline edits. Upstream-awareness is a monthly read of upstream commits, not a weekly rebase cron.
 
   - decision: Fault Library shim is C on embedded side, Rust only on POSIX / Pi components
     rationale: Avoids dragging Rust toolchain into ASIL-D firmware lifecycle
@@ -69,9 +69,11 @@ current_state:
   summary: |
     Phases 0–4 complete; Phase 5 Stage 1 in progress. Fault fan-out to MQTT
     is wired end-to-end and tested; dashboard is consuming real REST + WS
-    from the bench. Physical-ECU flashing (STM32 + TMS570) and nginx
-    TLS/mTLS terminator remain before Phase 5 exit. Code is upstream-ready
-    but nothing has been pushed to public forks.
+    from the bench. Observer nginx + cert provisioning are scripted and on
+    main, but Phase 5 Stage 1 still needs a live Pi run, Prometheus/Grafana,
+    the D3 clear-fault precondition, and restored Pi redeploy capability.
+    Physical-ECU flashing (STM32 + TMS570) still remains in Phase 5. Code is
+    upstream-ready and no upstream PRs are open.
 
   files_touched:
     - opensovd-core/sovd-server/
@@ -205,7 +207,7 @@ next_steps:
   phase_5_stage_1_exit:
     done:
       - Dashboard data-wiring — UC15 session, UC16 audit log, UC18 gateway routing now live via `/sovd/v1/session` + `/sovd/v1/audit` + `/sovd/v1/gateway/backends` extras; canned data only as on-error fallback (2026-04-18)
-      - nginx TLS + mTLS terminator scripted — `docker-compose.observer-nginx.yml` + `provision-observer-certs.sh` + `phase5-full-stack.sh` overlay, locally verified (T24.1.15 closed 2026-04-18, pending live Pi run)
+      - Observer nginx + cert provisioning + Pi overlay deploy scripted — `docker-compose.observer-nginx.yml` + `provision-observer-certs.sh` + `phase5-full-stack.sh` overlay, locally verified (T24.1.15-T24.1.17 closed 2026-04-18, pending live Pi run)
     open:
       - Provision aarch64-unknown-linux-gnu toolchain on Windows dev host, OR stand up native Rust toolchain on the Pi with a source checkout — unblocks live redeploy (hardening gate, due 2026-04-25)
       - Inject a clearable fault on the bench to unblock D3 HIL precondition
@@ -368,10 +370,10 @@ plan:
                   - SvelteKit scaffold, 20 widgets, canned stubs (e52267e)
                 local_unpushed:
                   - Mosquitto broker deployment kit — conf.d, ACL, systemd, cert provisioning, TLS 1.2 floor (27019d2c)
-                uncommitted_workspace_2026_04_18:
-                  - Dashboard hybrid data-wiring — live components/faults/operations/data/health/session/audit/gateway-backends + ws-bridge relay in dashboard/; canned only as on-error fallback
-                  - Observer nginx deploy assets â€” standalone Pi compose file plus nginx TLS/mTLS config for static dashboard + `/sovd/` + `/ws` proxying in `opensovd-core/deploy/pi/`
-                  - Observer cert provisioning + Pi deploy wiring â€” `provision-observer-certs.sh` plus optional observer overlay in `phase5-full-stack.sh` for dashboard sync, cert generation, nginx compose-up, and mTLS verification
+                merged_to_main_and_pushed_2026_04_18:
+                  - Dashboard hybrid data-wiring — live components/faults/operations/data/health/session/audit/gateway-backends + ws-bridge relay in dashboard/; canned only as on-error fallback (33b07c3)
+                  - Observer nginx deploy assets — standalone Pi compose file plus nginx TLS/mTLS config for static dashboard + `/sovd/` + `/ws` proxying in `opensovd-core/deploy/pi/` (33b07c3)
+                  - Observer cert provisioning + Pi deploy wiring — `provision-observer-certs.sh` plus optional observer overlay in `phase5-full-stack.sh` for dashboard sync, cert generation, nginx compose-up, and mTLS verification (33b07c3)
                 remaining_for_stage_1_exit:
                   - Prometheus scrape + Grafana dashboards on Pi — T24.1.9 (~1 day)
                   - Pin MQTT wire contract with insta snapshots across crate boundaries (~1 h)

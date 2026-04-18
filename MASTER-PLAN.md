@@ -25,6 +25,8 @@ achievement:
   - ADR-0023 trimmed physical bench to 3 ECUs (CVC, SC, BCM); FZC/RZC retired
   - ADR-0024 capability-showcase observer dashboard accepted — two-stage plan (self-hosted mTLS first, optional AWS later)
   - ADR-0025 CVC OTA accepted 2026-04-17 — folded into Phase 6 deliverable 8
+  - 2026-04-18 observer cert provisioning + nginx overlay scripted — `deploy/pi/scripts/provision-observer-certs.sh` + `phase5-full-stack.sh` overlay (opt-in via `OBSERVER_NGINX_ENABLED=1`); generates root CA + server leaf + curl client leaf + PKCS#12 bundle; locally verified (SANs + subject); awaits live Pi run with bench access + `WS_BRIDGE_INTERNAL_TOKEN`
+  - 2026-04-18 UC15/UC16/UC18 dashboard stubs retired — `GET /sovd/v1/session`, `GET /sovd/v1/audit`, `GET /sovd/v1/gateway/backends` extras endpoints landed with shared-middleware audit/session derivation; canned data demoted to on-error fallback only; 45 sovd-server + 56 sovd-interfaces + 36 schema-snapshot tests green; `pnpm run check` + `pnpm run build` clean
 
 decisions_with_rationale:
   - decision: Build first, contribute later — no upstream PRs during Phases 0–3
@@ -96,6 +98,14 @@ current_state:
     - docs/adr/
     - docs/doip-codec-evaluation.md
     - docs/openapi-audit-2026-04-14.md
+    - opensovd-core/deploy/pi/phase5-full-stack.sh
+    - opensovd-core/deploy/pi/scripts/provision-observer-certs.sh
+    - opensovd-core/deploy/pi/docker-compose.observer-nginx.yml
+    - opensovd-core/deploy/pi/nginx/README.md
+    - opensovd-core/deploy/pi/README-phase5.md
+    - opensovd-core/sovd-interfaces/src/extras/mod.rs
+    - opensovd-core/sovd-interfaces/src/extras/observer.rs
+    - opensovd-core/sovd-server/src/routes/observer.rs
 
   status:
     - Phase 0 complete — 2026-04-30
@@ -111,22 +121,99 @@ current_state:
     - No upstream PRs opened — decision deferred to Phase 6
 
 blockers:
-  - Pi binary rebuild pinned to nightly-2025-07-14 lacks aarch64-unknown-linux-gnu target on the Windows dev host; Pi itself has no Rust toolchain or source checkout — blocks Phase 5 live redeploy after the Windows-binary copy incident
-  - D3 SOVD clear-faults HIL precondition unmet on live bench — no clearable fault has been injected; test stays red until inject-step lands
-  - TMS570 Ethernet still absent — not a current blocker (CAN-to-DoIP proxy path handles it) but blocks any future native-DoIP-on-TMS570 ambition
-  - Auth model for SOVD Server unresolved (OAuth2 vs cert vs both) — Phase 4 MVP scaffolded bearer token only, real validation deferred to Phase 6 hardening
-  - R9 — OpenSOVD maintainers starting opensovd-core in parallel would force rebase-onto-their-scaffolding; mitigated but not eliminated by weekly upstream-sync watch
-  - 14-person peak allocation depends on Taktflow not pulling workstream members to other priorities (R11) — architect holds scope via phase gates
-  - ODX schema licensing (R3) — ASAM official vs community XSD still undecided for odx-converter; we ship the community subset under Apache-2.0 as fallback
+  active_technical:
+    - Pi binary rebuild pinned to nightly-2025-07-14 lacks aarch64-unknown-linux-gnu target on the Windows dev host; Pi itself has no Rust toolchain or source checkout — blocks Phase 5 live redeploy after the Windows-binary copy incident; owner must resolve by 2026-04-25 (hard stop before physical HW work starts)
+    - D3 SOVD clear-faults HIL precondition unmet on live bench — no clearable fault has been injected; test stays red until inject-step lands
+    - Observer nginx overlay not yet live-verified on the real Pi — blocked on bench access plus real `WS_BRIDGE_INTERNAL_TOKEN`; local `bash -n` and cert-chain checks passed 2026-04-18
+    - Auth model for SOVD Server unresolved (OAuth2 vs cert vs both) — twice deferred; HARD DEADLINE 2026-06-30 before Phase 6 design lock, else Phase 6 TLS/rate-limit work lands on shifting foundations
+
+  schedule_timeline:
+    - Physical hardware execution has not started — zero STM32 ARM builds, zero ST-LINK flash runs, zero TMS570 flashing, zero real-CAN smoke as of 2026-04-18; plan budgets Phase 5 for 2026-10-16..11-30 but first ARM cross-compile must land by 2026-07-31 to preserve debug surface before M5
+    - OTA scope/time mismatch — ADR-0025 estimates 4–6 weeks of CVC OTA work squeezed into a 4-week Phase 6 window (2026-12-01..12-31); either scope down (drop boot-OK witness, defer N=5 rollback metrics), steal 2 weeks from late Phase 5, or slip M5 into Q1 2027
+    - 30-day consecutive HIL-green success criterion requires Phase 5 exit by 2026-12-01 (not 2026-11-30) to count the 30 days before year-end; zero calendar slack
+    - Upstream PR decision timing risk — plan says "after Phase 5"; if team votes go on 2026-12-10, PRs land into Eclipse holiday freeze; dry-run rehearsal (CLA/ECA verification + public design discussion seed) needed by 2026-11-15
+    - Safety case delta claimed "ongoing" but no HARA-update work products evidenced in `docs/safety/` for new UDS routines (0x31 motor_self_test / brake_check); safety engineer veto (§13.1) can block Phase 6 exit if work concentrates in Dec — pull HARA work forward to finish by 2026-09-30
+
+  standing:
+    - TMS570 Ethernet still absent — not a current blocker (CAN-to-DoIP proxy path handles it) but blocks any future native-DoIP-on-TMS570 ambition
+    - R9 — OpenSOVD maintainers starting opensovd-core in parallel would force rebase-onto-their-scaffolding; mitigated but not eliminated by weekly upstream-sync watch
+    - R11 — 14-person peak allocation depends on Taktflow not pulling workstream members to other priorities; plan rates High/High with no concrete buffer; architect reserves a 10% schedule buffer per phase starting Phase 5 and escalates to program lead if any phase trends >5% over plan-days
+    - ODX schema licensing (R3) — ASAM official vs community XSD still undecided for odx-converter; we ship the community subset under Apache-2.0 as fallback; decision owner = embedded lead, due 2026-05-15
+
+hardening_gates:
+  - gate: aarch64 toolchain restored
+    due: 2026-04-25
+    owner: DevOps / CI
+    evidence: `cargo build --target=aarch64-unknown-linux-gnu --release` produces a Pi-runnable binary on Windows dev host OR native `rustup` toolchain installed on Pi with source checkout
+    blocks_if_missed: all Phase 5 live redeploy + observer nginx live run + bench HIL runs
+
+  - gate: performance baseline measured on current bench
+    due: 2026-05-02
+    owner: Test lead
+    evidence: `/sovd/v1/components/{id}/faults` P50/P95/P99 + DFM RSS captured in `docs/perf/baseline-2026-05.md`; gap-to-target computed
+    blocks_if_missed: no feedback loop on whether /faults <100 ms, P99 <500 ms, <200 MB RAM targets need scope change — late surprise risk
+
+  - gate: live observer Pi run verified
+    due: 2026-05-09
+    owner: Pi engineer
+    evidence: `OBSERVER_NGINX_ENABLED=1 ./deploy/pi/phase5-full-stack.sh` serves dashboard over mTLS on bench LAN; unauthenticated curl rejected; dashboard loads all 20 UC widgets from real endpoints
+    blocks_if_missed: Stage 1 exit deliverable incomplete
+
+  - gate: auth model decision
+    due: 2026-06-30
+    owner: Architect + security lead
+    evidence: ADR in `docs/adr/` selects one of {OAuth2, mTLS client-cert, hybrid}; scaffolded middleware replaced with real validator
+    blocks_if_missed: Phase 6 TLS / rate-limit / integrator-guide work destabilized
+
+  - gate: first STM32 ARM cross-compile + ST-LINK flash smoke
+    due: 2026-07-31
+    owner: Embedded lead + Pi engineer
+    evidence: `cargo xtask flash-cvc` lands CVC ARM ELF via COM3 ST-LINK; UDS 22F190 over real CAN returns VIN matching `cvc_identity.toml`
+    blocks_if_missed: all HIL scenarios 1–8 against physical CVC delayed; Phase 5 exit at risk
+
+  - gate: safety case delta (HARA for 0x31 routines, DoIP + FaultShim FMEA) approved
+    due: 2026-09-30
+    owner: Safety engineer + Embedded lead
+    evidence: updated HARA rows for motor_self_test + brake_check; FMEA entries for DoIP POSIX + FaultShim; safety engineer sign-off recorded in `docs/safety/approvals/2026-09.md`
+    blocks_if_missed: Phase 6 exit blocked by veto; year-end slip likely
+
+  - gate: OTA scope lock
+    due: 2026-10-15
+    owner: Architect + Embedded lead
+    evidence: ADR-0025 amended to lock CVC-only scope, explicit in/out list for N=5 rollback metrics + boot-OK witness + MQTT uplink; revised effort estimate fits Phase 6 window or steals named Phase 5 days
+    blocks_if_missed: Phase 6 OTA overruns Dec-31 and M5 slips
+
+  - gate: upstream PR dry-run
+    due: 2026-11-15
+    owner: Architect + upstream liaison
+    evidence: ECA signatures verified for every contributor in `CONTRIBUTORS`; neutral design-intent discussion thread seeded in `opensovd/discussions` (no code pushed); PR sequencing per §8.2 confirmed with Rust lead + safety engineer
+    blocks_if_missed: go-decision on Dec 10 lands PRs into Eclipse holiday freeze; contribution slips Q1 2027
+
+  - gate: performance targets measured on physical bench
+    due: 2026-11-20
+    owner: Test lead
+    evidence: SIL vs HIL latency + throughput + RSS captured with 200+ request samples; all targets met OR explicit waiver recorded with Rust lead sign-off
+    blocks_if_missed: Phase 5 exit blocked or shipped with unmeasured perf
+
+  - gate: 30-day HIL-green window starts
+    due: 2026-12-01
+    owner: Test lead
+    evidence: 8 HIL scenarios green for the first consecutive night at 2026-12-01 02:00 UTC; any red night resets the counter
+    blocks_if_missed: §12.1 success criterion cannot be satisfied by 2026-12-31
 
 next_steps:
   phase_5_stage_1_exit:
-    - Provision aarch64-unknown-linux-gnu toolchain on Windows dev host, OR stand up native Rust toolchain on the Pi with a source checkout — unblocks live redeploy
-    - Inject a clearable fault on the bench to unblock D3 HIL precondition
-    - Land nginx TLS + mTLS terminator container (T24.1.15, ~1 day)
-    - Land Prometheus scrape config + Grafana dashboards on Pi (T24.1.9, ~1 day)
-    - Pin MQTT wire contract with insta snapshots across crate boundaries (~1 h)
-    - Merge feat/mqtt-broker-deploy into main
+    done:
+      - Dashboard data-wiring — UC15 session, UC16 audit log, UC18 gateway routing now live via `/sovd/v1/session` + `/sovd/v1/audit` + `/sovd/v1/gateway/backends` extras; canned data only as on-error fallback (2026-04-18)
+      - nginx TLS + mTLS terminator scripted — `docker-compose.observer-nginx.yml` + `provision-observer-certs.sh` + `phase5-full-stack.sh` overlay, locally verified (T24.1.15 closed 2026-04-18, pending live Pi run)
+    open:
+      - Provision aarch64-unknown-linux-gnu toolchain on Windows dev host, OR stand up native Rust toolchain on the Pi with a source checkout — unblocks live redeploy (hardening gate, due 2026-04-25)
+      - Inject a clearable fault on the bench to unblock D3 HIL precondition
+      - Live Pi run of `OBSERVER_NGINX_ENABLED=1 ./deploy/pi/phase5-full-stack.sh` — verify nginx serves dashboard over mTLS on bench LAN (hardening gate, due 2026-05-09)
+      - Land Prometheus scrape config + Grafana dashboards on Pi (T24.1.9, ~1 day)
+      - Pin MQTT wire contract with insta snapshots across crate boundaries (~1 h)
+      - Merge feat/mqtt-broker-deploy into main
+      - Capture performance baseline on current bench before Phase 5 HW work starts (hardening gate, due 2026-05-02)
 
   phase_5_remainder:
     - Cross-compile firmware/ecu/cvc/ as ARM ELF; flash via ST-LINK (COM3) with `cargo xtask flash-cvc`
@@ -152,11 +239,12 @@ next_steps:
   open_questions_to_resolve:
     - Fault IPC: Unix socket vs shared memory? — Rust lead, Phase 0 week 2 (decided: Unix socket, in prod)
     - DFM persistence: SQLite vs FlatBuffers file? — Architect, Phase 0 week 2 (decided: SQLite via sqlx)
-    - ODX schema: ASAM download vs community XSD? — Embedded lead, Phase 1 week 1
-    - Auth model: OAuth2 / cert / both? — Architect + security lead, Phase 4 (deferred to Phase 6)
+    - ODX schema: ASAM download vs community XSD? — Embedded lead, hard deadline 2026-05-15 (R3)
+    - Auth model: OAuth2 / cert / both? — Architect + security lead, hard deadline 2026-06-30 (hardening gate, no further deferral)
     - DoIP discovery on Pi: broadcast vs static? — Pi engineer (ADR-0010: "both")
     - Physical DoIP on STM32: lwIP vs ThreadX NetX vs never? — Hardware lead, Phase 5 (deferred)
     - doip-codec Cargo pin: vendor vs git-rev matching CDA exactly? — default git-rev, confirm during migration
+    - OTA scope-down: drop boot-OK witness? defer N=5 rollback metrics? — Architect + Embedded lead, hardening gate 2026-10-15
 
 plan:
   phase_0_foundation:

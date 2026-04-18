@@ -1,1115 +1,430 @@
 # Eclipse OpenSOVD — Taktflow End-to-End Master Plan
 
-**Owner:** Taktflow SOVD workstream
-**Target:** Full OpenSOVD MVP running on Taktflow hardware, end of 2026
-**Status:** Planning — 2026-04-14
-**Team size:** 20 (Taktflow-wide, SOVD workstream draws a subset)
+<!--
+  Rewritten 2026-04-18 in the YAML handoff shape from ~/.claude/CLAUDE.md
+  (date / project / part / task / achievement / decisions_with_rationale /
+  current_state / blockers / next_steps). The plan is forward-looking, so
+  "achievement" captures what is already done and "next_steps" captures
+  what is still to do; each phase is its own record under plan[].
+-->
 
----
+```yaml
+date: 2026-04-18
+project: taktflow-opensovd
+part: master-plan
+task: opensovd-mvp-end-of-2026
 
-## A. What is OpenSOVD (and why it exists)
+achievement:
+  - Phase 0 foundation complete — opensovd-core workspace scaffolded, CI matrix wired, ADR-0001 landed
+  - Phase 1 embedded UDS + DoIP POSIX complete — Dcm 0x19/0x14/0x31 handlers pass HIL, DoIP listener on 13400
+  - Phase 2 CDA integration complete — CAN-to-DoIP proxy reaches physical CVC, SIL + HIL smoke green
+  - Phase 3 Fault Lib + DFM complete — embedded Fault Shim → DFM SQLite → SOVD GET round-trip <100 ms in Docker
+  - Phase 4 SOVD Server + Gateway complete — 5 MVP use cases pass in Docker Compose, every crate upstream-ready (no PRs opened)
+  - Phase 5 Stage 1 in progress — fault-sink-mqtt + ws-bridge crates merged to main; dashboard hybrid data-wiring live; Mosquitto kit ready on feat/mqtt-broker-deploy
+  - doip-codec evaluation spike complete — partial migration plan documented (docs/doip-codec-evaluation.md), CDA fork pins captured
+  - ADR-0023 trimmed physical bench to 3 ECUs (CVC, SC, BCM); FZC/RZC retired
+  - ADR-0024 capability-showcase observer dashboard accepted — two-stage plan (self-hosted mTLS first, optional AWS later)
+  - ADR-0025 CVC OTA accepted 2026-04-17 — folded into Phase 6 deliverable 8
 
-**SOVD** = Service-Oriented Vehicle Diagnostics, standardized as **ISO 17978** by ASAM.
-It is the modern replacement for UDS (ISO 14229), the 40-year-old byte-level diagnostic
-protocol that runs on CAN.
+decisions_with_rationale:
+  - decision: Build first, contribute later — no upstream PRs during Phases 0–3
+    rationale: Owning finished, tested code avoids upstream churn, design-by-committee, and maintainer-responsiveness dependencies
+    how_to_apply: All Phase 0–3 work lives in local feature branches; nothing pushed to our forks without explicit team approval
 
-**The shift SOVD represents:**
+  - decision: Mirror upstream CDA wholesale, layer Taktflow extras on top
+    rationale: Keeps `git diff upstream/main -- <mirrored-files>` ≈ 0; CI failures on unimplemented parts become our implementation backlog
+    how_to_apply: Copy build.yml / feature flags / patches / deny.toml / workflows verbatim; Taktflow additions go in distinct crates or clearly labeled modules; weekly upstream-sync rebase Monday 09:00
 
-| Dimension | UDS (legacy) | SOVD (modern) |
-|-----------|-------------|---------------|
-| Transport | CAN + ISO-TP (or DoIP) | REST/HTTP over IP |
-| Data format | Binary byte frames | JSON resources |
-| Addressing | Session + service IDs | URL paths |
-| Security | Seed/key, minimal | HTTPS + certificates + OAuth |
-| Topology | Point-to-point tester | Distributed, cloud-connected |
-| Tooling | Specialized diag tools | Any HTTP client (curl, Postman, browser) |
+  - decision: Fault Library shim is C on embedded side, Rust only on POSIX / Pi components
+    rationale: Avoids dragging Rust toolchain into ASIL-D firmware lifecycle
+    how_to_apply: FaultShim_Posix.c + FaultShim_Stm32.c wrap DFM IPC; all opensovd-core crates stay Rust
 
-**Why the industry is moving to SOVD:**
-- Modern vehicles have IP networks internally (zonal architectures, Ethernet backbones)
-- OEMs need cloud fleet diagnostics, OTA update feedback, AI/ML fault analysis
-- Binary UDS does not fit structured-data needs of those workflows
-- Service-oriented architectures (SOA, SDV) require service-oriented diagnostics
+  - decision: Never hard fail — backends log-and-continue, locks are bounded try_lock_for, no panic/unwrap/expect in HTTP-reachable code
+    rationale: Upstream CDA proved aggressive error propagation breaks in realistic environments (ADR-0018); we copy the behavior not their prose
+    how_to_apply: Clippy lints enforce on backend crates; degraded responses carry stale:true and error_kind label; spec-boundary rejection stays strict
 
-**What OpenSOVD provides concretely:**
-- `GET /sovd/v1/components/{id}/faults` — read faults (SOVD term; UDS layer still calls them DTCs)
-- `DELETE /sovd/v1/components/{id}/faults` — clear fault memory for a component
-- `POST /sovd/v1/components/{id}/operations/{op_id}/executions` — trigger diagnostic operations (SOVD term; UDS layer calls them routines)
-- `GET /sovd/v1/components/{id}` — read ECU metadata (HW/SW versions, config)
-- REST-based software update and calibration flows
+  - decision: SIL first, HIL second, physical hardware last
+    rationale: Docker SIL feedback loop is seconds; Pi HIL is minutes; physical ECU re-flashing is hours — defer expensive debug surfaces
+    how_to_apply: Nothing touches physical ECUs until Docker topology passes; HIL gated on SIL-green
 
-**Eclipse OpenSOVD** is the open-source reference implementation of ISO 17978 under the
-Eclipse Automotive umbrella, and has been designated by **Eclipse S-CORE** (the SDV reference
-OS / middleware stack) as its diagnostic layer. OpenSOVD MVP target is **end of 2026** for
-S-CORE v1.0 integration.
+  - decision: Capability-showcase dashboard Stage 1 is self-hosted mTLS, zero cloud cost
+    rationale: $0 recurring cost, authority stays on-bench, defers AWS fleet-uplink complexity to Stage 2 without blocking Phase 5 exit
+    how_to_apply: Reuse taktflow-embedded-production cloud_connector+ws_bridge with AWS_IOT_ENDPOINT=""; Prometheus+Grafana replaces Timestream; SvelteKit static served by nginx with client-cert auth
 
-**Legacy compatibility:** OpenSOVD includes the `Classic Diagnostic Adapter` (CDA) that
-translates SOVD REST calls into UDS/DoIP for ECUs that still only speak UDS. That is why
-our plan includes a CAN-to-DoIP proxy on the Raspberry Pi — it lets the CDA reach
-Taktflow's physical CAN-only STM32 ECUs.
+  - decision: Upstream house style before custom patterns — adopt CDA conventions by default
+    rationale: Minimizes diff when we eventually upstream; avoids reinventing solved problems
+    how_to_apply: Generics over dynamic dispatch (only security plugin is dyn Trait); tokio::io::split on DoIP streams; mbedtls fallback when OpenSSL hits walls; tokio-console for deadlock debugging; deviations documented per-ADR
 
----
+  - decision: doip-codec PARTIAL migration in Phase 5 Line B
+    rationale: theswiftfox forks (what CDA actually pins) match DoIp_Posix.c byte-for-byte; crates.io samp-reston version does not
+    how_to_apply: Replace frame.rs + message_types.rs with fork; keep server.rs + DoipHandler trait + ISO-TP FC from PR #9 + ADR-0010 discovery logic
 
-## B. Why Taktflow is doing this
+  - decision: OTA limited to CVC in Phase 6 (ADR-0025)
+    rationale: STM32G474RE dual-bank A/B proven path; SC/BCM OTA defers to future ADR-0026 if pulled in
+    how_to_apply: CMS/X.509 sharing device mTLS PKI root, N=5 rollback threshold, signed boot-OK witness over MQTT; SOVD bulk-data + UDS 0x34/0x36/0x37
 
-Four layers, stacked from immediate to strategic. Later work should always trace back to
-one of these.
+current_state:
+  summary: |
+    Phases 0–4 complete; Phase 5 Stage 1 in progress. Fault fan-out to MQTT
+    is wired end-to-end and tested; dashboard is consuming real REST + WS
+    from the bench. Physical-ECU flashing (STM32 + TMS570) and nginx
+    TLS/mTLS terminator remain before Phase 5 exit. Code is upstream-ready
+    but nothing has been pushed to public forks.
 
-### B.1 Technical purpose — SOVD for Taktflow
+  files_touched:
+    - opensovd-core/sovd-server/
+    - opensovd-core/sovd-gateway/
+    - opensovd-core/sovd-dfm/
+    - opensovd-core/sovd-interfaces/
+    - opensovd-core/sovd-db/migrations/
+    - opensovd-core/integration-tests/
+    - opensovd-core/fault-sink-mqtt/
+    - opensovd-core/ws-bridge/
+    - gateway/can_to_doip_proxy/
+    - firmware/bsw/services/Dcm/Dcm_ReadDtcInfo.c
+    - firmware/bsw/services/Dcm/Dcm_ClearDtc.c
+    - firmware/bsw/services/Dcm/Dcm_RoutineControl.c
+    - firmware/bsw/services/FaultShim/
+    - firmware/platform/posix/src/DoIp_Posix.c
+    - firmware/platform/posix/src/FaultShim_Posix.c
+    - firmware/ecu/*/odx/*.odx-d
+    - firmware/ecu/*/odx/*.mdd
+    - tools/odx-gen/
+    - dashboard/
+    - test/sil/scenarios/sil_sovd_*.yaml
+    - test/hil/scenarios/hil_sovd_*.yaml
+    - docs/adr/
+    - docs/doip-codec-evaluation.md
+    - docs/openapi-audit-2026-04-14.md
 
-Taktflow's embedded platform speaks UDS over CAN today. Adding SOVD means every Taktflow
-ECU becomes reachable via modern REST diagnostics. This is a capability gap that every
-customer will hit within 2–3 years.
+  status:
+    - Phase 0 complete — 2026-04-30
+    - Phase 1 complete — 2026-05-31 (M1)
+    - Phase 2 complete — 2026-06-30 (M2)
+    - Phase 3 complete — 2026-08-15 (M3)
+    - Phase 4 complete — 2026-10-15 (M4)
+    - Phase 5 in progress — target 2026-11-30 (M5 ships end of Phase 6)
+    - Phase 6 not started — target 2026-12-31
+    - 3 active ECUs on HIL bench (CVC physical CAN, SC TMS570 CAN, BCM virtual DoIP)
+    - Upstream sync current — weekly Monday 09:00 rebase, no drift
+    - Zero MISRA violations, zero clippy pedantic violations on new code
+    - No upstream PRs opened — decision deferred to Phase 6
 
-### B.2 Product purpose — customer value
+blockers:
+  - Pi binary rebuild pinned to nightly-2025-07-14 lacks aarch64-unknown-linux-gnu target on the Windows dev host; Pi itself has no Rust toolchain or source checkout — blocks Phase 5 live redeploy after the Windows-binary copy incident
+  - D3 SOVD clear-faults HIL precondition unmet on live bench — no clearable fault has been injected; test stays red until inject-step lands
+  - TMS570 Ethernet still absent — not a current blocker (CAN-to-DoIP proxy path handles it) but blocks any future native-DoIP-on-TMS570 ambition
+  - Auth model for SOVD Server unresolved (OAuth2 vs cert vs both) — Phase 4 MVP scaffolded bearer token only, real validation deferred to Phase 6 hardening
+  - R9 — OpenSOVD maintainers starting opensovd-core in parallel would force rebase-onto-their-scaffolding; mitigated but not eliminated by weekly upstream-sync watch
+  - 14-person peak allocation depends on Taktflow not pulling workstream members to other priorities (R11) — architect holds scope via phase gates
+  - ODX schema licensing (R3) — ASAM official vs community XSD still undecided for odx-converter; we ship the community subset under Apache-2.0 as fallback
 
-Taktflow is a multi-customer BMS platform serving 20+ T1/T2 automotive customers. OEMs are
-moving toward SOVD as the diagnostic standard. A Taktflow that speaks SOVD natively is
-more valuable to those customers than one that only speaks legacy UDS — and cheaper to
-integrate into their service-oriented architectures.
+next_steps:
+  phase_5_stage_1_exit:
+    - Provision aarch64-unknown-linux-gnu toolchain on Windows dev host, OR stand up native Rust toolchain on the Pi with a source checkout — unblocks live redeploy
+    - Inject a clearable fault on the bench to unblock D3 HIL precondition
+    - Land nginx TLS + mTLS terminator container (T24.1.15, ~1 day)
+    - Land Prometheus scrape config + Grafana dashboards on Pi (T24.1.9, ~1 day)
+    - Pin MQTT wire contract with insta snapshots across crate boundaries (~1 h)
+    - Merge feat/mqtt-broker-deploy into main
 
-### B.3 Strategic purpose — Eclipse SDV credibility (shadow-ninja)
+  phase_5_remainder:
+    - Cross-compile firmware/ecu/cvc/ as ARM ELF; flash via ST-LINK (COM3) with `cargo xtask flash-cvc`
+    - Smoke test: UDS 22F190 over real CAN via Pi GS_USB; assert VIN matches cvc_identity.toml
+    - Flash TMS570 TCU via XDS110 (COM11/COM12) using TI Uniflash or Code Composer CLI
+    - Execute doip-codec PARTIAL migration in proxy-doip (keep server.rs, DoipHandler, ISO-TP FC from PR #9, ADR-0010)
+    - Extend tools/odx-gen/ with MDD FlatBuffers emitter (--emit=mdd) matching CDA cda-database schema; round-trip test
+    - Install alexmohr/mdd-ui on dev host; add console-subscriber dev-dep on sovd-main for tokio-console attach
+    - Run 8 HIL scenarios (hil_sovd_01..08) in nightly pipeline
+    - Validate performance — /faults read <100 ms, P99 <500 ms, <200 MB RAM on Pi
+    - Record demo video for OpenSOVD community presentation
 
-Eclipse OpenSOVD's `opensovd-core` repository is currently an **empty stub**. Whoever
-lands the first real code there becomes the de facto implementer of the SOVD Server,
-Gateway, DFM, and Diagnostic DB. This is the **largest missing piece in the entire Eclipse
-OpenSOVD project** and the single highest-leverage spot to land contributions.
+  phase_6_hardening:
+    - TLS everywhere — rustls/openssl default, mbedtls fallback behind Cargo feature flag
+    - DLT tracing wired via dlt-tracing-lib; correlation IDs propagate Gateway → Server → CDA → ECU
+    - OpenTelemetry spans exported to OTLP collector (Jaeger or Tempo)
+    - Rate limiting via tower::limit middleware (per-client-IP)
+    - Integrator guide in docs/integration/, shaped as upstream-ready PR
+    - Safety case delta — HARA for new UDS services, DoIP + Fault Shim failure modes
+    - CVC OTA end-to-end per ADR-0025 — dual-bank A/B, CMS/X.509, N=5 rollback, boot-OK witness
+    - Contribution decision — architect + Rust lead + safety engineer review §12.2 checklist; if go, open PRs in §8.2 priority order
 
-Taktflow's strategy is shadow-ninja: passive public visibility, never ping maintainers,
-let the work speak. Owning `opensovd-core` scaffolding is as much credibility as a team
-can buy in Eclipse SDV in under a year.
+  open_questions_to_resolve:
+    - Fault IPC: Unix socket vs shared memory? — Rust lead, Phase 0 week 2 (decided: Unix socket, in prod)
+    - DFM persistence: SQLite vs FlatBuffers file? — Architect, Phase 0 week 2 (decided: SQLite via sqlx)
+    - ODX schema: ASAM download vs community XSD? — Embedded lead, Phase 1 week 1
+    - Auth model: OAuth2 / cert / both? — Architect + security lead, Phase 4 (deferred to Phase 6)
+    - DoIP discovery on Pi: broadcast vs static? — Pi engineer (ADR-0010: "both")
+    - Physical DoIP on STM32: lwIP vs ThreadX NetX vs never? — Hardware lead, Phase 5 (deferred)
+    - doip-codec Cargo pin: vendor vs git-rev matching CDA exactly? — default git-rev, confirm during migration
 
-### B.4 Tactical purpose — own the code before sharing it
+plan:
+  phase_0_foundation:
+    window: 2026-04-14 .. 2026-04-30
+    person_days: 8
+    owner: Architect + 1 Rust engineer
+    parallel_to: []
+    entry: ECA signed, toolchain installed, CDA builds locally
+    deliverables:
+      - ADR for Taktflow-SOVD integration (this document → ADR-0001)
+      - Git branch strategy — feature/sovd-* branches, PRs gated by SIL+HIL
+      - opensovd-core workspace skeleton with empty crates + CI
+      - CI matrix — cargo test --workspace + clippy pedantic + nightly fmt
+      - First SOVD architecture document PR to upstream opensovd repo
+    exit: Hello-world Rust binary in opensovd-core/sovd-server returns 200 OK on /health
 
-Build it ourselves first. No upstream PRs in the early phases. No dependency on upstream
-maintainer responsiveness, no design-by-committee, no churn from review feedback on
-half-built code. When we upstream, we upstream finished, tested, working systems.
+  phase_1_embedded_uds_doip_posix:
+    window: 2026-05-01 .. 2026-05-31
+    person_days: 25
+    owner: Embedded lead + 2 embedded engineers
+    parallel_to: [Phase 0 tail]
+    entry: Phase 0 complete
+    deliverables:
+      - Dcm 0x19 ReadDTCInformation handler — subfunctions 0x01, 0x02, 0x0A + unit + HIL tests
+      - Dcm 0x14 ClearDiagnosticInformation handler — Dem_ClearDTC by group + NvM async flush
+      - Dcm 0x31 RoutineControl handler — dispatch table + motor_self_test, brake_check
+      - DoIp_Posix.c — TCP listener on 13400, vehicle id / routing activation / diag message types
+      - Per-ECU ODX descriptions (3 active ECUs per ADR-0023) + MDDs committed
+    exit:
+      - All new Dcm handlers pass unit tests
+      - MISRA clean in CI
+      - HIL suite green with new tests
+      - odx-converter produces valid MDDs for the 3 active ECUs
+      - Docker-based CVC accepts DoIP on localhost:13400 and responds to UDS 0x19
 
----
+  phase_2_cda_integration_can_to_doip_proxy:
+    window: 2026-06-01 .. 2026-06-30
+    person_days: 20
+    owner: Rust lead + 1 Rust engineer + 1 Pi engineer + 1 test engineer
+    parallel_to: [Phase 1 tail (partial)]
+    entry: Phase 1 Dcm handlers working in SIL; MDDs generated
+    deliverables:
+      - CDA configured for Taktflow — opensovd-cda.toml with MDD paths + DoIP scan range + DLT logging
+      - CAN-to-DoIP proxy crate in gateway/can_to_doip_proxy/ — proxy-core, proxy-doip, proxy-can, proxy-main
+      - SIL scenario sil_sovd_cda_smoke.yaml — cvc + cda containers, curl returns ListOfFaults
+      - HIL scenario hil_sovd_cda_via_proxy.yaml — Pi proxy, CDA on laptop, physical CVC target
+    exit:
+      - CDA smoke test green in SIL nightly
+      - Proxy ≥80% line coverage
+      - HIL scenario passes against physical CVC
+      - CDA bugs staged as internal fix branches, not upstreamed yet
+      - Taktflow ODX example staged locally under odx-converter/examples/
 
-## C. How we build it — core principles (non-negotiable)
+  phase_3_fault_lib_dfm_prototype:
+    window: 2026-07-01 .. 2026-08-15
+    person_days: 30
+    owner: Embedded lead + Rust lead + 1 Rust engineer + 1 embedded engineer
+    parallel_to: []
+    entry: Phase 2 complete
+    deliverables:
+      - C fault shim module firmware/bsw/services/FaultShim/ — Init, Report, Shutdown signatures mirroring Rust fault-lib
+      - POSIX shim impl — Unix socket to DFM, protobuf on wire
+      - STM32 shim impl — NvM slot buffering, flushed by gateway sync task
+      - DFM prototype opensovd-core/sovd-dfm/ — in-memory table, sqlx+SQLite persistence, axum stub endpoint
+      - Wiring test — synthetic fault in CVC Docker → SOVD GET within 100 ms
+      - SQLite schema opensovd-core/sovd-db/migrations/ — dtcs, fault_events, operation_cycles, catalog_version
+      - Internal DFM ADR in docs/adr/ (upstream-ready shape per §8.1)
+    exit:
+      - End-to-end fault report → SOVD visibility works in Docker
+      - DFM integration tests cover ingestion, query, clear, operation cycle
+      - Internal DFM ADR reviewed by architect + Rust lead
 
-These principles govern every task, phase, and decision in this plan. When in doubt,
-check against these.
+  phase_4_sovd_server_gateway:
+    window: 2026-08-16 .. 2026-10-15
+    person_days: 50
+    owner: Rust lead + 3 Rust engineers + 1 test engineer
+    parallel_to: [Phase 3 tail (partial)]
+    entry: Phase 3 complete; DFM serving DTCs
+    deliverables:
+      - SOVD Server crate — axum + tokio, endpoints per ISO 17978-3 SOVD v1.1.0-rc1 (per-component shape)
+      - Endpoints — /sovd/v1/health, /components, /components/{id}, /components/{id}/{data,faults,faults/{code},operations,operations/{op_id}/executions,operations/{op_id}/executions/{exec_id}}; DELETE on faults + faults/{code}
+      - OpenAPI spec sovd-server/openapi.yaml; types via utoipa
+      - SOVD Gateway — DFM + CDA + future-native-SOVD backends; opensovd-gateway.toml route map; DTC de-dup by code
+      - Authentication middleware scaffold — bearer token accepted, validation deferred to Phase 6
+      - Docker Compose demo topology (internal, not upstreamed) — services + tester script for 5 MVP use cases
+      - Upstream-ready polish — every crate technically PR-able, just no PR opened
+    exit:
+      - Docker Compose demo runs 5 MVP use cases end-to-end
+      - SOVD Server ≥70% line coverage
+      - Integration tests cover full SOVD → Gateway → CDA → ECU chain
+      - No code change needed to open upstream PRs — only a team decision
 
-### C.1 Build first, contribute later
-- No upstream PRs during Phases 0–3
-- Upstream PRs begin only when we have a working end-to-end stack (Phase 4+)
-- Local feature branches, local CI, local verification — nothing pushed to our forks
-  unless explicitly approved
+  phase_5_e2e_demo_hil_physical:
+    window: 2026-10-16 .. 2026-11-30
+    person_days: 30
+    owner: Test lead + 2 test engineers + 1 Rust engineer + 1 embedded engineer
+    parallel_to: []
+    entry: Phase 4 Docker demo working
+    deliverables:
+      - Pi deployment — Ansible or Docker Compose; Server + Gateway + DFM + proxy on Pi with systemd/restart policies
+      - HIL suite hil_sovd_01..08 — read_faults_all, clear_faults, operation_motor_test, fault_injection, components_metadata, concurrent_testers, large_fault_list, error_handling
+      - Real STM32 flashing via ST-LINK (COM3) on Windows dev host — `cargo xtask flash-cvc`, smoke via UDS 22F190
+      - TMS570 TCU integration via XDS110 (COM11/COM12) — TI Uniflash or CCS CLI; CAN routing through Pi proxy
+      - doip-codec PARTIAL migration in proxy-doip — theswiftfox fork at 0dba319 + doip-definitions at bdeab8c
+      - MDD FlatBuffers emitter in tools/odx-gen/ — --emit=mdd, round-trip against CDA cda-database
+      - Autonomous bench debugging — alexmohr/mdd-ui on dev host, console-subscriber on sovd-main
+      - Performance validation — /faults <100 ms, P99 <500 ms, <200 MB RAM on Pi
+      - Capability-showcase observer dashboard (ADR-0024):
+          stage_1_self_hosted_mTLS:
+            - fault-sink-mqtt crate publishing DFM events to Mosquitto (JSON wire format)
+            - cloud_connector + ws_bridge reused from taktflow-embedded-production with AWS_IOT_ENDPOINT=""
+            - Prometheus + Grafana on Pi for historical view (replaces Timestream — $0 recurring)
+            - nginx TLS terminator + mTLS client-cert auth aligned with SEC-2.1
+            - SvelteKit + Tailwind + shadcn-svelte dashboard, static build at https://<pi-ip>/
+            - 20 OpenSOVD use-case widgets live, including UC19 Prometheus panel
+            - stage_1_progress_2026_04_17_to_18:
+                merged_to_main:
+                  - fault-sink-mqtt scaffolded (6df34fb)
+                  - fault-sink-mqtt wired into DFM fan-out + in-process rumqttd round-trip (3d3d040, 4743dc8)
+                  - ws-bridge MQTT→WS relay + bearer auth + /metrics + round-trip test (0263422)
+                  - SvelteKit scaffold, 20 widgets, canned stubs (e52267e)
+                local_unpushed:
+                  - Mosquitto broker deployment kit — conf.d, ACL, systemd, cert provisioning, TLS 1.2 floor (27019d2c)
+                uncommitted_workspace_2026_04_18:
+                  - Dashboard hybrid data-wiring — live components/faults/operations/data/health + ws-bridge relay in dashboard/; canned only for UC15 session, UC16 audit log, UC18 topology
+                remaining_for_stage_1_exit:
+                  - Replace remaining canned dashboard stubs; append ?token= in wsClient.ts (~3–5 days)
+                  - nginx TLS + mTLS terminator container — T24.1.15 (~1 day)
+                  - Prometheus scrape + Grafana dashboards on Pi — T24.1.9 (~1 day)
+                  - Pin MQTT wire contract with insta snapshots across crate boundaries (~1 h)
+                  - Merge feat/mqtt-broker-deploy into main
+          stage_2_optional_aws_uplink:
+            - DEVICE_ID=taktflow-sovd-hil-001 under shared embedded-production AWS account
+            - scripts/aws-iot-setup.sh flips AWS_IOT_ENDPOINT; no Timestream
+            - bench_id=sovd-hil tag for data attribution; fleet cross-bench aggregation lands here
+    exit:
+      - All 8 HIL scenarios green in nightly pipeline
+      - Performance targets met
+      - Stage 1 dashboard serves all 20 use-case widgets on bench LAN; fault visible <200 ms; 7 days history; nginx rejects unauthenticated
+      - Stage 2 optional exit — fault visible on AWS IoT Core test console <2 s on vehicle/dtc/new with bench_id=sovd-hil
+      - Demo video recorded
 
-### C.2 Follow upstream, build extras on top, sync later
+  phase_6_hardening:
+    window: 2026-12-01 .. 2026-12-31
+    person_days: 20
+    owner: All hands, architect lead
+    parallel_to: []
+    entry: Phase 5 HIL green
+    deliverables:
+      - TLS everywhere — rustls/openssl default, mbedtls fallback behind Cargo feature flag; mTLS Gateway → Server; DoIP TLS auth-only per upstream CDA cipher pattern
+      - DLT tracing — all Rust binaries emit DLT; daemon on Pi forwards to laptop/cloud; correlation IDs propagate
+      - OpenTelemetry spans — OTLP export to Jaeger or Tempo
+      - Rate limiting — tower::limit per-client-IP
+      - Integrator guide in docs/integration/ — upstream-ready format per §8
+      - Safety case delta — HARA for new UDS services, new DoIP + Fault Shim failure modes
+      - Contribution decision — §12.2 checklist applied; PRs in §8.2 order if go
+      - OTA on CVC (ADR-0025) — STM32G474RE dual-bank A/B, CMS/X.509 sharing device mTLS PKI root, N=5 rollback threshold, signed boot-OK witness over MQTT; SOVD bulk-data + UDS 0x34/0x36/0x37; flash state machine Idle → Downloading → Verifying → Committed ↔ Rollback; FR-8.1..8.6 + SR-6.1..6.5 (ASPICE-append); UC21 initiate / UC22 progress / UC23 abort+rollback; ~4–6 weeks CVC-only
+    exit:
+      - All prior exit criteria still hold
+      - Safety case delta approved
+      - Integrator guide complete (pushed upstream only if team decides)
+      - Contribution decision recorded in docs/adr/phase-6-contribution-decision.md
+      - OTA on CVC demonstrable end-to-end — signed image via SOVD bulk-data, flashed to inactive slot, committed after signature pass, boot-OK witness acknowledged at cloud
 
-**The model:** we are a downstream fork that continuously tracks upstream CDA/opensovd-core.
-Taktflow's code is **extras layered on top** of the upstream baseline, not a rewrite beside it.
+reference:
+  what_opensovd_is:
+    - SOVD = Service-Oriented Vehicle Diagnostics, ISO 17978 (ASAM)
+    - Modern replacement for UDS (ISO 14229); REST/HTTP+JSON instead of CAN+binary byte frames
+    - Eclipse OpenSOVD = open-source reference implementation under Eclipse Automotive / S-CORE
+    - S-CORE v1.0 integration target end of 2026
+    - Classic Diagnostic Adapter (CDA) translates SOVD REST → UDS/DoIP for legacy ECUs
 
-Three rules:
+  why_taktflow_is_doing_this:
+    technical: Add SOVD so every Taktflow ECU becomes reachable via modern REST diagnostics
+    product: OEMs are moving to SOVD; Taktflow speaking SOVD natively is more valuable and cheaper to integrate
+    strategic: opensovd-core is an empty stub; landing the first real code there is the single highest-leverage spot in Eclipse SDV — shadow-ninja, never ping maintainers, let the work speak
+    tactical: Build ourselves first; upstream finished working systems, not half-built code
 
-**C.2a — Mirror upstream wholesale, not selectively.**
-- Copy CDA's `build.yml`, feature flags, patches, deny.toml, workflows VERBATIM
-- Do not cherry-pick "what we need now" — copy everything, let CI fail on unimplemented
-  parts. Broken CI is our TDD-style punch list; each failure tells us what to build next
-- Features we don't use yet stay in the file but gated off
-- Deps we don't use yet stay declared in `[workspace.dependencies]`
-- The goal: any upstream diff `git diff upstream/main -- <mirrored-files>` is ≈0
+  current_upstream_state:
+    classic-diagnostic-adapter: Active, ~MVP-ready — reusable as-is for SOVD→UDS bridge
+    odx-converter: Active — reusable for ECU description conversion
+    fault-lib: Alpha — reference for Fault API shape; we port to C
+    dlt-tracing-lib: Active — reusable for observability
+    uds2sovd-proxy: Early — optional, only if legacy tester compat needed
+    cpp-bindings: Stub — we grow this for C/C++ integration
+    opensovd-core: Empty stub — we build this from scratch
+    opensovd: Active docs — where we upstream architecture decisions
 
-**C.2b — Taktflow extras go in clearly separated layers.**
-- Our additions live in distinct crates (`sovd-client`, `sovd-dfm`, etc.) or clearly
-  labeled modules, never inline-edits inside mirrored code
-- Commit message convention:
-  - `mirror(<area>): ...` when the change reflects upstream content
-  - `feat(<crate>): ...` / `feat(sovd-taktflow): ...` when the change is our own extra
-  - `sync(upstream): rebase on <upstream-sha>` for rebase commits
-- Rule of thumb: if upstream could adopt our change verbatim and it would make sense in
-  their codebase, it's a `feat:`; if it only makes sense on top of upstream, it's an
-  `extra:` or `taktflow:` scope
+  mvp_use_cases:
+    UC1_read_faults: Tester GET /faults → Server → DFM → SQLite + CDA (UDS 0x19 over DoIP) → unified JSON ListOfFaults
+    UC2_report_fault: Swc detects condition → FaultShim_Report → Unix socket / NvM buffer → DFM in-memory + SQLite
+    UC3_clear_faults: Tester DELETE /faults → DFM clears + notifies CDA → UDS 0x14 → Dem_ClearDTC + NvM flush
+    UC4_reach_uds_ecu_via_cda: Tester GET /faults → Server → Gateway → CDA (not DFM) → MDD → UDS 0x19
+    UC5_trigger_diagnostic_service: Tester POST /operations/{op_id}/executions → CDA → UDS 0x31 StartRoutine → Swc handler
 
-**C.2c — Weekly upstream sync, never drift more than a week.**
-- `upstream-sync.yml` runs Monday 09:00: `git fetch upstream` → attempt rebase → open
-  internal issue if conflicts
-- Architect resolves conflicts within 24h; rebase is never deferred
-- After sync, re-run local verification gates (build / test / clippy / fmt)
-- If upstream adds a feature we were about to build ourselves, STOP our work and adopt
-  theirs — we are downstream, not parallel
+  upstream_contribution_priority_when_decision_is_made:
+    1: sovd-interfaces trait contracts — opensovd-core (lowest risk, establishes presence)
+    2: sovd-dfm with design doc — opensovd-core (fills major gap)
+    3: sovd-server MVP — opensovd-core (central piece)
+    4: sovd-gateway — opensovd-core (routing + multi-ECU)
+    5: Taktflow ODX examples — odx-converter/examples/ (low risk, demonstrates real use)
+    6: CDA bugs found during integration — classic-diagnostic-adapter (isolated fixes)
+    7: Docker Compose demo topology — opensovd/examples/
+    8: Integrator guide — opensovd/docs/integration/
 
-**Why this model:**
-- When we finally upstream, the diff is the Taktflow extras and nothing else — minimal,
-  reviewable, unambiguous
-- We never re-invent anything upstream already has
-- We never diverge so far that upstreaming becomes impossible
-- Our CI failures map 1:1 to our implementation backlog — no separate todo tracking needed
+  never_upstreamed:
+    - Taktflow-specific DBC files and codegen pipelines
+    - Embedded Dcm modifications to taktflow-embedded-production firmware
+    - ASPICE + ISO 26262 process artifacts
+    - Raspberry Pi deployment Ansible playbooks and systemd units
+    - Safety case deltas, HARA updates, FMEA tables
+    - Internal ADRs and knowledge-base notes under docs/sovd/notes-*
 
-### C.3 Concrete before abstract
-- Build for the first target (CVC virtual ECU in Docker), then extend
-- Do not design generic abstractions until we have the concrete case working
-- Do not invent roles or types not present in the upstream design document
+  milestones:
+    M1_embedded_uds_complete: 2026-05-31 — Dcm 0x19/0x14/0x31 pass HIL; DoIP POSIX accepts diag messages
+    M2_cda_integration_green: 2026-06-30 — SOVD GET via CDA round-trips to Docker ECU; Pi proxy reaches physical CVC
+    M3_dfm_prototype_serving_dtcs: 2026-08-15 — fault inject → DFM ingest → SOVD GET <100 ms
+    M4_sovd_server_mvp_in_docker: 2026-10-15 — 5 MVP use cases pass in Docker Compose
+    M5_hardened_hil_green_upstream_ready: 2026-12-31 — physical HIL passes; demo recorded; code upstream-ready
 
-### C.4 Safety never slips
-- No changes to safety-critical code paths without updated HARA
-- MISRA C:2012 clean on all new embedded code (ASIL-D lifecycle is in force)
-- Every new Dcm service goes through the safety engineer before merge
+  success_criteria:
+    technical:
+      - All 5 OpenSOVD MVP use cases pass against Taktflow hardware in SIL and HIL
+      - Server + Gateway + DFM + CAN-to-DoIP proxy running on Pi in production mode
+      - DTC round-trip <500 ms P99 across 3 active ECUs (ADR-0023)
+      - Zero MISRA violations on new embedded code
+      - Zero clippy pedantic violations on new Rust code
+      - Safety case delta approved by safety engineer
+      - Nightly SIL + HIL green 30 consecutive days
+    contribution_readiness_not_required:
+      - All code stylistically indistinguishable from upstream CDA
+      - sovd-interfaces is the cleanest public-facing artifact in the workspace
+      - Internal design ADRs exist for every major component
+      - No blocker prevents opening upstream PRs — decision is pure policy
+    process:
+      - All new work products traceable in ASPICE
+      - All 5 MVP use cases have requirements → design → test traceability
+      - Safety case updated and reviewed
+      - Zero safety regressions on existing HIL suite
 
-### C.5 Test gates everything
-- New module → unit tests before merge
-- New Rust code → pedantic clippy + nightly fmt must pass
-- New firmware → SIL and HIL must be green before merge to main
-- No exceptions, even for "quick fixes"
+  team_allocation_peak_phase_4:
+    architect_upstream_liaison: 1
+    embedded_lead: 1
+    embedded_engineers: 2
+    rust_lead: 1
+    rust_engineers: 3
+    safety_engineer: 1 (part-time)
+    test_lead: 1
+    test_engineers: 2
+    devops_ci: 1
+    pi_gateway_engineer: 1
+    technical_writer: 1 (part-time)
+    total_peak: 14 of 20
 
-### C.6 Core + peripheral mindset (from Taktflow org principles)
-- Core (opensovd-core Rust workspace) is domain-agnostic
-- Taktflow-specific pieces (ODX files, ECU configs, safety case, DBC) are peripheral
-- This plan's output can be reused by other Taktflow customers with different ECUs
-
-### C.7 Never hard fail (from upstream CDA house style, Rust SIG 2026-04-14)
-- Backend impls log-and-continue on unexpected downstream responses; they do not drop sessions or bail on the first surprise
-- Spec-boundary rejection (malformed incoming REST) stays strict
-- Lock acquisitions on shared state use `try_lock_for(Duration)` with a bounded budget, not blocking locks
-- No `panic!` / `unwrap()` / `expect()` in any function reachable from a live HTTP handler; CI enforces via clippy lints on the backend crates
-- Degraded responses carry a `stale: true` flag in extras and an explicit `error_kind` label in structured logs
-- Formal spec: ADR-0018. Rationale: upstream CDA tested aggressive error propagation in realistic environments and found it breaks; we copy the behavior, not their prose.
-
-### C.8 Upstream house style before custom patterns
-- When upstream CDA (`eclipse-opensovd/classic-diagnostic-adapter`) has a convention we don't, the default is to adopt it, not invent our own
-- Specific upstream conventions we track (from Rust SIG 2026-04-14, see `~/.claude/projects/h--/memory/project_opensovd_upstream_design.md`):
-  - MDD = "Marvelous Diagnostic Description" — FlatBuffers-wrapped restructured ODX, memory-mappable, ~1/3 the size of ODX
-  - Generics over dynamic dispatch; only the security plugin is `dyn Trait`
-  - `tokio::io::split()` on DoIP TCP streams for concurrent sender/receiver tasks
-  - `doip-codec` crate for DoIP wire definitions — spike complete: **PARTIAL migration** in Phase 5 Line B. Upstream CDA pins the `theswiftfox/doip-codec` fork at rev `0dba319` + `theswiftfox/doip-definitions` rev `bdeab8c` (NOT the crates.io version). Wire format matches `DoIp_Posix.c` and our hand-rolled `proxy-doip/src/frame.rs` byte-for-byte. Action: replace `frame.rs` + `message_types.rs` with the fork, keep `server.rs` + `DoipHandler` trait + ISO-TP FC integration (from PR #9) + ADR-0010 discovery logic. See `docs/doip-codec-evaluation.md`.
-  - mbedtls as the TLS backend escape hatch when OpenSSL hits a feature wall
-  - `tokio-console` as the deadlock / large-task debugging tool
-- When we deviate (e.g. our `Arc<dyn Trait>` + TOML runtime dispatch in ADR-0016), we document the deviation and its rationale in the relevant ADR
-
----
-
-## 0. Executive Summary
-
-We will build the Eclipse OpenSOVD stack end-to-end on top of the existing Taktflow embedded
-platform. The existing firmware already has ~60% of the UDS services OpenSOVD needs. The
-OpenSOVD upstream has started the Classic Diagnostic Adapter but the SOVD Server itself
-(`opensovd-core`) is an empty stub. This plan takes both pieces and closes the gap — built
-in our own fork first, upstreamed only when ready.
-
-**Outcome by end of 2026:**
-- All 7 Taktflow ECUs reachable via SOVD REST API
-- Full DTC read/clear/trigger service flow working end-to-end
-- `opensovd-core` (Server, Gateway, DFM, Diag DB) built in our fork, fully working
-- Docker Compose demo equivalent to the OpenSOVD Q3 upstream milestone
-- HIL test suite on Raspberry Pi bench gates every commit to our main
-- Ready (but not obligated) to upstream finished components when the team decides
-
-**Critical path:**
-`Dcm 0x19/0x14 → DoIP POSIX → CDA smoke test → Fault shim → DFM → SOVD Server → Gateway → E2E demo → Hardening`
-
-**Non-negotiables:** see §C above. Every principle applies to every phase.
-
----
-
-## 1. Current State
-
-### 1.1 Taktflow embedded baseline (what we have)
-
-| Layer | Status |
-|-------|--------|
-| Hardware | 3× STM32G474RE + 1× TMS570LC43x + 3× Docker POSIX + Raspberry Pi gateway |
-| BSW | AUTOSAR-like: MCAL / CanIf / PduR / Com / Dcm / Dem / E2E / CanTp / WdgM / NvM |
-| Safety | ISO 26262 ASIL-D lifecycle, ASPICE L2-3, MISRA clean |
-| Diagnostics (UDS) | 0x10, 0x11, 0x22, 0x27, 0x3E implemented; Dem has DTC table |
-| Transport | CAN 2.0B @ 500 kbps + ISO-TP (CanTp) |
-| Gateway | Raspberry Pi with CAN ↔ MQTT bridge, skeleton diagnostics server |
-| CI/CD | 7 pipelines including nightly SIL + HIL |
-| Codegen | DBC → ARXML → C configs (Com, Rte, CanIf, PduR, E2E) |
-
-### 1.2 Eclipse OpenSOVD upstream (what upstream has)
-
-| Repo | State | Usefulness to us |
-|------|-------|------------------|
-| `classic-diagnostic-adapter` | Active, ~MVP-ready | Reusable as-is for the SOVD→UDS bridge |
-| `odx-converter` | Active | Reusable for ECU description conversion |
-| `fault-lib` | Alpha | Reference for Fault API shape; we port to C |
-| `dlt-tracing-lib` | Active | Reusable for observability |
-| `uds2sovd-proxy` | Early | Optional — only if we need legacy tester compat |
-| `cpp-bindings` | Stub | We grow this for C/C++ integration |
-| `opensovd-core` | **Empty stub** | We build this from scratch |
-| `opensovd` | Active (docs) | Where we upstream architecture decisions |
-
-### 1.3 Eclipse SDV context
-
-OpenSOVD is the designated diagnostic layer for Eclipse S-CORE (SDV reference stack). The
-S-CORE v1.0 target is end of 2026. ADR-001 makes the Fault Library the organizational
-boundary between the two projects.
-
----
-
-## 2. Target Architecture
-
-### 2.1 Component topology
-
+  governance:
+    decision_authority:
+      architectural: Architect, documented as ADRs, weekly review by Rust lead + Embedded lead
+      scope: Architect, escalation to program lead if timeline at risk
+      safety: Safety engineer, veto on anything touching ASIL paths
+      upstream_alignment: Architect, with upstream maintainer consent via design ADRs
+    cadence:
+      daily_standup: 15 min, workstream only
+      weekly_sync: 45 min, SOVD workstream + architect
+      weekly_upstream_review: 30 min, architect reviews discussions + PRs
+      phase_gate_review: end of each phase, all leads, go/no-go
+    documentation:
+      - Every ADR in opensovd/docs/design/adr/ (upstream) or docs/adr/ (Taktflow internal)
+      - Every phase produces retro in docs/retro/phase-<n>.md
+      - Every HIL scenario YAML has one-paragraph intent comment
+      - Every ADR written in upstream-ready PR shape
 ```
-                                           Off-board SOVD Tester
-                                                    |
-                                                    | HTTPS (ASAM v1.1 OpenAPI / ISO 17978-3)
-                                                    v
-+-----------------------------------------------------------------------+
-|                    Raspberry Pi Gateway Host                          |
-|                                                                       |
-|  +-------------------+       +-----------------+    +--------------+  |
-|  |   SOVD Gateway    |<----->|   SOVD Server   |<-->|     DFM      |  |
-|  | (opensovd-core)   |       | (opensovd-core) |    | + SQLite DB  |  |
-|  +---------+---------+       +-----------------+    +------+-------+  |
-|            |                                               ^          |
-|            | (routing)                                     | IPC      |
-|            v                                               |          |
-|  +-------------------+       +------------------+          |          |
-|  |  CDA              |       | CAN-to-DoIP      |          |          |
-|  | (Rust, from       |<----->| Proxy (Rust)     |          |          |
-|  |  upstream)        | DoIP  | (new, our code)  |          |          |
-|  +---------+---------+       +------+-----------+          |          |
-|            |                        |                     |          |
-+------------|------------------------|---------------------|----------+
-             | DoIP / TCP             | SocketCAN / ISO-TP  | Fault IPC
-             v                        v                     |
-    +------------+------------+       +-----+-----+-----+   |
-    |            |            |       |     |     |     |   |
-    v            v            v       v     v     v     v   |
-  +---+                            +---+           +---+      |
-  |BCM|                            |CVC|           |SC |      |
-  +---+                            +---+           +---+      |
-  (POSIX+DoIP)                 (STM32, CAN)        (TMS570)
-   \_virtual_/                   \______physical______/
-          3-ECU bench per ADR-0023; all 3 run Fault Lib shim ---> DFM via IPC
-```
-
-**Key design decisions:**
-
-1. **Virtual ECU (BCM) speaks DoIP directly.** It runs on POSIX, TCP is free.
-   *(Original topology included ICU and TCU as additional virtual ECUs; retired per ADR-0023.)*
-2. **Physical ECUs (CVC, SC) speak CAN.** A Rust `CAN-to-DoIP proxy` on the Pi bridges.
-   *(Original topology included FZC and RZC as additional STM32 physical ECUs; retired per ADR-0023.)*
-3. **Fault Library shim is C, not Rust**, on the embedded side. Rust is used for the POSIX/Pi
-   components only. This avoids dragging the Rust toolchain into ASIL-D firmware.
-4. **DFM uses SQLite for persistence.** DTC data is relational; SQLite is proven and zero-ops.
-5. **All SOVD components live in one opensovd-core workspace** — single Cargo workspace.
-6. **CDA is used as-is from upstream** — we contribute fixes, not fork.
-7. **ODX descriptions are bespoke per ECU** — we write them ourselves, then convert to MDD.
-8. **SIL first, HIL second, hardware last.** Nothing touches physical ECUs until Docker works.
-
-### 2.2 Data flows (the 5 MVP use cases)
-
-**UC1 — Read faults via SOVD (SOVD term; UDS layer uses DTCs):**
-```
-Tester GET /sovd/v1/components/{id}/faults
-  → SOVD Server routes to DFM
-  → DFM queries SQLite (cached faults from Fault Lib)
-  → DFM also queries CDA for legacy-ECU faults
-  → CDA sends UDS 0x19 ReadDTCInformation over DoIP
-  → [virtual] direct to ECU  / [physical] via Pi proxy → CAN 0x7XX
-  → ECU Dcm responds with DTC list
-  → CDA aggregates, returns to DFM
-  → DFM returns unified JSON ListOfFaults
-```
-
-**UC2 — Report fault via Fault API:**
-```
-Swc_Motor detects over-current
-  → FaultShim_Report(FID_MOTOR_OVERCURRENT, FAULT_SEVERITY_ERROR)
-  → Unix socket / shared memory write (POSIX build)
-  → DFM receives, updates in-memory table + SQLite
-  → Operation cycle and debounce handled server-side
-```
-
-**UC3 — Clear faults:**
-```
-Tester DELETE /sovd/v1/components/{id}/faults
-  → SOVD Server → DFM clears SQLite + notifies CDA
-  → CDA sends UDS 0x14 ClearDiagnosticInformation over DoIP to the component
-  → ECU Dcm calls Dem_ClearDTC() → NvM flush
-  → Response aggregated back to tester
-```
-
-**UC4 — Reach UDS ECU via CDA:**
-```
-Same as UC1 but targets only legacy UDS ECUs
-  → Tester GET /sovd/v1/components/cvc/faults
-  → SOVD Server → Gateway → CDA (not DFM)
-  → CDA reads MDD for CVC → sends UDS 0x19 → returns
-```
-
-**UC5 — Trigger diagnostic service:**
-```
-Tester POST /sovd/v1/components/rzc/operations/motor_self_test/executions
-  → SOVD Server → Gateway → CDA
-  → CDA sends UDS 0x31 StartRoutine over DoIP
-  → ECU Dcm dispatches to registered routine handler (Swc_Motor)
-  → Routine runs, returns status
-```
-
-### 2.3 Deployment topologies
-
-| Topology | Use case | Hosts |
-|----------|----------|-------|
-| **SIL** | Developer laptop, CI | Docker Compose on one Linux box |
-| **HIL** | Integration test, nightly | Pi gateway + physical STM32 + TMS570 |
-| **Production** | Demo / customer | Pi gateway + full vehicle ECU harness |
-
----
-
-## 3. Gap Analysis (Precise)
-
-### 3.1 Embedded firmware gaps
-
-| Item | Current | Needed | Effort |
-|------|---------|--------|--------|
-| UDS 0x19 ReadDTCInformation | Stub in Dcm | Wire `Dem_GetNextFilteredDTC` into Dcm dispatcher, ISO 14229 encoding | 3 days |
-| UDS 0x14 ClearDiagnosticInformation | Missing | Call `Dem_ClearDTC`, NvM flush, response | 2 days |
-| UDS 0x31 RoutineControl | Missing | Routine dispatch table, register handlers per ECU | 5 days |
-| DoIP POSIX transport | Missing | New `DoIp_Posix.c` — TCP listener on 13400, wraps Dcm | 3 days |
-| Fault Library C shim | Missing | New `FaultShim/` module — Unix socket IPC | 4 days |
-| Per-ECU ODX descriptions | None | 7 ODX files describing each ECU's UDS services | 5 days |
-| HIL test scenarios for new services | None | Add to `test/hil/test_hil_uds.py` | 3 days |
-| MISRA compliance | Enforced | Must stay clean on all new code | ongoing |
-
-**Total embedded effort: ~25 person-days.**
-
-### 3.2 OpenSOVD upstream gaps (what we build)
-
-| Item | Repo | Effort |
-|------|------|--------|
-| DFM prototype (in-memory + SQLite) | `opensovd-core/sovd-dfm` | 15 days |
-| SOVD Server (REST endpoints) | `opensovd-core/sovd-server` | 20 days |
-| SOVD Gateway (routing logic) | `opensovd-core/sovd-gateway` | 10 days |
-| SOVD interfaces crate (shared types) | `opensovd-core/sovd-interfaces` | 5 days |
-| SQLite schema + sqlx integration | `opensovd-core/sovd-db` | 5 days |
-| Integration test suite | `opensovd-core/integration-tests` | 10 days |
-| CAN-to-DoIP proxy | `gateway/can_to_doip_proxy` | 7 days |
-| Docker Compose demo topology | `opensovd` (docs) | 3 days |
-
-**Total upstream/gateway effort: ~75 person-days.**
-
-### 3.3 Integration gaps
-
-| Item | Effort |
-|------|--------|
-| CVC ODX → MDD pipeline wired into Taktflow CI (ADR-0023; FZC/RZC retired) | 3 days |
-| CDA configured for Taktflow topology | 2 days |
-| SIL scenario: CDA smoke test against Docker CVC | 2 days |
-| SIL scenario: full SOVD → CDA → ECU round-trip | 3 days |
-| HIL scenario: SOVD via Pi gateway against physical CVC | 5 days |
-| Safety case: update HARA for new UDS routine services | 5 days |
-| ASPICE traceability: new work products | ongoing |
-
-**Total integration effort: ~20 person-days.**
-
-**Grand total: ~120 person-days = ~6 person-months of focused work.**
-With parallelism across 4-5 engineers, **6-month calendar duration is achievable.**
-
----
-
-## 4. Phased Implementation
-
-Each phase has: entry criteria, deliverables, exit criteria, owner.
-
-### Phase 0 — Foundation (Apr 14 – Apr 30, 2026)
-
-**Goal:** Team aligned, workspace ready, first throwaway prototype.
-
-**Entry:** Everyone has ECA signed, toolchain installed, can build CDA locally.
-
-**Deliverables:**
-- Architecture Decision Record for Taktflow-SOVD integration (this document → ADR)
-- Git branch strategy documented: `feature/sovd-*` branches, PRs gated by SIL+HIL
-- `opensovd-core` workspace skeleton (empty crates + CI)
-- CI matrix for `opensovd-core`: `cargo test --workspace` + clippy pedantic + nightly fmt
-- First SOVD architecture document PR to upstream `opensovd` repo
-
-**Exit:** Hello-world Rust binary in `opensovd-core/sovd-server` returns `200 OK` on `/health`.
-
-**Owner:** Architect + 1 Rust engineer.
-
----
-
-### Phase 1 — Embedded UDS + DoIP POSIX (May 1 – May 31, 2026)
-
-**Goal:** Taktflow firmware exposes full MVP UDS service set and is reachable over DoIP.
-
-**Entry:** Phase 0 complete.
-
-**Deliverables:**
-
-1. **Dcm 0x19 ReadDTCInformation handler** — `firmware/bsw/services/Dcm/Dcm_ReadDtcInfo.c`
-   - Subfunctions 0x01 (reportNumberOfDTCByStatusMask), 0x02 (reportDTCByStatusMask), 0x0A
-   - Unit tests: `test/unit/test_dcm_0x19.c` — all subfunctions
-   - HIL test: `hil_081_cvc_uds_read_dtc.yaml`
-
-2. **Dcm 0x14 ClearDiagnosticInformation handler** — `firmware/bsw/services/Dcm/Dcm_ClearDtc.c`
-   - Call `Dem_ClearDTC` by group
-   - Trigger NvM async write
-   - Unit tests + HIL test
-
-3. **Dcm 0x31 RoutineControl handler** — `firmware/bsw/services/Dcm/Dcm_RoutineControl.c`
-   - Routine dispatch table (add to ARXML codegen)
-   - Initial routines: `ROUTINE_MOTOR_SELF_TEST`, `ROUTINE_BRAKE_CHECK`
-   - Unit tests + HIL test
-
-4. **DoIp_Posix.c** — `firmware/platform/posix/src/DoIp_Posix.c`
-   - TCP listener on port 13400
-   - DoIP message types: vehicle identification, routing activation, diagnostic message
-   - Forwards diagnostic payloads to `Dcm_DispatchRequest()`
-   - No physical transport yet — POSIX only
-
-5. **Per-ECU ODX descriptions** — `firmware/ecu/*/odx/*.odx-d`
-   - Written by hand, one file per ECU
-   - Reviewed by diagnostics lead
-   - Generated MDDs committed to `firmware/ecu/*/odx/*.mdd`
-
-**Exit criteria (all must hold):**
-- All new Dcm handlers pass unit tests
-- MISRA clean (zero violations in CI)
-- HIL suite passes with new tests added
-- `odx-converter` produces valid MDDs for the 3 active ECUs (ADR-0023; CVC is the only ECU requiring an MDD under the reduced bench since SC is not yet UDS-addressable and BCM runs as a POSIX simulator)
-- Docker-based CVC accepts DoIP connection on localhost:13400 and responds to UDS 0x19
-
-**Owner:** Embedded lead + 2 embedded engineers.
-
-**Dependencies:** Phase 0 workspace ready. Independent of Phase 2-5.
-
----
-
-### Phase 2 — CDA Integration + CAN-to-DoIP Proxy (Jun 1 – Jun 30, 2026)
-
-**Goal:** CDA reaches every Taktflow ECU (virtual directly, physical via Pi proxy).
-
-**Entry:** Phase 1 Dcm handlers working in SIL; MDDs generated.
-
-**Deliverables:**
-
-1. **CDA configured for Taktflow** — `classic-diagnostic-adapter/opensovd-cda.toml`
-   - MDD path points to committed Taktflow MDDs
-   - DoIP discovery range scans virtual ECU containers
-   - Logging wired to DLT (for later observability phase)
-
-2. **CAN-to-DoIP proxy** — `gateway/can_to_doip_proxy/` (new Rust crate)
-   - Cargo workspace in Pi gateway tree
-   - Crates: `proxy-core`, `proxy-doip`, `proxy-can`, `proxy-main`
-   - DoIP server on Pi listens on port 13400
-   - Translates DoIP diagnostic messages → CAN ISO-TP frames via SocketCAN
-   - Response path: CAN ISO-TP → DoIP
-   - Unit tests + integration tests with virtual CAN (vcan0)
-
-3. **SIL scenario: CDA smoke test** — `test/sil/scenarios/sil_sovd_cda_smoke.yaml`
-   - Docker topology: `cvc` (POSIX, DoIP) + `cda` (upstream CDA)
-   - Test: `curl http://cda:8080/sovd/v1/components/cvc/faults` returns valid JSON ListOfFaults
-   - Runs in SIL nightly pipeline
-
-4. **HIL scenario: CDA via Pi proxy** — `test/hil/scenarios/hil_sovd_cda_via_proxy.yaml`
-   - Pi runs `can_to_doip_proxy`
-   - CDA runs on developer laptop, points at Pi IP
-   - Target: physical CVC on CAN bus
-   - Test: full SOVD GET → UDS 0x19 → DTC response
-
-**Exit criteria:**
-- CDA smoke test green in SIL nightly
-- CAN-to-DoIP proxy has ≥80% line coverage
-- HIL scenario passes against physical CVC
-- Any CDA bugs found during integration are captured as internal fix branches
-  (patches staged locally, ready to upstream later per §8)
-- Taktflow ODX example staged locally under `odx-converter/examples/` (not pushed)
-
-**Owner:** Rust lead + 1 Rust engineer + 1 Pi/gateway engineer + 1 test engineer.
-
-**Dependencies:** Phase 1 complete.
-
----
-
-### Phase 3 — Fault Library + DFM Prototype (Jul 1 – Aug 15, 2026)
-
-**Goal:** Embedded components report faults → DFM stores → SOVD GET /dtcs returns live state.
-
-**Entry:** Phase 2 complete.
-
-**Deliverables:**
-
-1. **C fault shim embedded module** — `firmware/bsw/services/FaultShim/`
-   - Header `FaultShim.h` mirrors Rust `fault-lib` Fault API signatures
-   - `FaultShim_Init()`, `FaultShim_Report(fid, severity, metadata)`, `FaultShim_Shutdown()`
-   - POSIX implementation: `firmware/platform/posix/src/FaultShim_Posix.c`
-     — opens Unix socket to DFM, writes fault events as protobuf
-   - STM32 implementation: `firmware/platform/stm32/src/FaultShim_Stm32.c`
-     — buffers faults to NvM slot, flushed by gateway sync task
-   - Unit tests + MISRA clean
-
-2. **DFM prototype** — `opensovd-core/sovd-dfm/`
-   - Crates in workspace
-   - Receives fault events on Unix socket (POSIX IPC)
-   - In-memory DTC table with operation cycle handling
-   - SQLite persistence via `sqlx` (schema migrations versioned)
-   - Aging / debounce handled server-side (not on embedded — keeps ECU path simple)
-   - Exposes stub SOVD GET `/sovd/v1/components/{id}/faults` via axum
-
-3. **Wiring test: Dem → FaultShim → DFM** — full chain
-   - CVC Docker container reports a synthetic fault
-   - FaultShim writes to socket
-   - DFM receives, stores in SQLite
-   - SOVD GET returns the DTC within 100 ms
-
-4. **SQLite schema** — `opensovd-core/sovd-db/migrations/`
-   - Tables: `dtcs`, `fault_events`, `operation_cycles`, `catalog_version`
-   - Migration-based schema evolution via sqlx
-   - Indexed on DTC code, timestamp, ECU source
-
-5. **Internal ADR: DFM design** — written internally, not upstreamed yet
-   - Design document covering DFM architecture, SQLite schema, IPC protocol
-   - Committed to `docs/adr/` in our own workspace
-   - Follows the ADR pattern in upstream `opensovd/docs/design/adr/` so it is directly
-     upstreamable as a doc PR later (per §8.1) when we decide to contribute
-
-**Exit criteria:**
-- End-to-end fault report → SOVD visibility works in Docker
-- DFM has integration tests for fault ingestion, DTC query, clear, operation cycle
-- Internal DFM ADR committed and reviewed by architect + Rust lead
-
-**Owner:** Embedded lead + Rust lead + 1 Rust engineer + 1 embedded engineer.
-
-**Dependencies:** Phase 2 complete.
-
----
-
-### Phase 4 — SOVD Server + Gateway (Aug 16 – Oct 15, 2026)
-
-**Goal:** Full SOVD Server implementing the MVP ASAM SOVD v1.1 OpenAPI
-subset (ISO 17978-3), with a routing Gateway.
-
-**Entry:** Phase 3 complete; DFM serving DTCs.
-
-**Deliverables:**
-
-1. **SOVD Server** — `opensovd-core/sovd-server/`
-   - Crate structure mirrors CDA (axum + tokio)
-   - Endpoints (MVP, per ISO 17978-3 SOVD v1.1.0-rc1 — per-component shape,
-     documented in `opensovd-core/docs/openapi-audit-2026-04-14.md`; SOVD
-     terms "faults" and "operations" replace UDS "DTCs" and "routines"):
-     - `GET    /sovd/v1/health` — liveness probe, reports SovdDb / FaultSink / OperationCycle state
-     - `GET    /sovd/v1/components` — list components (from MDD + DFM catalog), returns `DiscoveredEntities`
-     - `GET    /sovd/v1/components/{id}` — component metadata, `EntityCapabilities`
-     - `GET    /sovd/v1/components/{id}/data` — data identifiers (DIDs), returns `Datas`
-     - `GET    /sovd/v1/components/{id}/faults` — list faults, returns `ListOfFaults`
-     - `GET    /sovd/v1/components/{id}/faults/{fault_code}` — single fault, returns `FaultDetails`
-     - `DELETE /sovd/v1/components/{id}/faults` — clear all faults on component
-     - `DELETE /sovd/v1/components/{id}/faults/{fault_code}` — clear single fault
-     - `GET    /sovd/v1/components/{id}/operations` — list available operations, returns `OperationsList`
-     - `POST   /sovd/v1/components/{id}/operations/{operation_id}/executions` — start execution, `StartExecutionResponse`
-     - `GET    /sovd/v1/components/{id}/operations/{operation_id}/executions/{execution_id}` — execution status
-   - OpenAPI spec committed to `sovd-server/openapi.yaml`
-   - Request/response types generated from schema via `utoipa`
-
-2. **SOVD Gateway** — `opensovd-core/sovd-gateway/`
-   - Routes requests to backends:
-     - DFM backend: DTCs from our own stack (Fault Lib sources)
-     - CDA backend: DTCs / services from legacy UDS ECUs
-     - Native SOVD backend: future — ECUs that speak SOVD directly
-   - Configuration: `opensovd-gateway.toml` — route map per ECU
-   - Aggregation logic: merge DTC lists from multiple backends, de-dup by code
-
-3. **Authentication middleware** — `opensovd-core/sovd-server/src/auth.rs`
-   - Concept only in MVP: accept `Authorization: Bearer <token>` header
-   - Token validation deferred to Phase 5 hardening (just scaffold in MVP)
-   - OAuth2/OIDC integration plan documented, not implemented yet
-
-4. **Docker Compose demo** — internal workspace, not upstreamed yet
-   - Services: cvc, fzc, rzc, sc (as POSIX builds), cda, sovd-server, sovd-gateway, dfm
-   - Tester script sends the 5 MVP use cases, verifies responses
-   - Committed to our own workspace; staged for upstream per §8 when team decides
-
-5. **Upstream-ready polish (build first, contribute later per §C.1):**
-   - At end of Phase 4, all crates should be in a state where opening upstream PRs would
-     require zero code changes — only a decision
-   - Code quality, test coverage, docstrings, and SPDX metadata audited against upstream
-     CDA standards one final time
-   - No actual PRs opened until the team decides (earliest: after Phase 5 HIL green)
-
-**Exit criteria:**
-- Docker Compose demo runs all 5 MVP use cases end-to-end
-- SOVD Server has ≥70% line coverage
-- Integration tests cover full SOVD → Gateway → CDA → ECU chain
-- Every crate in our `opensovd-core` fork is technically upstream-ready (no PR opened)
-
-**Owner:** Rust lead + 3 Rust engineers + 1 test engineer.
-
-**Dependencies:** Phase 3 complete.
-
----
-
-### Phase 5 — End-to-End Demo + HIL on Physical (Oct 16 – Nov 30, 2026)
-
-**Goal:** Full SOVD stack running against physical Taktflow hardware, HIL-gated.
-
-**Entry:** Phase 4 demo working in Docker.
-
-**Deliverables:**
-
-1. **Pi deployment topology** — Ansible playbook or Docker Compose on Pi
-   - SOVD Server + Gateway + DFM + CAN-to-DoIP proxy all run on the Pi
-   - Systemd units or docker-compose with restart policies
-   - Log aggregation to DLT (Phase 6 wiring)
-
-2. **HIL test suite** — `test/hil/scenarios/hil_sovd_*.yaml` (8 scenarios, SOVD per-component shape per ISO 17978-3)
-   - `hil_sovd_01_read_faults_all.yaml` — GET /sovd/v1/components/{id}/faults across all 3 ECUs (CVC, SC, BCM; ADR-0023)
-   - `hil_sovd_02_clear_faults.yaml` — DELETE /sovd/v1/components/{id}/faults, verify via separate read
-   - `hil_sovd_03_operation_motor_test.yaml` — POST /sovd/v1/components/rzc/operations/motor_self_test/executions
-   - `hil_sovd_04_fault_injection.yaml` — inject CAN bus off, observe fault propagation through DFM
-   - `hil_sovd_05_components_metadata.yaml` — GET /sovd/v1/components for all ECUs
-   - `hil_sovd_06_concurrent_testers.yaml` — two testers hit SOVD Server simultaneously
-   - `hil_sovd_07_large_fault_list.yaml` — ECU with 50+ faults, pagination correctness
-   - `hil_sovd_08_error_handling.yaml` — ECU disconnect, degraded-mode responses (per ADR-0018 "never hard fail"), stale cache flag, timeouts
-
-   - Live stop note (2026-04-16, updated): the Phase 5 CDA catalog blocker is cleared and the local OpenSOVD adapter now also bridges downstream CDA execution server-errors into the SOVD async contract (`202` start plus terminal `failed` status) instead of leaking them as raw transport failures. On the current live bench, D2 is green again once the Windows CDA is running on the real Phase 5 config, D3 clear-faults is blocked only by the bench precondition ("inject at least one clearable fault"), and the direct local CDA RZC operation path now reaches runtime with `504 Ecu [3] offline` instead of `404`. The remaining live wall is deployment, not another code-path mystery: the Raspberry Pi service is restored from its Linux backup after a failed Windows-binary copy, but this host cannot currently produce a new Pi binary for the pinned toolchain because `nightly-2025-07-14` does not have the `aarch64-unknown-linux-gnu` target installed here, and the Pi itself has no Rust toolchain or source checkout for a native rebuild.
-
-3. **Real STM32 flashing via ST-LINK on the Windows dev host**
-   - First phase where `firmware/ecu/cvc/` is built as an ARM ELF (not POSIX) and flashed through COM3 ST-LINK per `tools/bench/hardware-map.toml`
-   - Build target cross-compiles from the Windows dev host via STM32CubeCLT / ARM GCC toolchain
-   - `cargo xtask flash-cvc` convenience command that resolves the ST-LINK serial from hardware-map.toml and calls `st-flash` or `STM32_Programmer_CLI`
-   - Smoke test: flash CVC firmware, issue UDS 22F190 over real CAN via the Pi's GS_USB adapter, assert VIN matches `cvc_identity.toml`
-   - FZC/RZC flashed similarly if their ARM builds exist; otherwise deferred to Phase 6
-
-4. **TMS570 integration** — even without Ethernet
-   - TCU (TMS570) flashed via XDS110 on COM11/COM12 per `tools/bench/hardware-map.toml`
-   - TCU goes through the same CAN-to-DoIP Pi proxy path as the STM32 ECUs
-   - CAN routing table in proxy points TCU's logical address to its CAN ID range
-   - TI Uniflash or Code Composer CLI integration for flashing (not openocd/st-flash)
-
-5. **doip-codec PARTIAL migration in proxy-doip** (from doip-codec evaluation spike, `docs/doip-codec-evaluation.md`)
-   - Replace `gateway/can_to_doip_proxy/proxy-doip/src/frame.rs` + `message_types.rs` with `theswiftfox/doip-codec` + `theswiftfox/doip-definitions` (the forks upstream CDA pins — NOT the crates.io `samp-reston` version)
-   - Keep `gateway/can_to_doip_proxy/proxy-doip/src/server.rs`, `DoipHandler` trait, and the ISO-TP FlowControl integration from PR #9 intact — those are the pieces doip-codec does not cover
-   - Keep ADR-0010 DiscoveryMode ("both" — broadcast + static) logic
-   - Gate: the existing phase 2 Line B proxy tests + the Phase 4 Line B multi-frame interop test must stay green; byte output on the wire must still match `DoIp_Posix.c`
-   - Vendor vs git-rev pin: open question. Default is a git rev pin in Cargo.toml matching CDA's pin exactly, to keep drift trackable
-
-6. **MDD FlatBuffers emitter in odx-gen** (from Rust SIG 2026-04-14 findings)
-   - Extend `tools/odx-gen/` to emit Marvelous Diagnostic Description (MDD) alongside the current PDX output
-   - MDD is ODX restructured, wrapped in FlatBuffers, memory-mappable — upstream CDA consumes this natively (~1/3 the size of ODX, ~10 ns conversion latency)
-   - Add a `--emit=mdd` flag that produces `cvc.mdd`, `fzc.mdd`, etc. matching the schema upstream CDA's `cda-database` crate expects
-   - Round-trip test: our emitted MDD loads into CDA's in-memory database and decodes the same DiagService bytes as our PDX path
-   - Optional but recommended: vendor upstream CDA's FlatBuffers schema (`.fbs`) as the single source of truth; regenerate Rust bindings per odx-gen build
-
-7. **Autonomous bench debugging tools**
-   - Install `github.com/alexmohr/mdd-ui` on the dev host for ECU inspection (TUI that reads MDDs + verifies diagnostic messages + checks auth)
-   - Add `console-subscriber` as a dev-dep on `sovd-main` so `tokio-console` can attach to live sessions during HIL runs — unblocks deadlock debugging per upstream CDA's experience
-
-8. **Performance validation** — measure under load
-   - Fault read latency: SIL vs HIL
-   - Throughput: concurrent SOVD requests
-   - Memory footprint: DFM + Server + Gateway on Pi
-   - Targets: `/faults` read <100 ms, `GET /components/{id}/faults` P99 <500 ms, <200 MB RAM total on Pi (matches upstream CDA envelope)
-
-9. **Capability-showcase observer dashboard** (per ADR-0024, two stages;
-   decisions resolved 2026-04-17)
-   - **Stage 1 — Self-hosted, mTLS, zero cloud cost (blocking Phase 5 exit)**:
-     reuse `taktflow-embedded-production` cloud_connector + ws_bridge on
-     the Pi with `AWS_IOT_ENDPOINT=""`. Add `fault-sink-mqtt` crate
-     (JSON wire format) publishing DFM events to local Mosquitto. Add
-     Prometheus + Grafana on Pi for historical view (replaces the
-     Timestream path — $0 recurring cost). Add nginx for TLS termination
-     + mTLS client-cert auth aligned with SEC-2.1. Build SvelteKit +
-     Tailwind + shadcn-svelte dashboard at `dashboard/`, static build
-     served by nginx at `https://<pi-ip>/` — all 20 OpenSOVD use cases
-     live, including UC19 Prometheus-backed historical panel.
-   - **Stage 2 — Optional AWS fleet uplink (not blocking Phase 5 exit)**:
-     provision `DEVICE_ID=taktflow-sovd-hil-001` under the shared
-     embedded-production AWS account via `scripts/aws-iot-setup.sh`,
-     flip `AWS_IOT_ENDPOINT`, add `bench_id=sovd-hil` tag for data
-     attribution. No Timestream. Fleet-level cross-bench aggregation
-     lands here if/when multiple HIL rigs come online.
-   - Exit (Stage 1): fault injected on bench visible at `https://<pi-ip>/`
-     within 200 ms; 7 days of fault history in Grafana panel; nginx
-     rejects requests without valid client cert.
-   - Exit (Stage 2, optional): fault visible on AWS IoT Core test
-     console within 2 s on `vehicle/dtc/new` topic with
-     `bench_id=sovd-hil`.
-
-   **Stage 1 progress as of 2026-04-17** (single session sprint):
-
-   Merged to `main`:
-   - [x] `fault-sink-mqtt` crate scaffolded (`6df34fb`)
-   - [x] `fault-sink-mqtt` wired into DFM dispatch fan-out, in-process `rumqttd` round-trip test green — T24.2.x (`3d3d040` + `4743dc8`)
-   - [x] `ws-bridge` crate — MQTT→WebSocket relay, bearer-token auth, `/metrics` endpoint, end-to-end round-trip test green — T24.1.14 (`0263422`)
-   - [x] SvelteKit dashboard scaffold, 20 widgets, canned stubs (`e52267e`)
-
-   On `feat/mqtt-broker-deploy` (local, unpushed):
-   - [x] Mosquitto broker deployment kit — conf.d drop-in, ACL, systemd-unit reuse, cert-provisioning + install scripts, TLS 1.2 floor, 3650/825-day cert validity (`27019d2c`)
-
-   Remaining for Stage 1 exit:
-   - [ ] Dashboard data-wiring — replace canned stubs with real REST + WS, append `?token=` in `wsClient.ts` (~3–5 days)
-   - [ ] nginx TLS + mTLS terminator container — T24.1.15 (~1 day)
-   - [ ] Prometheus scrape config + Grafana dashboards on Pi — T24.1.9 (~1 day)
-   - [ ] Pin MQTT wire contract with `insta` snapshots across crate boundaries (~1 h)
-   - [ ] Merge `feat/mqtt-broker-deploy` into `main`
-
-**Exit criteria:**
-- All 8 HIL scenarios green in nightly pipeline
-- Performance targets met
-- Observer dashboard (deliverable 9 Stage 1) serving all 20 use-case
-  widgets on the bench LAN
-- Demo video recorded for OpenSOVD community presentation
-
-**Owner:** Test lead + 2 test engineers + 1 Rust engineer + 1 embedded engineer.
-
-**Dependencies:** Phase 4 complete. Physical hardware lab available.
-
----
-
-### Phase 6 — Hardening (Dec 1 – Dec 31, 2026)
-
-**Goal:** Production-ready. Matches OpenSOVD Q4 milestone.
-
-**Entry:** Phase 5 HIL green.
-
-**Deliverables:**
-
-1. **TLS everywhere** — rustls or openssl on all HTTP paths, **mbedtls as fallback** per upstream CDA's escape hatch
-   - SOVD Server listens HTTPS only (self-signed for demo, cert-based for prod)
-   - Gateway → Server uses mTLS
-   - Certs provisioned via script (dev) or HSM (prod, deferred)
-   - **If OpenSSL feature limits bite** (upstream CDA hit the "max frame size" extension wall and moved to `mbedtls` via bindgen — see Rust SIG 2026-04-14 notes), fall back to `mbedtls` the same way. Plain C via bindgen is easy; modern C++ bindings would be harder. Keep the mbedtls backend behind a Cargo feature flag so the default OpenSSL path stays visible.
-   - TLS on DoIP specifically: most ECUs negotiate TLS for auth only and don't encrypt payloads. Follow the upstream CDA cipher-list setup pattern when preparing the socket.
-
-2. **DLT tracing wired** — `dlt-tracing-lib` integrated
-   - All Rust binaries emit DLT-compatible logs
-   - DLT daemon on Pi collects + forwards to laptop/cloud
-   - Correlation IDs propagate through Gateway → Server → CDA → ECU
-
-3. **OpenTelemetry spans** — same pattern as existing CDA observability
-   - Traces for every SOVD request from ingress to ECU response
-   - Export to OTLP collector (Jaeger or Tempo)
-
-4. **Rate limiting** — `tower::limit` middleware on SOVD Server
-   - Per-client-IP rate limits to prevent diagnostic flooding
-
-5. **Integrator guide** — internal `docs/integration/`, upstream-ready format
-   - How to point OpenSOVD at a new ECU platform
-   - MDD generation steps
-   - DFM configuration
-   - Deployment topology examples (SIL, HIL, embedded gateway)
-   - Written in the shape of an upstream `opensovd/docs/integration/` PR so it can
-     be pushed later if team approves (per §8)
-
-6. **Safety case update** — `docs/safety/`
-   - New UDS services HARA delta
-   - Any new failure modes from DoIP + Fault Shim
-   - Reviewed by safety engineer, approved before release
-
-7. **Contribution decision point** — team reviews everything built
-   - Architect + Rust lead + safety engineer decide: upstream now, upstream later, or not
-   - Checklist from §12.2 applied
-   - If go: open PRs in the priority order of §8.2
-
-8. **OTA firmware update on CVC** (per ADR-0025, accepted 2026-04-17)
-   - Target: STM32G474RE dual-bank A/B bootloader, CMS/X.509 signing
-     sharing the device mTLS PKI root, N=5 rollback threshold, signed
-     boot-OK witness over MQTT to cloud
-   - Surface: ASAM SOVD v1.1 `bulk-data` endpoints + UDS 0x34/0x36/0x37
-     transfer handler, flash state machine (Idle → Downloading →
-     Verifying → Committed ↔ Rollback)
-   - Requirements: FR-8.1..8.6 + SR-6.1..6.5 (ASPICE-append; DoIP
-     isolation stays at SR-5.1)
-   - Use cases: UC21 initiate / UC22 progress / UC23 abort+rollback,
-     widgets `UC21OtaInitiate.svelte` / `UC22OtaProgress.svelte` /
-     `UC23OtaRollback.svelte`
-   - SC and BCM OTA remain deferred (future ADR-0026 if/when pulled in)
-   - Effort: ~4–6 weeks CVC-only
-
-**Exit criteria:**
-- All phases' exit criteria still hold
-- Safety case delta approved
-- Integrator guide complete (pushed upstream only if team decides per step 7)
-- Contribution decision recorded in `docs/adr/phase-6-contribution-decision.md`
-- OTA on CVC demonstrable end-to-end: signed image uploaded via SOVD
-  bulk-data, flashed to inactive slot, committed after signature pass,
-  boot-OK witness acknowledged at cloud
-
-**Owner:** All hands — lead by architect.
-
-**Dependencies:** Phase 5 complete.
-
----
-
-## 5. Work Breakdown Structure (Summary Table)
-
-| Phase | Calendar | Person-days | Owner role | Parallel to |
-|-------|---------|-------------|------------|-------------|
-| 0. Foundation | 2 weeks | 8 | Architect + 1 Rust | — |
-| 1. Embedded UDS + DoIP | 4 weeks | 25 | Embedded lead + 2 | Phase 0 tail |
-| 2. CDA integration + proxy | 4 weeks | 20 | Rust + Pi + test | Phase 1 tail (partial) |
-| 3. Fault Lib + DFM | 6 weeks | 30 | Embedded + Rust | — |
-| 4. SOVD Server + Gateway | 8 weeks | 50 | 3 Rust + 1 test | Phase 3 tail (partial) |
-| 5. E2E demo + HIL physical | 6 weeks | 30 | Test lead + 2 | — |
-| 6. Hardening | 4 weeks | 20 | All hands | — |
-| **Total** | **~8 months** | **~180 person-days** | — | — |
-
----
-
-## 6. Testing Strategy
-
-Testing applies at every phase, every merge.
-
-### 6.1 Test layers
-
-| Layer | Tool | Where it runs | Blocks PR? |
-|-------|------|---------------|------------|
-| **Unit (C)** | Unity framework | `test/unit/` in firmware | Yes |
-| **Unit (Rust)** | `cargo test --lib` | Each crate | Yes |
-| **Integration (Rust)** | `cargo test --features integration-tests` | `opensovd-core/integration-tests/` | Yes |
-| **SIL** | Docker Compose + pytest | `test/sil/` | Yes (nightly + PR) |
-| **HIL** | Pi bench + test harness | `test/hil/` | Yes (nightly); warn (PR) |
-| **Performance** | `criterion` + custom | CI nightly | No (tracked) |
-| **MISRA** | cppcheck / coverity | CI | Yes |
-| **Clippy pedantic** | `cargo clippy` | CI | Yes |
-| **Nightly rustfmt** | `cargo +nightly fmt --check` | CI | Yes |
-| **cargo-deny** | CI | CI | Yes |
-
-### 6.2 Per-phase test gating
-
-| Phase | New tests required |
-|-------|-------------------|
-| 1 | Unit: Dcm 0x19, 0x14, 0x31 | HIL: UDS read/clear/routine |
-| 2 | Unit: CAN-to-DoIP proxy translators | SIL: CDA smoke test | HIL: via-proxy round trip |
-| 3 | Unit: FaultShim, DFM components | Integration: fault report → SQLite → SOVD GET |
-| 4 | Unit: all server crates | Integration: full SOVD → ECU chain | SIL: 5 use cases |
-| 5 | HIL: 8 SOVD scenarios | Performance: latency / throughput |
-| 6 | Integration: TLS, auth, rate limiting | Safety: delta HARA |
-
-### 6.3 Safety test considerations
-
-- New Dcm services must have FMEA entries before merge
-- New routines (0x31) require HARA review — motor_self_test could affect safety
-- MISRA deviations must be justified in `docs/safety/analysis/misra-deviation-register.md`
-
----
-
-## 7. CI/CD Integration
-
-### 7.1 New pipelines
-
-Per §C.1, during Phases 0–3 we do not push to GitHub remotes. CI gates therefore apply
-to **local pre-commit / pre-push** hooks and the existing Taktflow internal CI; GitHub
-Actions workflows exist in the repo but only trigger once we decide to push.
-
-| Pipeline | Trigger | What it does |
-|----------|--------|--------------|
-| `sovd-ci.yml` | Internal PR on `taktflow-embedded-production` SOVD branches | Unit + integration + SIL |
-| `sovd-hil-nightly.yml` | Internal nightly 02:00 UTC | Full HIL SOVD suite on Pi bench |
-| `opensovd-core-ci.yml` | Local pre-push hook + (later) any push to our fork | Rust lint + test + integration |
-| `upstream-sync.yml` | nightly 04:00 UTC | Pull upstream → rebase our local branches → alert on conflicts |
-
-### 7.2 Gating policy
-
-- **Local pre-commit gate:** clippy + fmt + SPDX check
-- **Local pre-push gate (later):** unit + integration + MISRA (if/when we start pushing)
-- **Internal merge-to-main gate:** everything above + SIL + HIL smoke (subset of HIL suite)
-- **Contribution gate (Phase 6):** all of the above + full HIL suite + performance benchmark deltas + team sign-off
-
-### 7.3 Upstream synchronization
-
-- Every Monday 09:00: `upstream-sync.yml` rebases our forks against upstream `main`
-- Alerts fire if merge conflicts; architect resolves within 24h
-- Weekly: review any upstream PRs to repos we depend on, flag breaking changes
-
----
-
-## 8. Upstream Contribution Strategy
-
-**Core principle (per §C.1): build first, contribute later.** No upstream PRs during
-Phases 0–3. Nothing we build is pushed to a public fork remote until the team decides it
-is ready. We own the code end to end before anyone else sees it.
-
-### 8.1 Contribution timing — decision-driven, not calendar-driven
-
-There is **no fixed PR schedule**. Contribution happens when all of these are true:
-
-1. The component works end-to-end in our own SIL + HIL
-2. The team agrees the code is production-quality by our standards (not just upstream's)
-3. No pending design changes that would trigger churn
-4. A Taktflow-internal review has signed off (architect + safety + Rust lead)
-
-Earliest plausible first PR: **after Phase 4 is green** (full MVP working in Docker).
-More likely: **after Phase 5** (HIL on physical hardware proving the stack works).
-
-### 8.2 What upstream looks like when we do contribute
-
-The order of PRs, when the decision is made:
-
-| Priority | What | Target repo | Rationale |
-|----------|------|-------------|-----------|
-| 1 | `sovd-interfaces` trait contracts | `opensovd-core` | Lowest-risk, establishes house presence |
-| 2 | `sovd-dfm` (with design doc) | `opensovd-core` | Fills a major gap, upstream has nothing |
-| 3 | `sovd-server` MVP | `opensovd-core` | Central piece of the project |
-| 4 | `sovd-gateway` | `opensovd-core` | Routing + multi-ECU support |
-| 5 | Taktflow ODX examples | `odx-converter/examples/` | Low-risk, demonstrates real use |
-| 6 | Any CDA bugs found during integration | `classic-diagnostic-adapter` | Isolated fixes |
-| 7 | Docker Compose demo topology | `opensovd/examples/` | Ties the narrative together |
-| 8 | Integrator guide | `opensovd/docs/integration/` | Final polish |
-
-### 8.3 Alignment tactics (passive, shadow-ninja)
-
-- **Read meeting minutes weekly** — `opensovd/discussions` — track upstream direction
-- **Watch architecture board decisions** — Mondays 11:30 CET (read minutes, never attend)
-- **Track upstream commits** via `upstream-sync.yml` cron job
-- **Never ping maintainers** — no direct outreach, no DMs, no cold emails
-- **Let public artifacts do the work** — when we eventually push, the quality speaks
-
-### 8.4 What always stays internal (never upstreamed)
-
-- Taktflow-specific DBC files and codegen pipelines
-- Embedded Dcm modifications to `taktflow-embedded-production` (our firmware)
-- Our ASPICE + ISO 26262 process artifacts
-- Raspberry Pi deployment Ansible playbooks and systemd units
-- Safety case deltas, HARA updates, FMEA tables
-- Internal ADRs and knowledge-base notes (the stuff in `docs/sovd/notes-*`)
-
----
-
-## 9. Risk Register
-
-| # | Risk | Likelihood | Impact | Mitigation |
-|---|------|-----------|--------|------------|
-| R1 | `opensovd-core` scope creep — we build too much too fast | High | High | Hard-scope MVP to 5 use cases; defer anything not on critical path |
-| R2 | Upstream maintainers reject our SOVD Server approach | Medium | Very High | Phase 3 design ADR PR first; don't write code until design aligned |
-| R3 | ODX schema licensing blocks `odx-converter` work | Medium | Medium | Write community XSD covering our subset; bundle under Apache-2.0 |
-| R4 | New UDS routines trigger HARA changes requiring full safety review | Medium | High | Involve safety engineer at Phase 0; HARA delta reviewed in Phase 1 |
-| R5 | TMS570 Ethernet needed but still broken | Medium | Medium | CAN-to-DoIP Pi proxy already handles this; physical DoIP on TMS570 is deferred |
-| R6 | Rust skills gap in embedded team | Medium | Medium | Fault shim is C; Rust is for Pi/laptop components only; Rust engineers lead `opensovd-core` |
-| R7 | Docker networking edge cases break SIL nightly | Low | Medium | Use host networking for DoIP; document port reservations |
-| R8 | SQLite concurrency limits hit under load | Low | Medium | Use WAL mode; benchmark in Phase 5; swap to Postgres if needed (unlikely) |
-| R9 | OpenSOVD maintainers start `opensovd-core` in parallel | Medium | Medium | Watch upstream commits weekly via upstream-sync cron; if upstream starts, our work still runs internally — worst case we rebase onto their scaffolding or skip upstreaming entirely |
-| R10 | MISRA violations block merge of new Dcm code | Low | High | Mirror existing Dcm patterns; run MISRA locally before push |
-| R11 | Taktflow 20-person team gets pulled to other priorities | High | High | Architect must hold scope; phase gates give pause-points; each phase is independently shippable |
-| R12 | ECA signing delays for new contributors | Low | Low | All hands sign ECA in Phase 0 |
-
----
-
-## 10. Team Allocation (20 people)
-
-SOVD workstream draws from the 20-person team. Estimated allocation at peak (Phase 4):
-
-| Role | Count | Responsibilities |
-|------|-------|------------------|
-| Architect / upstream liaison | 1 | ADRs, design alignment, PR reviews, roadmap |
-| Embedded lead | 1 | Dcm/Dem work, MISRA oversight, safety case delta |
-| Embedded engineers | 2 | UDS handlers, DoIP POSIX, Fault shim, ODX |
-| Rust lead | 1 | `opensovd-core` architecture, reviews |
-| Rust engineers | 3 | DFM, SOVD Server, Gateway, CAN-to-DoIP proxy |
-| Safety engineer | 1 (part-time) | HARA delta, FMEA updates |
-| Test lead | 1 | SIL/HIL strategy, test infrastructure |
-| Test engineers | 2 | SOVD test scenarios, performance |
-| DevOps / CI | 1 | Pipelines, Docker topologies, nightly gating |
-| Pi / gateway engineer | 1 | Deployment, CAN-to-DoIP proxy, DLT integration |
-| Technical writer | 1 (part-time) | Integrator guide, ADRs, upstream docs |
-| **Total peak** | **14** | — |
-
-Remaining 6 on other Taktflow workstreams (not diluted by SOVD).
-
----
-
-## 11. Timeline with Milestones
-
-```
- 2026-04     2026-05     2026-06     2026-07     2026-08     2026-09     2026-10     2026-11     2026-12
-    |           |           |           |           |           |           |           |           |
- [P0]-[P1 Embedded UDS + DoIP]
-                |--[P2 CDA + proxy]
-                |       |--[P3 Fault Lib + DFM]------|
-                |       |       |--[P4 SOVD Server + Gateway]-----------|
-                |       |       |       |           |       |--[P5 E2E + HIL]
-                |       |       |       |           |       |           |--[P6 Hardening]
-                |       |       |       |           |       |           |           |
-                M1      M2              M3                  M4                      M5
-```
-
-| Milestone | Date | Success criteria |
-|-----------|------|------------------|
-| **M1** Embedded UDS complete | 2026-05-31 | Dcm 0x19/0x14/0x31 pass HIL; DoIP POSIX accepts diagnostic messages |
-| **M2** CDA integration green | 2026-06-30 | SOVD GET /dtcs via CDA round-trips to one Docker ECU; Pi proxy reaches physical CVC |
-| **M3** DFM prototype serving DTCs | 2026-08-15 | Fault inject → DFM ingest → SOVD GET visible in <100ms |
-| **M4** SOVD Server MVP in Docker | 2026-10-15 | All 5 MVP use cases pass in Docker Compose demo |
-| **M5** Hardened, HIL green, upstream-ready | 2026-12-31 | Physical HIL passes; demo recorded; code ready to upstream if team decides |
-
----
-
-## 12. Success Criteria
-
-### 12.1 Technical success (end of 2026)
-
-- [ ] All 5 OpenSOVD MVP use cases pass against Taktflow hardware in SIL and HIL
-- [ ] SOVD Server, Gateway, DFM, CAN-to-DoIP proxy all running on Raspberry Pi in production mode
-- [ ] DTC round-trip latency <500 ms at P99 across all 3 active ECUs (ADR-0023)
-- [ ] Zero MISRA violations on new embedded code
-- [ ] Zero clippy pedantic violations on new Rust code
-- [ ] Full safety case delta approved by safety engineer
-- [ ] Nightly SIL + HIL pipelines green for 30 consecutive days
-
-### 12.2 Contribution readiness (not required — decision-driven per §C.1 and §8)
-
-- [ ] All code is stylistically indistinguishable from upstream CDA (max sync principle)
-- [ ] `sovd-interfaces` crate is the cleanest public-facing artifact in the workspace
-- [ ] Design ADRs exist internally for every major component (ready to upstream as docs)
-- [ ] No blocker prevents opening upstream PRs — the decision to upstream is purely policy
-
-Upstream PRs themselves are **not** success criteria. We succeed by owning working code.
-Upstreaming is a downstream benefit we can choose to realize at any time after M5.
-
-### 12.3 Process success
-
-- [ ] All new work products traceable in ASPICE
-- [ ] All 5 MVP use cases have requirements → design → test traceability
-- [ ] Safety case updated and reviewed
-- [ ] Zero safety regressions on existing HIL suite
-
----
-
-## 13. Governance
-
-### 13.1 Decision authority
-
-- **Architectural decisions** — Architect, documented as ADRs, reviewed weekly by Rust lead + Embedded lead
-- **Scope decisions** — Architect, escalation to program lead if timeline at risk
-- **Safety decisions** — Safety engineer, veto power on anything touching ASIL paths
-- **Upstream alignment** — Architect, with upstream maintainer consent via design ADRs
-
-### 13.2 Cadence
-
-- **Daily standup** — 15 min, workstream members only
-- **Weekly sync** — 45 min, SOVD workstream + architect
-- **Weekly upstream review** — 30 min, architect reviews OpenSOVD discussions + PRs
-- **Phase gate review** — end of each phase, all leads, go/no-go to next phase
-
-### 13.3 Documentation obligations
-
-- Every ADR lives in `opensovd/docs/design/adr/` (upstream) or `docs/adr/` (Taktflow internal)
-- Every phase produces a retro document in `docs/retro/phase-<n>.md`
-- Every HIL scenario YAML has a one-paragraph intent comment
-- Every ADR is written in the shape of an upstream-ready PR (so it can be pushed later
-  per §8 without rework)
-
----
-
-## 14. Open Questions (need resolution before Phase 2)
-
-| Question | Owner | Target resolution |
-|----------|-------|-------------------|
-| Fault IPC: Unix socket vs. shared memory? | Rust lead | Phase 0 week 2 |
-| DFM persistence: SQLite vs. FlatBuffers file? | Architect | Phase 0 week 2 |
-| ODX schema: ASAM download vs. community XSD? | Embedded lead | Phase 1 week 1 |
-| Auth model for SOVD Server: OAuth2 / cert / both? | Architect + security lead | Phase 4 |
-| DoIP discovery on Pi: broadcast vs. static config? | Pi engineer | Phase 2 week 1 |
-| Physical DoIP on STM32: lwIP vs. ThreadX NetX vs. never? | Hardware lead | Phase 5 (deferred) |
-
----
-
-## 15. Immediate Next Actions (this week)
-
-1. **Architect** — create ADR template in `docs/adr/0001-taktflow-sovd-integration.md`
-2. **Architect** — post design discussion on `opensovd/discussions` introducing our effort
-3. **Rust lead** — scaffold `opensovd-core` workspace (empty crates, CI)
-4. **Embedded lead** — read CVC Dcm code; draft 0x19 handler design
-5. **Embedded engineer** — write CVC ODX description (first ECU)
-6. **Pi engineer** — spike CAN-to-DoIP proxy (throwaway prototype) to de-risk Phase 2
-7. **Test lead** — design HIL scenario templates for SOVD tests
-8. **Safety engineer** — preliminary HARA delta review of planned new UDS services
-9. **All hands** — confirm Eclipse ECA signed; run `cargo build` in all 8 cloned repos once

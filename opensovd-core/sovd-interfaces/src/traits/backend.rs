@@ -33,7 +33,7 @@ use async_trait::async_trait;
 use crate::{
     spec::{
         component::EntityCapabilities,
-        data::Datas,
+        data::{Datas, ReadValue},
         fault::{FaultDetails, FaultFilter, ListOfFaults},
         operation::{
             ExecutionStatusResponse, OperationsList, StartExecutionAsyncResponse,
@@ -143,8 +143,37 @@ pub trait SovdBackend: Send + Sync {
         })
     }
 
+    /// Read one data resource at `GET .../components/{id}/data/{data-id}`.
+    ///
+    /// Default returns [`SovdError::InvalidRequest`] so legacy backends
+    /// compile unchanged until they opt in to per-value reads.
+    async fn read_data(&self, data_id: &str) -> Result<ReadValue> {
+        let _ = data_id;
+        Err(SovdError::InvalidRequest(
+            "backend does not implement read_data".to_owned(),
+        ))
+    }
+
     /// See [`SovdServer::entity_capabilities`](crate::traits::server::SovdServer::entity_capabilities).
     async fn entity_capabilities(&self) -> Result<EntityCapabilities>;
+
+    /// Human-readable route address for admin / observer surfaces.
+    ///
+    /// Extra (per ADR-0006): this is not part of the SOVD spec. It
+    /// exists so the Stage 1 observer dashboard can render a live
+    /// routing table without downcasting backend trait objects.
+    fn route_address(&self) -> Option<String> {
+        None
+    }
+
+    /// Transport label for admin / observer surfaces.
+    ///
+    /// Extra (per ADR-0006): callers use this only for dashboard /
+    /// admin UI presentation. The default keeps existing backends on
+    /// a stable `"sovd"` label.
+    fn route_protocol(&self) -> &'static str {
+        "sovd"
+    }
 
     /// Probe the backend for liveness / readiness. Default returns
     /// [`BackendHealth::Ok`] so backends that do not implement a probe

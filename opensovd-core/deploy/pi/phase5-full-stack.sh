@@ -6,14 +6,19 @@
 # information regarding copyright ownership.
 #
 # Phase 5 Line A D1 - full-stack deploy of sovd-main (and optionally
-# the Phase 2 Line B CAN-to-DoIP proxy) to the Raspberry Pi bench
-# host. Idempotent: safe to re-run.
+# the Phase 2 Line B CAN-to-DoIP proxy plus the Stage 1 observer nginx
+# front end) to the Raspberry Pi bench host. Idempotent: safe to
+# re-run.
 #
 # Prerequisites on the dev host:
 #   - Rust toolchain that cross-compiles to aarch64-unknown-linux-gnu
 #     OR a cached release binary from a prior Pi build
 #   - rsync + ssh to $PI (default bench-pi@192.0.2.10)
 #   - Passwordless sudo on the Pi for systemctl
+#   - If OBSERVER_NGINX_ENABLED=1:
+#       - docker compose on the Pi
+#       - a built dashboard/ static bundle on the dev host
+#       - WS_BRIDGE_INTERNAL_TOKEN for the nginx -> ws-bridge hop
 #
 # What this script does (all rsync-based, all idempotent):
 #   1. Build (or locate) sovd-main release binary for aarch64
@@ -27,6 +32,9 @@
 #      pattern as install-ecu-sim.sh)
 #   6. Verify sovd-main answers GET /sovd/v1/components on
 #      $PI_HTTP_HOST:21002
+#   7. If OBSERVER_NGINX_ENABLED=1: rsync nginx assets + dashboard
+#      bundle, provision observer certs, compose up nginx, and verify
+#      authenticated HTTPS succeeds while unauthenticated HTTPS fails
 #
 # Non-goals (expansions blocked on Line B bench readiness or on other
 # D-deliverables of phase-5-line-a.md):
@@ -53,6 +61,9 @@ REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 DEPLOY_DIR=$REPO_ROOT/deploy/pi
 REMOTE_SOVD_DIR=/opt/taktflow/sovd-main
 REMOTE_PROXY_DIR=/opt/taktflow/proxy
+REMOTE_OBSERVER_DIR=/opt/taktflow/observer-nginx
+REMOTE_OBSERVER_CERTS_DIR=/opt/taktflow/observer-certs
+REMOTE_DASHBOARD_DIR=/opt/taktflow/dashboard
 TARGET_TRIPLE=${TARGET_TRIPLE:-aarch64-unknown-linux-gnu}
 SOVD_MAIN_BIN=${SOVD_MAIN_BIN:-$REPO_ROOT/target/$TARGET_TRIPLE/release/sovd-main}
 SOVD_CONFIG_FILE=${SOVD_CONFIG_FILE:-$DEPLOY_DIR/opensovd-pi.toml}
@@ -64,15 +75,26 @@ PHASE5_CDA_PLACEHOLDER=${PHASE5_CDA_PLACEHOLDER:-http://198.51.100.10:20002}
 # resolve we skip the proxy rsync - it is an optional dependency for
 # D1, NOT a hard prerequisite.
 PROXY_BIN=${PROXY_BIN:-$REPO_ROOT/../../taktflow-embedded-production/posix/build/taktflow-can-doip-proxy}
+OBSERVER_NGINX_ENABLED=${OBSERVER_NGINX_ENABLED:-0}
+OBSERVER_DASHBOARD_DIR=${OBSERVER_DASHBOARD_DIR:-$REPO_ROOT/../dashboard/build}
+OBSERVER_SOVD_UPSTREAM=${OBSERVER_SOVD_UPSTREAM:-127.0.0.1:21002}
+OBSERVER_WS_BRIDGE_UPSTREAM=${OBSERVER_WS_BRIDGE_UPSTREAM:-127.0.0.1:8082}
+WS_BRIDGE_INTERNAL_TOKEN=${WS_BRIDGE_INTERNAL_TOKEN:-}
+PROVISION_OBSERVER_CERTS=${PROVISION_OBSERVER_CERTS:-1}
+FORCE_OBSERVER_CERTS=${FORCE_OBSERVER_CERTS:-0}
 
 log() { printf '[phase5-full-stack] %s\n' "$*"; }
 warn() { printf '[phase5-full-stack][WARN] %s\n' "$*" >&2; }
 err() { printf '[phase5-full-stack][ERR ] %s\n' "$*" >&2; }
 
 CONFIG_RENDER=
+OBSERVER_ENV_RENDER=
 cleanup() {
     if [ -n "${CONFIG_RENDER:-}" ] && [ -f "$CONFIG_RENDER" ]; then
         rm -f "$CONFIG_RENDER"
+    fi
+    if [ -n "${OBSERVER_ENV_RENDER:-}" ] && [ -f "$OBSERVER_ENV_RENDER" ]; then
+        rm -f "$OBSERVER_ENV_RENDER"
     fi
 }
 trap cleanup EXIT
@@ -100,6 +122,33 @@ resolve_sovd_config_source() {
     printf '%s' "$SOVD_CONFIG_FILE"
 }
 
+prepare_observer_overlay() {
+    if [ "$OBSERVER_NGINX_ENABLED" != "1" ]; then
+        return
+    fi
+
+    if [ -z "$WS_BRIDGE_INTERNAL_TOKEN" ]; then
+        err "OBSERVER_NGINX_ENABLED=1 requires WS_BRIDGE_INTERNAL_TOKEN"
+        exit 1
+    fi
+
+    if [ ! -f "$OBSERVER_DASHBOARD_DIR/index.html" ]; then
+        err "OBSERVER_DASHBOARD_DIR=$OBSERVER_DASHBOARD_DIR is missing index.html"
+        err "Build the dashboard first (for example: cd dashboard && pnpm run build) or point OBSERVER_DASHBOARD_DIR at an existing build/"
+        exit 1
+    fi
+
+    OBSERVER_ENV_RENDER=$(mktemp)
+    cat > "$OBSERVER_ENV_RENDER" <<EOF
+SOVD_UPSTREAM=$OBSERVER_SOVD_UPSTREAM
+WS_BRIDGE_UPSTREAM=$OBSERVER_WS_BRIDGE_UPSTREAM
+WS_BRIDGE_INTERNAL_TOKEN=$WS_BRIDGE_INTERNAL_TOKEN
+EOF
+
+    log "observer overlay enabled"
+    log "observer dashboard source: $OBSERVER_DASHBOARD_DIR"
+}
+
 # ---------------------------------------------------------------
 # 1. Resolve or build the sovd-main release binary
 # ---------------------------------------------------------------
@@ -121,12 +170,13 @@ fi
 log "using sovd-main binary: $SOVD_MAIN_BIN"
 SOVD_CONFIG_SOURCE=$(resolve_sovd_config_source)
 log "using sovd-main config source: $SOVD_CONFIG_FILE"
+prepare_observer_overlay
 
 # ---------------------------------------------------------------
 # 2. rsync sovd-main + config to the Pi
 # ---------------------------------------------------------------
 log "[1/6] preparing /opt/taktflow on $PI"
-ssh "$PI" "sudo mkdir -p $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR \
+ssh "$PI" "sudo mkdir -p $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR \
            && sudo chown -R taktflow-pi:taktflow-pi /opt/taktflow"
 
 log "[2/6] rsync sovd-main binary -> $PI:$REMOTE_SOVD_DIR/"
@@ -137,7 +187,7 @@ rsync -az "$SOVD_CONFIG_SOURCE" "$PI:$REMOTE_SOVD_DIR/opensovd.toml"
 # CRLF -> LF (matches install-ecu-sim.sh pattern)
 ssh "$PI" "sed -i 's/\r\$//' $REMOTE_SOVD_DIR/opensovd.toml"
 log "[3b/6] repairing ownership under /opt/taktflow"
-ssh "$PI" "sudo chown -R taktflow-pi:taktflow-pi $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR"
+ssh "$PI" "sudo chown -R taktflow-pi:taktflow-pi $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR"
 
 # ---------------------------------------------------------------
 # 3. Install + start sovd-main systemd unit
@@ -186,6 +236,54 @@ else
     err "sovd-main is NOT answering on $PI_HTTP_HOST:21002"
     err "check 'journalctl -u sovd-main.service -n 100' on $PI"
     exit 2
+fi
+
+if [ "$OBSERVER_NGINX_ENABLED" = "1" ]; then
+    log "[6a/6] syncing observer nginx assets"
+    ssh "$PI" "sudo docker compose version >/dev/null"
+    rsync -az "$DEPLOY_DIR/docker-compose.observer-nginx.yml" \
+        "$PI:$REMOTE_OBSERVER_DIR/docker-compose.observer-nginx.yml"
+    rsync -az "$DEPLOY_DIR/nginx/" "$PI:$REMOTE_OBSERVER_DIR/nginx/"
+    rsync -az --delete "$OBSERVER_DASHBOARD_DIR/" "$PI:$REMOTE_DASHBOARD_DIR/"
+    rsync -az "$OBSERVER_ENV_RENDER" "$PI:$REMOTE_OBSERVER_DIR/observer-nginx.env"
+    rsync -az --chmod=F755 "$DEPLOY_DIR/scripts/provision-observer-certs.sh" \
+        "$PI:$REMOTE_OBSERVER_DIR/provision-observer-certs.sh"
+    ssh "$PI" "sed -i 's/\r\$//' $REMOTE_OBSERVER_DIR/provision-observer-certs.sh"
+
+    if [ "$PROVISION_OBSERVER_CERTS" = "1" ]; then
+        log "[6b/6] provisioning observer certificates on $PI"
+        ssh "$PI" "OUT_DIR=$REMOTE_OBSERVER_CERTS_DIR FORCE=$FORCE_OBSERVER_CERTS \
+                   $REMOTE_OBSERVER_DIR/provision-observer-certs.sh"
+    else
+        log "[6b/6] using pre-existing observer certificates on $PI"
+        ssh "$PI" "test -f $REMOTE_OBSERVER_CERTS_DIR/server.crt \
+                   && test -f $REMOTE_OBSERVER_CERTS_DIR/server.key \
+                   && test -f $REMOTE_OBSERVER_CERTS_DIR/client-ca.crt \
+                   && test -f $REMOTE_OBSERVER_CERTS_DIR/observer-client.crt \
+                   && test -f $REMOTE_OBSERVER_CERTS_DIR/observer-client.key \
+                   && test -f $REMOTE_OBSERVER_CERTS_DIR/ca.crt"
+    fi
+
+    log "[6c/6] starting observer nginx"
+    ssh "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_DIR/observer-nginx.env \
+               -f $REMOTE_OBSERVER_DIR/docker-compose.observer-nginx.yml up -d"
+    ssh "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_DIR/observer-nginx.env \
+               -f $REMOTE_OBSERVER_DIR/docker-compose.observer-nginx.yml ps"
+
+    log "[6d/6] verifying observer mTLS path on the Pi"
+    sleep 2
+    ssh "$PI" "curl -fsS --max-time 5 \
+               --cacert $REMOTE_OBSERVER_CERTS_DIR/ca.crt \
+               --cert $REMOTE_OBSERVER_CERTS_DIR/observer-client.crt \
+               --key $REMOTE_OBSERVER_CERTS_DIR/observer-client.key \
+               https://127.0.0.1/sovd/v1/components >/dev/null"
+    if ssh "$PI" "curl -fsS --max-time 5 \
+                  --cacert $REMOTE_OBSERVER_CERTS_DIR/ca.crt \
+                  https://127.0.0.1/ >/dev/null"; then
+        err "observer nginx accepted HTTPS without a client certificate"
+        exit 3
+    fi
+    log "observer nginx answered authenticated HTTPS and rejected an unauthenticated client"
 fi
 
 log "done"

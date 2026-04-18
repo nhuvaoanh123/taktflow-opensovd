@@ -37,10 +37,15 @@
 //! [`InMemoryServer::new_with_demo_data`] — so individual route handlers
 //! never embed literal fault codes or operation ids of their own.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
 use sovd_interfaces::{
     ComponentId, SovdError,
+    extras::observer::{AuditEntry as ObserverAuditEntry, AuditLog, BackendRoute, BackendRoutes, SessionStatus},
     spec::{
         component::{DiscoveredEntities, EntityCapabilities, EntityReference},
         data::{Datas, ReadValue, ValueMetadata},
@@ -62,6 +67,8 @@ use uuid::Uuid;
 /// Base URI used when building demo `href` fields. Kept relative so the
 /// client can combine it with whatever host it reaches us on.
 const BASE_URI: &str = "/sovd/v1";
+const OBSERVER_SESSION_TTL_MS: u64 = 120_000;
+const OBSERVER_AUDIT_LIMIT: usize = 200;
 
 /// One execution record held in memory.
 #[derive(Debug, Clone)]
@@ -124,6 +131,8 @@ impl ComponentState {
 pub struct InMemoryServer {
     components: Arc<RwLock<HashMap<ComponentId, ComponentState>>>,
     forwards: Arc<RwLock<HashMap<ComponentId, Arc<dyn SovdBackend + Send + Sync>>>>,
+    observer_session: Arc<RwLock<SessionStatus>>,
+    observer_audit: Arc<RwLock<VecDeque<ObserverAuditEntry>>>,
 }
 
 // Manual Debug impl because `dyn SovdBackend` is not `Debug`.
@@ -132,6 +141,8 @@ impl std::fmt::Debug for InMemoryServer {
         f.debug_struct("InMemoryServer")
             .field("components", &"<async>")
             .field("forwards", &"<async>")
+            .field("observer_session", &"<async>")
+            .field("observer_audit", &"<async>")
             .finish()
     }
 }
@@ -144,6 +155,8 @@ impl InMemoryServer {
         Self {
             components: Arc::new(RwLock::new(HashMap::new())),
             forwards: Arc::new(RwLock::new(HashMap::new())),
+            observer_session: Arc::new(RwLock::new(default_observer_session())),
+            observer_audit: Arc::new(RwLock::new(VecDeque::new())),
         }
     }
 
@@ -200,6 +213,8 @@ impl InMemoryServer {
         Ok(Self {
             components: Arc::new(RwLock::new(components)),
             forwards: Arc::new(RwLock::new(HashMap::new())),
+            observer_session: Arc::new(RwLock::new(default_observer_session())),
+            observer_audit: Arc::new(RwLock::new(VecDeque::new())),
         })
     }
 
@@ -301,6 +316,90 @@ impl InMemoryServer {
             items,
             extras: None,
         })
+    }
+
+    /// Return the current observer-session snapshot.
+    pub async fn observer_session(&self) -> SessionStatus {
+        let now = now_ms();
+        let mut guard = self.observer_session.write().await;
+        if guard.active && guard.expires_at_ms <= now {
+            guard.active = false;
+        }
+        guard.clone()
+    }
+
+    /// Return the latest observer audit entries, newest first.
+    pub async fn observer_audit(&self, limit: usize) -> AuditLog {
+        let limit = limit.max(1).min(OBSERVER_AUDIT_LIMIT);
+        let guard = self.observer_audit.read().await;
+        AuditLog {
+            items: guard.iter().take(limit).cloned().collect(),
+        }
+    }
+
+    /// Append one observer-facing audit entry.
+    pub async fn append_observer_audit(&self, entry: ObserverAuditEntry) {
+        let mut guard = self.observer_audit.write().await;
+        guard.push_front(entry);
+        while guard.len() > OBSERVER_AUDIT_LIMIT {
+            guard.pop_back();
+        }
+    }
+
+    /// Touch the observer-session state after one successful request.
+    ///
+    /// Returns a synthetic audit entry when this created or elevated a
+    /// session so the dashboard can show those transitions explicitly.
+    pub async fn touch_observer_session(
+        &self,
+        actor: &str,
+        level: &str,
+        security_level: u8,
+    ) -> Option<ObserverAuditEntry> {
+        let now = now_ms();
+        let mut guard = self.observer_session.write().await;
+        let mut session_event = None;
+        let incoming_level_rank = observer_level_rank(level);
+        let was_active = guard.active && guard.expires_at_ms > now;
+        if !was_active {
+            *guard = SessionStatus {
+                session_id: Uuid::new_v4().to_string(),
+                level: level.to_owned(),
+                security_level,
+                expires_at_ms: now.saturating_add(OBSERVER_SESSION_TTL_MS),
+                active: true,
+            };
+            session_event = Some(ObserverAuditEntry {
+                timestamp_ms: now,
+                actor: actor.to_owned(),
+                action: "SESSION_CREATE".to_owned(),
+                target: level.to_owned(),
+                result: "ok".to_owned(),
+            });
+            return session_event;
+        }
+
+        let current_level_rank = observer_level_rank(&guard.level);
+        let next_level = if incoming_level_rank > current_level_rank {
+            level.to_owned()
+        } else {
+            guard.level.clone()
+        };
+        let next_security_level = guard.security_level.max(security_level);
+        if next_level != guard.level || next_security_level > guard.security_level {
+            session_event = Some(ObserverAuditEntry {
+                timestamp_ms: now,
+                actor: actor.to_owned(),
+                action: "SESSION_ELEVATE".to_owned(),
+                target: format!("{next_level}/L{next_security_level}"),
+                result: "ok".to_owned(),
+            });
+        }
+        guard.level = next_level;
+        guard.security_level = next_security_level;
+        guard.expires_at_ms = now.saturating_add(OBSERVER_SESSION_TTL_MS);
+        guard.active = true;
+        session_event
     }
 
     /// Dispatch `list_faults` for `component`, forwarding to the
@@ -459,6 +558,24 @@ impl InMemoryServer {
         view.list_data().await
     }
 
+    /// Dispatch `read_data` — `GET /components/{id}/data/{data-id}`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SovdError::NotFound`] if no backend handles `component`
+    /// or the requested `data_id` does not exist.
+    pub async fn dispatch_read_data(
+        &self,
+        component: &ComponentId,
+        data_id: &str,
+    ) -> Result<ReadValue> {
+        if let Some(backend) = self.forward(component).await {
+            return backend.read_data(data_id).await;
+        }
+        let view = self.component_server(component).await?;
+        view.read_data(data_id).await
+    }
+
     /// Return the first currently active operation-cycle name
     /// observed across registered forwards. Best-effort — used only
     /// by `GET /sovd/v1/health` to report cycle state under the
@@ -506,6 +623,51 @@ impl InMemoryServer {
             Some(reason) => BackendHealth::Degraded { reason },
             None => BackendHealth::Ok,
         }
+    }
+
+    /// Snapshot the live gateway/backend routing table for the observer UI.
+    pub async fn backend_routes(&self) -> BackendRoutes {
+        let local_components = {
+            let guard = self.components.read().await;
+            guard.keys().cloned().collect::<Vec<_>>()
+        };
+        let forwards = {
+            let guard = self.forwards.read().await;
+            guard
+                .iter()
+                .map(|(component, backend)| (component.clone(), Arc::clone(backend)))
+                .collect::<Vec<_>>()
+        };
+
+        let mut items = local_components
+            .into_iter()
+            .map(|component| BackendRoute {
+                id: component.to_string(),
+                address: format!("local://sovd-main/{component}"),
+                protocol: "sovd".to_owned(),
+                reachable: true,
+                latency_ms: 0,
+            })
+            .collect::<Vec<_>>();
+
+        for (component, backend) in forwards {
+            let started = Instant::now();
+            let health = backend.health_probe().await;
+            let latency_ms = started.elapsed().as_millis() as u64;
+            let reachable = !matches!(health, BackendHealth::Unavailable { .. });
+            items.push(BackendRoute {
+                id: component.to_string(),
+                address: backend
+                    .route_address()
+                    .unwrap_or_else(|| default_backend_address(backend.kind(), &component)),
+                protocol: backend.route_protocol().to_owned(),
+                reachable,
+                latency_ms,
+            });
+        }
+
+        items.sort_by(|a, b| a.id.cmp(&b.id));
+        BackendRoutes { items }
     }
 }
 
@@ -806,6 +968,49 @@ fn matches_filter(fault: &Fault, filter: &FaultFilter) -> bool {
     true
 }
 
+fn default_observer_session() -> SessionStatus {
+    SessionStatus {
+        session_id: "inactive".to_owned(),
+        level: "default".to_owned(),
+        security_level: 0,
+        expires_at_ms: 0,
+        active: false,
+    }
+}
+
+fn observer_level_rank(level: &str) -> u8 {
+    match level {
+        "programming" => 3,
+        "extended" => 2,
+        "default" => 1,
+        _ => 0,
+    }
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn default_backend_address(kind: sovd_interfaces::traits::backend::BackendKind, component: &ComponentId) -> String {
+    match kind {
+        sovd_interfaces::traits::backend::BackendKind::Dfm => {
+            format!("local://dfm/{component}")
+        }
+        sovd_interfaces::traits::backend::BackendKind::Cda => {
+            format!("cda://{component}")
+        }
+        sovd_interfaces::traits::backend::BackendKind::NativeSovd => {
+            format!("local://sovd-main/{component}")
+        }
+        sovd_interfaces::traits::backend::BackendKind::Federated => {
+            format!("federated://{component}")
+        }
+    }
+}
+
 // ---- demo-data factories ----
 
 fn demo_component(
@@ -1092,6 +1297,47 @@ mod tests {
         let first = entities.items.first().expect("bcm entity");
         assert_eq!(first.id, "bcm");
         assert_eq!(first.name, "Body Control Module");
+    }
+
+    #[tokio::test]
+    async fn read_data_returns_demo_value() {
+        let server = InMemoryServer::new_with_demo_data();
+        let value = server
+            .dispatch_read_data(&ComponentId::new("cvc"), "battery_voltage")
+            .await
+            .expect("read data");
+        assert_eq!(value.id, "battery_voltage");
+        assert_eq!(
+            value.data,
+            serde_json::json!({ "value": 12.8f64, "unit": "V" })
+        );
+    }
+
+    #[tokio::test]
+    async fn observer_session_starts_on_first_activity() {
+        let server = InMemoryServer::new_with_demo_data();
+        let event = server
+            .touch_observer_session("tester", "extended", 1)
+            .await
+            .expect("session create");
+        assert_eq!(event.action, "SESSION_CREATE");
+        let session = server.observer_session().await;
+        assert!(session.active);
+        assert_eq!(session.level, "extended");
+        assert_eq!(session.security_level, 1);
+        assert_ne!(session.session_id, "inactive");
+    }
+
+    #[tokio::test]
+    async fn backend_routes_include_local_demo_entries() {
+        let server = InMemoryServer::new_with_demo_components(["bcm"]).expect("build");
+        let routes = server.backend_routes().await;
+        assert_eq!(routes.items.len(), 1);
+        let first = routes.items.first().expect("route");
+        assert_eq!(first.id, "bcm");
+        assert_eq!(first.address, "local://sovd-main/bcm");
+        assert_eq!(first.protocol, "sovd");
+        assert!(first.reachable);
     }
 
     #[test]

@@ -1,19 +1,31 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- UC05 — Aggregated DTC timeline across all ECUs (FR-1.5) -->
+<!-- UC05 - Aggregated DTC timeline across all ECUs (FR-1.5) -->
 <script lang="ts">
+	import { CANNED_DTCS, listAllFaults } from '$lib/api/sovdClient';
 	import type { DtcEntry } from '$lib/types/sovd';
-	import { CANNED_DTCS } from '$lib/api/sovdClient';
 
-	// Accept live faults from parent (may be augmented by WS events)
 	interface Props {
 		extraFaults?: DtcEntry[];
+		refreshNonce?: number;
 	}
 
-	let { extraFaults = [] }: Props = $props();
+	let { extraFaults = [], refreshNonce = 0 }: Props = $props();
 
-	const all = $derived([...CANNED_DTCS, ...extraFaults].sort(
-		(a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime()
-	));
+	let baseFaults = $state<DtcEntry[]>([...CANNED_DTCS]);
+
+	$effect(() => {
+		void load(refreshNonce);
+	});
+
+	async function load(_refreshNonce: number) {
+		baseFaults = await listAllFaults();
+	}
+
+	const all = $derived(
+		[...baseFaults, ...extraFaults].sort(
+			(left, right) => new Date(right.lastSeen).getTime() - new Date(left.lastSeen).getTime()
+		)
+	);
 
 	const SEV_DOT: Record<string, string> = {
 		critical: 'bg-red-500',
@@ -24,10 +36,10 @@
 
 	function rel(iso: string): string {
 		const diff = Date.now() - new Date(iso).getTime();
-		const s = Math.floor(diff / 1000);
-		if (s < 60) return `${s}s ago`;
-		if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-		return `${Math.floor(s / 3600)}h ago`;
+		const seconds = Math.floor(diff / 1000);
+		if (seconds < 60) return `${seconds}s ago`;
+		if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+		return `${Math.floor(seconds / 3600)}h ago`;
 	}
 </script>
 
@@ -41,12 +53,8 @@
 				<span class="mt-1 h-2 w-2 shrink-0 rounded-full {SEV_DOT[dtc.severity]}"></span>
 				<span class="font-mono font-semibold">{dtc.code}</span>
 				<span class="grow truncate text-muted-foreground">{dtc.description}</span>
-				<span class="shrink-0 text-[10px] uppercase text-muted-foreground"
-					>{dtc.component}</span
-				>
-				<span class="shrink-0 text-[10px] tabular-nums text-muted-foreground"
-					>{rel(dtc.lastSeen)}</span
-				>
+				<span class="shrink-0 text-[10px] uppercase text-muted-foreground">{dtc.component}</span>
+				<span class="shrink-0 text-[10px] tabular-nums text-muted-foreground">{rel(dtc.lastSeen)}</span>
 			</li>
 		{/each}
 	</ol>

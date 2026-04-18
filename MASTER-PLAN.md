@@ -281,10 +281,10 @@ plan:
                 local_unpushed:
                   - Mosquitto broker deployment kit — conf.d, ACL, systemd, cert provisioning, TLS 1.2 floor (27019d2c)
                 uncommitted_workspace_2026_04_18:
-                  - Dashboard hybrid data-wiring — live components/faults/operations/data/health + ws-bridge relay in dashboard/; canned only for UC15 session, UC16 audit log, UC18 topology
+                  - Dashboard hybrid data-wiring — live components/faults/operations/data/health/session/audit/gateway-backends + ws-bridge relay in dashboard/; canned only as on-error fallback
+                  - Observer nginx deploy assets â€” standalone Pi compose file plus nginx TLS/mTLS config for static dashboard + `/sovd/` + `/ws` proxying in `opensovd-core/deploy/pi/`
+                  - Observer cert provisioning + Pi deploy wiring â€” `provision-observer-certs.sh` plus optional observer overlay in `phase5-full-stack.sh` for dashboard sync, cert generation, nginx compose-up, and mTLS verification
                 remaining_for_stage_1_exit:
-                  - Replace remaining canned dashboard stubs; append ?token= in wsClient.ts (~3–5 days)
-                  - nginx TLS + mTLS terminator container — T24.1.15 (~1 day)
                   - Prometheus scrape + Grafana dashboards on Pi — T24.1.9 (~1 day)
                   - Pin MQTT wire contract with insta snapshots across crate boundaries (~1 h)
                   - Merge feat/mqtt-broker-deploy into main

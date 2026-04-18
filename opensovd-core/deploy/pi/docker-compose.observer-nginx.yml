@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# T24.1.15 - nginx observer front end for the Pi bench.
+# Can run standalone or be driven by deploy/pi/phase5-full-stack.sh
+# when OBSERVER_NGINX_ENABLED=1.
+
+services:
+  observer-nginx:
+    image: nginx:1.27-alpine
+    network_mode: host
+    mem_limit: 128m
+    cpus: 0.25
+    cap_drop: [ALL]
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETGID
+      - SETUID
+      - CHOWN
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    environment:
+      SOVD_UPSTREAM: ${SOVD_UPSTREAM:-127.0.0.1:21002}
+      WS_BRIDGE_UPSTREAM: ${WS_BRIDGE_UPSTREAM:-127.0.0.1:8082}
+      WS_BRIDGE_INTERNAL_TOKEN: ${WS_BRIDGE_INTERNAL_TOKEN:?set WS_BRIDGE_INTERNAL_TOKEN}
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/observer.conf.template:/etc/nginx/templates/observer.conf.template:ro
+      - /opt/taktflow/dashboard:/usr/share/nginx/html:ro
+      - /opt/taktflow/observer-certs:/etc/nginx/certs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped

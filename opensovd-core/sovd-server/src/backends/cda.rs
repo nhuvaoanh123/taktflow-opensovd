@@ -49,6 +49,7 @@ use sovd_interfaces::{
     ComponentId, SovdError,
     spec::{
         component::EntityCapabilities,
+        data::{Datas, ReadValue},
         error::{DataError, GenericError},
         fault::{FaultFilter, ListOfFaults},
         operation::{
@@ -812,6 +813,40 @@ impl SovdBackend for CdaBackend {
         Ok(())
     }
 
+    async fn list_data(&self) -> Result<Datas> {
+        let url = self.component_url("data")?;
+        let response = self
+            .send_with_auth_retry(|token| {
+                let request = self.http.get(url.clone());
+                match token {
+                    Some(token) => request.bearer_auth(token),
+                    None => request,
+                }
+            })
+            .await?;
+        response
+            .json::<Datas>()
+            .await
+            .map_err(|e| map_reqwest_err(&self.component_id, &e))
+    }
+
+    async fn read_data(&self, data_id: &str) -> Result<ReadValue> {
+        let url = self.component_url(&format!("data/{data_id}"))?;
+        let response = self
+            .send_with_auth_retry(|token| {
+                let request = self.http.get(url.clone());
+                match token {
+                    Some(token) => request.bearer_auth(token),
+                    None => request,
+                }
+            })
+            .await?;
+        response
+            .json::<ReadValue>()
+            .await
+            .map_err(|e| map_reqwest_err(&self.component_id, &e))
+    }
+
     async fn start_execution(
         &self,
         operation_id: &str,
@@ -963,6 +998,19 @@ impl SovdBackend for CdaBackend {
             );
         }
         Ok(capabilities)
+    }
+
+    fn route_address(&self) -> Option<String> {
+        let joined = if self.path_prefix.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", self.path_prefix)
+        };
+        self.base_url.join(&joined).ok().map(|url| url.to_string())
+    }
+
+    fn route_protocol(&self) -> &'static str {
+        "sovd"
     }
 }
 
@@ -1260,6 +1308,86 @@ mod tests {
         assert_eq!(list.next_page, None);
         assert_eq!(list.schema, None);
         assert_eq!(list.extras, None);
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn list_data_round_trips_spec_catalog() {
+        use axum::{Json, routing::get};
+
+        async fn data_catalog() -> Json<sovd_interfaces::spec::data::Datas> {
+            Json(sovd_interfaces::spec::data::Datas {
+                items: vec![sovd_interfaces::spec::data::ValueMetadata {
+                    id: "vin".to_owned(),
+                    name: "VIN".to_owned(),
+                    translation_id: None,
+                    category: "identData".to_owned(),
+                    groups: None,
+                    tags: None,
+                }],
+                schema: None,
+            })
+        }
+
+        let app = Router::new().route("/vehicle/v15/components/cvc/data", get(data_catalog));
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve mock CDA");
+        });
+
+        let backend = CdaBackend::new(
+            ComponentId::new("cvc"),
+            Url::parse(&format!("http://{addr}/")).expect("parse mock CDA URL"),
+        )
+        .expect("construct backend");
+        let list = backend.list_data().await.expect("list_data");
+
+        assert_eq!(list.items.len(), 1);
+        assert_eq!(list.items[0].id, "vin");
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn read_data_round_trips_spec_value() {
+        use axum::{Json, routing::get};
+
+        async fn data_value() -> Json<sovd_interfaces::spec::data::ReadValue> {
+            Json(sovd_interfaces::spec::data::ReadValue {
+                id: "battery_voltage".to_owned(),
+                data: serde_json::json!({ "value": 13.2f64, "unit": "V" }),
+                errors: None,
+                schema: None,
+            })
+        }
+
+        let app = Router::new().route(
+            "/vehicle/v15/components/cvc/data/battery_voltage",
+            get(data_value),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve mock CDA");
+        });
+
+        let backend = CdaBackend::new(
+            ComponentId::new("cvc"),
+            Url::parse(&format!("http://{addr}/")).expect("parse mock CDA URL"),
+        )
+        .expect("construct backend");
+        let value = backend
+            .read_data("battery_voltage")
+            .await
+            .expect("read_data");
+
+        assert_eq!(value.id, "battery_voltage");
+        assert_eq!(
+            value.data,
+            serde_json::json!({ "value": 13.2f64, "unit": "V" })
+        );
 
         handle.abort();
     }

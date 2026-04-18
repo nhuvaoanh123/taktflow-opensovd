@@ -1,8 +1,10 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- UC08 — Component discovery top bar with capability pills (FR-3.1, FR-3.4) -->
+<!-- UC08 - Component discovery top bar with capability pills (FR-3.1, FR-3.4) -->
 <script lang="ts">
-	import type { SovdComponent, EcuId } from '$lib/types/sovd';
-	import { CANNED_COMPONENTS } from '$lib/api/sovdClient';
+	import { onMount } from 'svelte';
+
+	import { CANNED_COMPONENTS, listComponents } from '$lib/api/sovdClient';
+	import type { EcuId, SovdComponent } from '$lib/types/sovd';
 
 	interface Props {
 		onSelect?: (id: EcuId) => void;
@@ -11,7 +13,15 @@
 
 	let { onSelect, selectedId }: Props = $props();
 
-	const components: SovdComponent[] = CANNED_COMPONENTS;
+	let components = $state<SovdComponent[]>([...CANNED_COMPONENTS]);
+
+	onMount(() => {
+		void load();
+	});
+
+	async function load() {
+		components = await listComponents();
+	}
 
 	const CAP_COLOR: Record<string, string> = {
 		faults: 'bg-red-800 text-red-200',

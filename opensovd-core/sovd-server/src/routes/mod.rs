@@ -44,6 +44,7 @@ pub mod data;
 pub mod error;
 pub mod faults;
 pub mod health;
+pub mod observer;
 pub mod operations;
 
 /// Dev-only `GET /sovd/v1/openapi.json` — returns the generated `OpenAPI`
@@ -57,6 +58,12 @@ pub async fn openapi_json() -> axum::Json<utoipa::openapi::OpenApi> {
 fn base_router() -> Router<Arc<InMemoryServer>> {
     let router = Router::new()
         .route("/sovd/v1/health", get(health::health))
+        .route("/sovd/v1/session", get(observer::session))
+        .route("/sovd/v1/audit", get(observer::audit))
+        .route(
+            "/sovd/v1/gateway/backends",
+            get(observer::gateway_backends),
+        )
         .route("/sovd/v1/components", get(components::list_components))
         .route(
             "/sovd/v1/components/{component_id}",
@@ -73,6 +80,10 @@ fn base_router() -> Router<Arc<InMemoryServer>> {
         .route(
             "/sovd/v1/components/{component_id}/data",
             get(data::list_data),
+        )
+        .route(
+            "/sovd/v1/components/{component_id}/data/{data_id}",
+            get(data::read_data),
         )
         .route(
             "/sovd/v1/components/{component_id}/operations",
@@ -102,7 +113,8 @@ fn base_router() -> Router<Arc<InMemoryServer>> {
 /// Correlation-id middleware is applied in both variants (ADR-0013).
 pub fn app_with_server(server: Arc<InMemoryServer>) -> Router {
     base_router()
-        .with_state(server)
+        .with_state(Arc::clone(&server))
+        .layer(from_fn_with_state(server, observer::middleware))
         .layer(axum::middleware::from_fn(correlation::middleware))
 }
 
@@ -117,7 +129,8 @@ pub fn app_with_server(server: Arc<InMemoryServer>) -> Router {
 pub fn app_with_auth(server: Arc<InMemoryServer>, auth: AuthConfig) -> Router {
     let auth_state = Arc::new(auth);
     base_router()
-        .with_state(server)
+        .with_state(Arc::clone(&server))
+        .layer(from_fn_with_state(server, observer::middleware))
         .layer(from_fn_with_state(auth_state, crate::auth::middleware))
         .layer(axum::middleware::from_fn(correlation::middleware))
 }

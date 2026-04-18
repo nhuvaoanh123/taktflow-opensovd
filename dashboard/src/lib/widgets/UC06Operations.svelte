@@ -1,8 +1,14 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- UC06 — Start / stop / poll routines (FR-2.1-2.3) -->
+<!-- UC06 - Start / stop / poll routines (FR-2.1-2.3) -->
 <script lang="ts">
-	import type { RoutineEntry, EcuId } from '$lib/types/sovd';
-	import { CANNED_ROUTINES, startRoutine, stopRoutine } from '$lib/api/sovdClient';
+	import {
+		CANNED_ROUTINES,
+		listRoutines,
+		pollRoutine,
+		startRoutine,
+		stopRoutine
+	} from '$lib/api/sovdClient';
+	import type { EcuId, RoutineEntry } from '$lib/types/sovd';
 
 	interface Props {
 		componentId?: EcuId;
@@ -10,16 +16,25 @@
 
 	let { componentId }: Props = $props();
 
-	// Base list derived from prop (reactive to ECU selection changes)
-	const baseRoutines = $derived(
-		componentId ? CANNED_ROUTINES.filter((r) => r.component === componentId) : CANNED_ROUTINES
-	);
-	// Overlay for local status mutations (start/stop)
+	let baseRoutines = $state<RoutineEntry[]>(CANNED_ROUTINES);
 	let statusOverride = $state<Record<string, RoutineEntry>>({});
 
-	const routines = $derived(
-		baseRoutines.map((r) => statusOverride[r.id] ?? r)
-	);
+	const routines = $derived(baseRoutines.map((routine) => statusOverride[routine.id] ?? routine));
+
+	$effect(() => {
+		statusOverride = {};
+		void load(componentId);
+	});
+
+	$effect(() => {
+		if (!componentId) {
+			return;
+		}
+		const timer = setInterval(() => {
+			void refreshRunning(componentId);
+		}, 1500);
+		return () => clearInterval(timer);
+	});
 
 	const STATUS_CHIP: Record<string, string> = {
 		idle: 'bg-slate-600 text-slate-200',
@@ -28,14 +43,41 @@
 		failed: 'bg-red-700 text-white'
 	};
 
-	async function handleStart(rt: RoutineEntry) {
-		await startRoutine(rt.id);
-		statusOverride = { ...statusOverride, [rt.id]: { ...rt, status: 'running' } };
+	async function load(id?: EcuId) {
+		baseRoutines = id ? await listRoutines(id) : CANNED_ROUTINES;
 	}
 
-	async function handleStop(rt: RoutineEntry) {
-		await stopRoutine(rt.id);
-		statusOverride = { ...statusOverride, [rt.id]: { ...rt, status: 'idle', lastResult: 'Stopped by user' } };
+	async function refreshRunning(id: EcuId) {
+		const running = routines.filter((routine) => routine.status === 'running');
+		if (running.length === 0) {
+			return;
+		}
+		const updates = await Promise.all(
+			running.map(async (routine) => [routine.id, await pollRoutine(id, routine.id)] as const)
+		);
+		statusOverride = {
+			...statusOverride,
+			...Object.fromEntries(updates)
+		};
+	}
+
+	async function handleStart(routine: RoutineEntry) {
+		const target = componentId ?? routine.component;
+		await startRoutine(target, routine.id);
+		statusOverride = {
+			...statusOverride,
+			[routine.id]: { ...routine, status: 'running', lastResult: 'Execution started' }
+		};
+		await refreshRunning(target);
+	}
+
+	async function handleStop(routine: RoutineEntry) {
+		const target = componentId ?? routine.component;
+		await stopRoutine(target, routine.id);
+		statusOverride = {
+			...statusOverride,
+			[routine.id]: { ...routine, status: 'idle', lastResult: 'Stopped by user' }
+		};
 	}
 </script>
 

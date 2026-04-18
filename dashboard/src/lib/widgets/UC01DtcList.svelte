@@ -1,15 +1,28 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- UC01 — Read DTCs per component, status-mask filtered (FR-1.1) -->
+<!-- UC01 - Read DTCs per component, status-mask filtered (FR-1.1) -->
 <script lang="ts">
+	import { listFaults } from '$lib/api/sovdClient';
 	import type { DtcEntry, DtcStatus, EcuId } from '$lib/types/sovd';
-	import { CANNED_DTCS } from '$lib/api/sovdClient';
 
 	interface Props {
 		componentId: EcuId;
 		onSelect?: (dtc: DtcEntry) => void;
+		page?: number;
+		pageSize?: number;
+		onPage?: (page: number) => void;
+		onTotalChange?: (total: number) => void;
+		refreshNonce?: number;
 	}
 
-	let { componentId, onSelect }: Props = $props();
+	let {
+		componentId,
+		onSelect,
+		page = 0,
+		pageSize = 5,
+		onPage,
+		onTotalChange,
+		refreshNonce = 0
+	}: Props = $props();
 
 	const STATUS_OPTIONS: { value: DtcStatus | 'all'; label: string }[] = [
 		{ value: 'all', label: 'All' },
@@ -21,15 +34,65 @@
 	];
 
 	let statusMask = $state<DtcStatus | 'all'>('all');
-	let page = $state(0);
-	const PAGE_SIZE = 5;
+	let localPage = $state(0);
+	let allFaults = $state<DtcEntry[]>([]);
+	let loading = $state(true);
+	let lastResetKey = $state('');
 
-	const allFaults = $derived(CANNED_DTCS.filter((d) => d.component === componentId));
+	const currentPage = $derived(onPage ? page : localPage);
 	const filtered = $derived(
-		statusMask === 'all' ? allFaults : allFaults.filter((d) => d.status === statusMask)
+		statusMask === 'all' ? allFaults : allFaults.filter((fault) => fault.status === statusMask)
 	);
-	const pageCount = $derived(Math.ceil(filtered.length / PAGE_SIZE));
-	const visible = $derived(filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE));
+	const pageCount = $derived(Math.max(1, Math.ceil(filtered.length / pageSize)));
+	const visible = $derived(filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize));
+
+	$effect(() => {
+		const resetKey = `${componentId}:${statusMask}:${refreshNonce}`;
+		if (resetKey === lastResetKey) {
+			return;
+		}
+		lastResetKey = resetKey;
+		if (onPage) {
+			onPage(0);
+			return;
+		}
+		localPage = 0;
+	});
+
+	$effect(() => {
+		void load(componentId, refreshNonce);
+	});
+
+	$effect(() => {
+		onTotalChange?.(filtered.length);
+		const lastPage = Math.max(0, pageCount - 1);
+		if (currentPage <= lastPage) {
+			return;
+		}
+		if (onPage) {
+			onPage(lastPage);
+		} else {
+			localPage = lastPage;
+		}
+	});
+
+	async function load(id: EcuId, _refreshNonce: number) {
+		loading = true;
+		try {
+			allFaults = await listFaults(id);
+		} finally {
+			loading = false;
+		}
+	}
+
+	function setPage(nextPage: number) {
+		const bounded = Math.max(0, Math.min(pageCount - 1, nextPage));
+		if (onPage) {
+			onPage(bounded);
+		} else {
+			localPage = bounded;
+		}
+	}
 
 	const SEVERITY_COLOR: Record<string, string> = {
 		critical: 'bg-red-700 text-white',
@@ -51,7 +114,7 @@
 <div class="rounded-lg border border-border bg-card p-3 text-card-foreground">
 	<div class="mb-2 flex items-center justify-between">
 		<span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-			DTC List — {componentId.toUpperCase()} ({filtered.length})
+			DTC List - {componentId.toUpperCase()} ({filtered.length})
 		</span>
 		<select
 			bind:value={statusMask}
@@ -64,7 +127,9 @@
 	</div>
 
 	{#if visible.length === 0}
-		<p class="py-2 text-center text-xs text-muted-foreground">No faults for this filter.</p>
+		<p class="py-2 text-center text-xs text-muted-foreground">
+			{loading ? 'Loading faults...' : 'No faults for this filter.'}
+		</p>
 	{:else}
 		<table class="w-full text-xs">
 			<thead>
@@ -85,9 +150,9 @@
 						<td class="py-1 font-mono font-semibold">{dtc.code}</td>
 						<td class="max-w-[120px] truncate py-1 text-muted-foreground">{dtc.description}</td>
 						<td class="py-1">
-							<span class="rounded px-1 py-0.5 text-[10px] {SEVERITY_COLOR[dtc.severity]}"
-								>{dtc.severity[0].toUpperCase()}</span
-							>
+							<span class="rounded px-1 py-0.5 text-[10px] {SEVERITY_COLOR[dtc.severity]}">
+								{dtc.severity[0].toUpperCase()}
+							</span>
 						</td>
 						<td class="py-1 {STATUS_COLOR[dtc.status]}">{dtc.status}</td>
 						<td class="py-1 text-right tabular-nums">{dtc.occurrences}</td>
@@ -97,19 +162,23 @@
 		</table>
 	{/if}
 
-	{#if pageCount > 1}
+	{#if !onPage && pageCount > 1}
 		<div class="mt-2 flex justify-between text-xs text-muted-foreground">
 			<button
-				disabled={page === 0}
-				onclick={() => (page = Math.max(0, page - 1))}
-				class="rounded px-2 py-0.5 disabled:opacity-40 hover:bg-accent">&laquo; Prev</button
+				disabled={currentPage === 0}
+				onclick={() => setPage(currentPage - 1)}
+				class="rounded px-2 py-0.5 disabled:opacity-40 hover:bg-accent"
 			>
-			<span>{page + 1} / {pageCount}</span>
+				Prev
+			</button>
+			<span>{currentPage + 1} / {pageCount}</span>
 			<button
-				disabled={page >= pageCount - 1}
-				onclick={() => (page = Math.min(pageCount - 1, page + 1))}
-				class="rounded px-2 py-0.5 disabled:opacity-40 hover:bg-accent">Next &raquo;</button
+				disabled={currentPage >= pageCount - 1}
+				onclick={() => setPage(currentPage + 1)}
+				class="rounded px-2 py-0.5 disabled:opacity-40 hover:bg-accent"
 			>
+				Next
+			</button>
 		</div>
 	{/if}
 </div>

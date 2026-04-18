@@ -53,6 +53,7 @@ export interface SessionInfo {
 	level: SessionLevel;
 	securityLevel: SecurityLevel;
 	expiresAt: string; // ISO 8601
+	active?: boolean;
 }
 
 export interface AuditEntry {
@@ -69,6 +70,20 @@ export interface LiveDid {
 	batteryVoltage: number; // V
 	temperature: number; // °C
 	timestamp: string;
+}
+
+export interface GatewayHealthProbe {
+	status: 'ok' | 'degraded' | 'unavailable';
+	reason?: string;
+}
+
+export interface GatewayHealth {
+	status: string;
+	version: string;
+	sovdDb: GatewayHealthProbe;
+	faultSink: GatewayHealthProbe;
+	operationCycle?: string;
+	latencyMs: number;
 }
 
 export interface GatewayBackend {

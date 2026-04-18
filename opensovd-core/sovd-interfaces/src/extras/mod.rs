@@ -33,4 +33,5 @@
 
 pub mod fault;
 pub mod health;
+pub mod observer;
 pub mod response;

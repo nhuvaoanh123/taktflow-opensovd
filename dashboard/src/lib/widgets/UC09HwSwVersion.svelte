@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- UC09 — ECU card header with HW/SW version, serial, VIN (FR-3.2) -->
+<!-- UC09 - ECU card header with HW/SW version, serial, VIN (FR-3.2) -->
 <script lang="ts">
-	import type { EcuId } from '$lib/types/sovd';
-	import { CANNED_COMPONENTS } from '$lib/api/sovdClient';
+	import { CANNED_COMPONENTS, getComponent } from '$lib/api/sovdClient';
+	import type { EcuId, SovdComponent } from '$lib/types/sovd';
 
 	interface Props {
 		componentId: EcuId;
@@ -10,7 +10,17 @@
 
 	let { componentId }: Props = $props();
 
-	const comp = $derived(CANNED_COMPONENTS.find((c) => c.id === componentId));
+	let comp = $state<SovdComponent | null>(
+		CANNED_COMPONENTS.find((component) => component.id === componentId) ?? null
+	);
+
+	$effect(() => {
+		void load(componentId);
+	});
+
+	async function load(id: EcuId) {
+		comp = await getComponent(id);
+	}
 </script>
 
 {#if comp}

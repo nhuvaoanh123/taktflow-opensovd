@@ -24,7 +24,7 @@
 
 use utoipa::OpenApi;
 
-use crate::routes::{components, data, faults, operations};
+use crate::routes::{components, data, faults, observer, operations};
 
 /// Assembled `OpenAPI` document. Derive-built so the doc is in sync with
 /// the annotated handlers and `ToSchema` types at compile time.
@@ -33,6 +33,9 @@ use crate::routes::{components, data, faults, operations};
     paths(
         components::list_components,
         components::get_component,
+        observer::session,
+        observer::audit,
+        observer::gateway_backends,
         faults::list_faults,
         faults::get_fault,
         faults::clear_all_faults,
@@ -41,6 +44,7 @@ use crate::routes::{components, data, faults, operations};
         operations::start_execution,
         operations::execution_status,
         data::list_data,
+        data::read_data,
     ),
     components(schemas(
         sovd_interfaces::spec::component::DiscoveredEntities,
@@ -82,6 +86,11 @@ use crate::routes::{components, data, faults, operations};
         sovd_interfaces::spec::error::DataError,
         // Phase 4 D4 — extras health envelope.
         sovd_interfaces::extras::health::HealthStatus,
+        sovd_interfaces::extras::observer::SessionStatus,
+        sovd_interfaces::extras::observer::AuditEntry,
+        sovd_interfaces::extras::observer::AuditLog,
+        sovd_interfaces::extras::observer::BackendRoute,
+        sovd_interfaces::extras::observer::BackendRoutes,
         sovd_interfaces::traits::backend::BackendHealth,
     )),
     tags(
@@ -89,6 +98,7 @@ use crate::routes::{components, data, faults, operations};
         (name = "fault-handling", description = "Fault list/detail/clear endpoints"),
         (name = "operations-control", description = "Operation execution endpoints"),
         (name = "data-access", description = "Data resource access endpoints"),
+        (name = "observer-extras", description = "Observer dashboard extension endpoints"),
     )
 )]
 pub struct ApiDoc;

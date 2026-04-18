@@ -67,10 +67,43 @@ Optional env vars:
   path does not resolve the script skips the proxy deploy **and**
   leaves the systemd unit disabled (D1 green still holds on
   `sovd-main` alone).
+- `OBSERVER_NGINX_ENABLED` — when set to `1`, also deploy the Stage 1
+  observer nginx front end, static dashboard bundle, and mTLS certs
+- `OBSERVER_DASHBOARD_DIR` — override the static dashboard build
+  source. Default: `../dashboard/build`
+- `WS_BRIDGE_INTERNAL_TOKEN` — required when
+  `OBSERVER_NGINX_ENABLED=1`; passed to nginx for the upstream
+  ws-bridge hop
+- `OBSERVER_SOVD_UPSTREAM` — override nginx's `/sovd/` upstream.
+  Default: `127.0.0.1:21002`
+- `OBSERVER_WS_BRIDGE_UPSTREAM` — override nginx's `/ws` upstream.
+  Default: `127.0.0.1:8082`
+- `PROVISION_OBSERVER_CERTS` — set to `0` to reuse existing
+  `/opt/taktflow/observer-certs` instead of regenerating them
+- `FORCE_OBSERVER_CERTS` — set to `1` to replace existing observer
+  cert material on the Pi
 
 The script is idempotent: it uses `rsync -az`, `systemctl enable
 --now`, and strips CRLF after transfer (same pattern as the existing
 `install-ecu-sim.sh`). Safe to re-run.
+
+To fold the Stage 1 observer front end into the same deploy:
+
+```bash
+cd opensovd-core
+OBSERVER_NGINX_ENABLED=1 \
+WS_BRIDGE_INTERNAL_TOKEN='<same token used by ws-bridge>' \
+./deploy/pi/phase5-full-stack.sh
+```
+
+That observer mode:
+
+- rsyncs `dashboard/build/` to `/opt/taktflow/dashboard`
+- uploads the nginx compose/config bundle under `/opt/taktflow/observer-nginx`
+- provisions `/opt/taktflow/observer-certs` by default
+- runs `docker compose up -d` for nginx on the Pi
+- verifies authenticated HTTPS to `https://127.0.0.1/sovd/v1/components`
+- verifies unauthenticated HTTPS is rejected
 
 After deploy, verify:
 
@@ -87,6 +120,21 @@ SQLite store on the same deployed volume as the binary and avoids
 systemd working-directory ambiguity. The deploy script repairs
 ownership of `/opt/taktflow/sovd-main` back to `taktflow-pi` on every
 run so the service user can create and update the database file.
+
+## Observer nginx follow-up (T24.1.15, T24.1.16, T24.1.17)
+
+The Stage 1 observer front end now has a standalone nginx deliverable at:
+
+- `deploy/pi/docker-compose.observer-nginx.yml`
+- `deploy/pi/nginx/README.md`
+- `deploy/pi/scripts/provision-observer-certs.sh`
+
+Those assets now also plug into `deploy/pi/phase5-full-stack.sh` when
+`OBSERVER_NGINX_ENABLED=1`. They serve the static dashboard, terminate
+TLS, verify observer client certs, proxy `/sovd/` to `sovd-main`, and
+proxy `/ws` to `ws-bridge`. The broader telemetry stack follow-up
+(Mosquitto, Prometheus, Grafana, and any dedicated ws-bridge deploy
+asset in this repo) is still separate from this D1 script.
 
 ## Hybrid Phase 5 Follow-Up
 

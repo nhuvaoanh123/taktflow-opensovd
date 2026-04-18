@@ -76,8 +76,10 @@ cd odx-converter
 
 ```bash
 rustup target add aarch64-unknown-linux-gnu
+winget install zig.zig
+cargo install cargo-zigbuild --locked
 cd opensovd-core
-cargo build --target aarch64-unknown-linux-gnu --release -p sovd-main
+cargo zigbuild --target aarch64-unknown-linux-gnu --release -p sovd-main
 ```
 
 ## Running

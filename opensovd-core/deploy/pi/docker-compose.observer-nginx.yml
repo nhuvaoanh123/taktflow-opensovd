@@ -25,6 +25,7 @@ services:
     environment:
       SOVD_UPSTREAM: ${SOVD_UPSTREAM:-127.0.0.1:21002}
       WS_BRIDGE_UPSTREAM: ${WS_BRIDGE_UPSTREAM:-127.0.0.1:8082}
+      GRAFANA_UPSTREAM: ${GRAFANA_UPSTREAM:-127.0.0.1:3000}
       WS_BRIDGE_INTERNAL_TOKEN: ${WS_BRIDGE_INTERNAL_TOKEN:?set WS_BRIDGE_INTERNAL_TOKEN}
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro

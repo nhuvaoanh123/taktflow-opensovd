@@ -1,0 +1,16 @@
+---
+source: crates/ws-bridge/tests/schema_snapshot.rs
+assertion_line: 52
+expression: pretty
+---
+{
+  "payload": {
+    "bench_id": "sovd-hil",
+    "component_id": "cvc",
+    "dtc": "P0A1F",
+    "severity": 2,
+    "status": "confirmed",
+    "timestamp": "2026-04-17T19:00:00Z"
+  },
+  "topic": "vehicle/dtc/new"
+}

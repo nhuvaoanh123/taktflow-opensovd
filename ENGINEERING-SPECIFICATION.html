@@ -205,9 +205,9 @@
 
 <div class="meta">
   <span><strong>Document ID:</strong> TAKTFLOW-SOVD-ENG-SPEC</span>
-  <span><strong>Revision:</strong> 1.2</span>
+  <span><strong>Revision:</strong> 1.4</span>
   <span><strong>Status:</strong> Draft</span>
-  <span><strong>Date:</strong> 2026-04-17</span>
+  <span><strong>Date:</strong> 2026-04-19</span>
   <span><strong>Owner:</strong> Taktflow SOVD workstream</span>
 </div>
 
@@ -267,10 +267,45 @@ diagnostics and scales to arbitrary ECU counts without code change.</p>
 </tbody>
 </table>
 
-<p><strong>Current status:</strong> Phase 5 &mdash; Hardware-in-the-Loop (April 2026).
-Full stack running on Raspberry Pi with physical STM32 ECUs on CAN bus.</p>
+<p><strong>Current status (2026-04-19):</strong> Phase 5 Stage 1 in progress.
+Software path green end-to-end in Docker SIL; observer dashboard serving live
+<code>/sovd/v1/components</code>, <code>/faults</code>, <code>/operations</code>,
+<code>/data</code>, <code>/health</code>, <code>/session</code>, <code>/audit</code>,
+<code>/gateway/backends</code> plus <code>ws-bridge</code> relay on the bench
+LAN. Physical STM32 flashing and TMS570 integration remain (see hardening
+gates in <a href="MASTER-PLAN.md">MASTER-PLAN.md</a>).</p>
 
-<h3>1.1 Conformance scope</h3>
+<h3>1.1 Progress Snapshot (2026-04-19)</h3>
+
+<table>
+<thead><tr><th>Area</th><th>State</th><th>Evidence</th></tr></thead>
+<tbody>
+<tr><td>Phase 0 Foundation</td><td><span class="badge badge-done">Done</span></td><td>opensovd-core workspace, CI matrix, ADR-0001</td></tr>
+<tr><td>Phase 1 Embedded UDS + DoIP POSIX</td><td><span class="badge badge-done">Done</span></td><td>Dcm 0x19/0x14/0x31 handlers, DoIp_Posix.c (external firmware repo)</td></tr>
+<tr><td>Phase 2 CDA integration + proxy</td><td><span class="badge badge-done">Done</span></td><td><code>integration-tests/phase2_*</code>, CDA forwards to SOVD server via <code>cda-comm-doip</code></td></tr>
+<tr><td>Phase 3 Fault Lib + DFM</td><td><span class="badge badge-done">Done</span></td><td><code>sovd-dfm/</code> + <code>sovd-db-sqlite/</code>, round-trip &lt;100 ms in Docker</td></tr>
+<tr><td>Phase 4 SOVD Server + Gateway MVP</td><td><span class="badge badge-done">Done</span></td><td>All 10+ endpoints live; 32 integration tests green; OpenAPI snapshot gate active</td></tr>
+<tr><td>Phase 5 Stage 1 &mdash; Observer dashboard + mTLS</td><td><span class="badge badge-scaffold">WIP</span></td><td>UC15/UC16/UC18 stubs retired, observer extras endpoints live, nginx overlay + cert provisioning scripted (<code>deploy/pi/scripts/provision-observer-certs.sh</code>)</td></tr>
+<tr><td>Phase 5 Stage 1 &mdash; MQTT fan-out</td><td><span class="badge badge-scaffold">WIP</span></td><td><code>fault-sink-mqtt</code> + <code>ws-bridge</code> merged; Mosquitto deploy kit on <code>feat/mqtt-broker-deploy</code></td></tr>
+<tr><td>Phase 5 Stage 1 &mdash; Live Pi run + Prometheus/Grafana</td><td><span class="badge badge-scaffold">Open</span></td><td>Bench Pi is Ubuntu 24.04 aarch64 at <code>taktflow-pi@192.168.0.197</code>; observer overlay awaits live verification + aarch64 toolchain</td></tr>
+<tr><td>Phase 5 &mdash; Physical STM32 + TMS570 flash</td><td><span class="badge badge-stub">Not started</span></td><td>Hardening gate due 2026-07-31 for first ARM smoke</td></tr>
+<tr><td>Phase 6 &mdash; TLS everywhere, OTA, safety case delta</td><td><span class="badge badge-stub">Not started</span></td><td>ADR-0025 design only; 10 dated hardening gates track exit</td></tr>
+</tbody>
+</table>
+
+<h3>1.2 Repository structure &mdash; owned, not forked (as of 2026-04-19)</h3>
+
+<p><code>opensovd-core/</code> is Taktflow-owned &mdash; a normal monorepo
+subdirectory under <code>taktflow-opensovd</code>, no nested <code>.git/</code>.
+Upstream <a href="https://github.com/eclipse-opensovd/opensovd-core">eclipse-opensovd/opensovd-core</a>
+is an empty stub, so the DFM, Gateway, Server, fault-sink, ws-bridge, observer
+API, and dashboard here are all originals. <code>classic-diagnostic-adapter/</code>
+stays vendored verbatim from upstream as the SOVD&rarr;UDS/DoIP bridge for
+legacy ECUs. When the team decides to contribute upstream, individual crates
+split out via <code>git subtree split --prefix=opensovd-core/&lt;crate&gt;</code>
+into a throwaway branch &mdash; no persistent fork required.</p>
+
+<h3>1.3 Conformance scope</h3>
 <ul>
 <li><strong>What we verify:</strong> the ASAM SOVD v1.1 OpenAPI wire contract published for ISO 17978-3, locked by <code>sovd-interfaces</code> schema snapshots and <code>cargo xtask openapi-dump --check</code>.</li>
 <li><strong>What we align with:</strong> public scope statements for ISO 17978 Parts 1 and 2 from ASAM/ISO public pages, AUTOSAR <code>EXP_SOVD</code>, the Eclipse OpenSOVD <code>design.md</code> and <code>mvp.md</code>, the public Eclipse OpenSOVD CDA code when behavior is ambiguous, and the local research notes under <code>external/asam-public/iso-17978-research/</code>.</li>
@@ -1034,7 +1069,7 @@ graph TB
 <table>
 <thead><tr><th>Component</th><th>Language</th><th>Lines</th><th>Purpose</th></tr></thead>
 <tbody>
-<tr><td><code>classic-diagnostic-adapter/</code></td><td>Rust</td><td>~68k</td><td>SOVD-to-UDS/DoIP bridge (upstream fork, 14 crates)</td></tr>
+<tr><td><code>classic-diagnostic-adapter/</code></td><td>Rust</td><td>~68k</td><td>SOVD-to-UDS/DoIP bridge (vendored verbatim from upstream, 14 crates)</td></tr>
 <tr><td><code>fault-lib/</code></td><td>Rust</td><td>~600</td><td>Framework-agnostic fault API, <code>#![forbid(unsafe_code)]</code></td></tr>
 <tr><td><code>dlt-tracing-lib/</code></td><td>Rust</td><td>~1.9k</td><td>Rust tracing subscriber for COVESA DLT</td></tr>
 <tr><td><code>odx-converter/</code></td><td>Kotlin</td><td>~4.2k</td><td>ODX (.pdx) to MDD binary format converter</td></tr>
@@ -1051,7 +1086,7 @@ graph TB
   <li><strong>Trait boundaries, not frameworks.</strong> <code>sovd-interfaces</code> defines all contracts with zero I/O. Implementations are swappable.</li>
 <li><strong>Spec-locked API surface.</strong> OpenAPI schema snapshot-tested against ASAM SOVD v1.1 OpenAPI (ISO&nbsp;17978-3).</li>
   <li><strong>Build first, contribute later.</strong> No upstream PRs during early phases.</li>
-  <li><strong>Extras on top, never inside mirrored code.</strong> Taktflow customizations live in layered crates, not inline edits to upstream files.</li>
+  <li><strong>Owned core, vendored bridge.</strong> <code>opensovd-core/</code> is Taktflow-owned (upstream is an empty stub); <code>classic-diagnostic-adapter/</code> stays vendored verbatim from upstream and is never edited inline &mdash; CDA modifications land in separate Taktflow crates or external patches.</li>
   <li><strong>Isolation over integration on the safety axis.</strong> Fault Library is the ONLY boundary between QM and ASIL-D.</li>
 </ol>
 
@@ -1230,7 +1265,7 @@ the full chain rather than reading each document in isolation.</p>
 <table>
 <thead><tr><th>Phase</th><th>Purpose</th><th>Professional meaning</th></tr></thead>
 <tbody>
-<tr><td>0 -- Foundation</td><td>Align toolchains, workspace conventions, and fork discipline</td><td>Control the engineering environment before adding features</td></tr>
+<tr><td>0 -- Foundation</td><td>Align toolchains, workspace conventions, and monorepo discipline</td><td>Control the engineering environment before adding features</td></tr>
 <tr><td>1 -- Embedded UDS + DoIP POSIX</td><td>Expose the minimum legacy diagnostic substrate SOVD will rely on</td><td>Do not design the facade before the substrate is viable</td></tr>
 <tr><td>2 -- CDA integration + CAN-to-DoIP proxy</td><td>Prove the path to both virtual and physical ECUs</td><td>Retire topology risk early</td></tr>
 <tr><td>3 -- Fault Library + DFM</td><td>Make fault ingest and DTC state real instead of mocked</td><td>Establish the central diagnostic data model before claiming the full REST surface</td></tr>
@@ -1326,12 +1361,13 @@ maturity story explicit.</p>
 <tr><td>1.1</td><td>2026-04-17</td><td>SOVD workstream</td><td>Section&nbsp;7 expanded to the full UC1&ndash;UC20 catalog with traceability matrix; mirrors new <code>docs/USE-CASES.md</code>.</td></tr>
 <tr><td>1.2</td><td>2026-04-17</td><td>SOVD workstream</td><td>Renamed the browser deliverable to <code>ENGINEERING-SPECIFICATION.html</code> and merged the standalone development story into Section&nbsp;14.</td></tr>
 <tr><td>1.3</td><td>2026-04-17</td><td>SOVD workstream</td><td>Added UC21&ndash;UC23 OTA firmware update per <a href="docs/adr/0025-ota-firmware-update-scope.md">ADR-0025</a>; bumped ADR count to 25.</td></tr>
+<tr><td>1.4</td><td>2026-04-19</td><td>SOVD workstream</td><td>Added &sect;1.1 progress snapshot (phase status table through 2026-04-19), &sect;1.2 repository structure note reflecting the 2026-04-19 flatten (opensovd-core owned by Taktflow, CDA stays vendored); renumbered Conformance scope to 1.3; updated current-status paragraph; HIL bench Pi ground-truth captured as <code>taktflow-pi@192.168.0.197</code> (Ubuntu 24.04.4 LTS aarch64).</td></tr>
 </tbody>
 </table>
 
 <hr>
 <p style="text-align:center; color:var(--grey-700); font-size:0.85rem; margin-top:2rem;">
-  &copy; 2026 The Contributors to Eclipse OpenSOVD (Taktflow fork) &mdash; Apache-2.0
+  &copy; 2026 The Contributors to Taktflow OpenSOVD (includes vendored Eclipse OpenSOVD CDA) &mdash; Apache-2.0
 </p>
 
 <script>

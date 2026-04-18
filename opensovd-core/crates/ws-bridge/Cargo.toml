@@ -44,6 +44,10 @@ futures-util = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync"] }
+chrono = { workspace = true }
+fault-sink-mqtt = { workspace = true }
+insta = { workspace = true }
+sovd-interfaces = { workspace = true }
 # Raw WS client for the round-trip test. Pairs with rumqttd so the
 # whole integration spins up in-process.
 tokio-tungstenite = { workspace = true }

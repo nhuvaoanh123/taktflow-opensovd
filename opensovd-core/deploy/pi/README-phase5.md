@@ -54,6 +54,9 @@ Optional env vars:
 - `PI` — override SSH target (default `bench-pi@192.0.2.10`)
 - `TARGET_TRIPLE` — override cross-target (default
   `aarch64-unknown-linux-gnu`)
+- `CARGO_BUILD_BACKEND` — `auto` (default), `cargo`, or `zigbuild`.
+  `auto` prefers `cargo zigbuild` for the Pi GNU target when
+  `cargo-zigbuild` is installed on the Windows host.
 - `SOVD_MAIN_BIN` — point at a pre-built binary if you already have
   one cached
 - `SOVD_CONFIG_FILE` — choose which `sovd-main` TOML to deploy.
@@ -223,6 +226,10 @@ ecu-sim.service is untouched by rollback.
   artifact does not resolve. Full bench readiness requires Line B
   D1..D3 (physical STM32 flashing), which is not gated by D1.
 - Cross-compiling `sovd-main` for `aarch64-unknown-linux-gnu` needs
-  a linker. If you do not have one installed, pass `SOVD_MAIN_BIN`
-  at a pre-built binary (for example, one produced on the Linux
-  laptop `operator@192.0.2.30`).
+  a C toolchain. On the Windows host, the supported path is:
+  `rustup target add aarch64-unknown-linux-gnu`, `winget install zig.zig`,
+  and `cargo install cargo-zigbuild --locked`. The deploy script will
+  then auto-select `cargo zigbuild` unless `CARGO_BUILD_BACKEND=cargo`
+  overrides it. If you do not have that toolchain, pass `SOVD_MAIN_BIN`
+  at a pre-built binary (for example, one produced on the Pi-native
+  build tree).

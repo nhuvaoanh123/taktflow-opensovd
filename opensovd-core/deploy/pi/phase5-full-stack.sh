@@ -19,6 +19,9 @@
 #       - docker compose on the Pi
 #       - a built dashboard/ static bundle on the dev host
 #       - WS_BRIDGE_INTERNAL_TOKEN for the nginx -> ws-bridge hop
+#       - a Pi-local Mosquitto listener on 127.0.0.1:1883 for ws-bridge
+#   - If OBSERVER_OBSERVABILITY_ENABLED=1:
+#       - docker compose on the Pi
 #
 # What this script does (all rsync-based, all idempotent):
 #   1. Build (or locate) sovd-main release binary for aarch64
@@ -32,9 +35,13 @@
 #      pattern as install-ecu-sim.sh)
 #   6. Verify sovd-main answers GET /sovd/v1/components on
 #      $PI_HTTP_HOST:21002
-#   7. If OBSERVER_NGINX_ENABLED=1: rsync nginx assets + dashboard
-#      bundle, provision observer certs, compose up nginx, and verify
-#      authenticated HTTPS succeeds while unauthenticated HTTPS fails
+#   7. If OBSERVER_NGINX_ENABLED=1: build/rsync ws-bridge, install its
+#      systemd unit, rsync nginx assets + dashboard bundle, provision
+#      observer certs, compose up nginx, and verify authenticated HTTPS
+#      succeeds while unauthenticated HTTPS fails
+#   8. If OBSERVER_OBSERVABILITY_ENABLED=1: rsync Prometheus/Grafana
+#      config, compose up the observability stack, and verify both
+#      loopback services answer health probes on the Pi
 #
 # Non-goals (expansions blocked on Line B bench readiness or on other
 # D-deliverables of phase-5-line-a.md):
@@ -61,12 +68,16 @@ REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 DEPLOY_DIR=$REPO_ROOT/deploy/pi
 REMOTE_SOVD_DIR=/opt/taktflow/sovd-main
 REMOTE_PROXY_DIR=/opt/taktflow/proxy
+REMOTE_WS_BRIDGE_DIR=/opt/taktflow/ws-bridge
 REMOTE_OBSERVER_DIR=/opt/taktflow/observer-nginx
+REMOTE_OBSERVER_OBS_DIR=/opt/taktflow/observer-observability
 REMOTE_OBSERVER_CERTS_DIR=/opt/taktflow/observer-certs
 REMOTE_DASHBOARD_DIR=/opt/taktflow/dashboard
 TARGET_TRIPLE=${TARGET_TRIPLE:-aarch64-unknown-linux-gnu}
 SOVD_MAIN_BIN=${SOVD_MAIN_BIN:-$REPO_ROOT/target/$TARGET_TRIPLE/release/sovd-main}
+WS_BRIDGE_BIN=${WS_BRIDGE_BIN:-$REPO_ROOT/target/$TARGET_TRIPLE/release/ws-bridge}
 SOVD_CONFIG_FILE=${SOVD_CONFIG_FILE:-$DEPLOY_DIR/opensovd-pi.toml}
+CARGO_BUILD_BACKEND=${CARGO_BUILD_BACKEND:-auto}
 PHASE5_CDA_BASE_URL=${PHASE5_CDA_BASE_URL:-}
 PHASE5_CDA_PLACEHOLDER=${PHASE5_CDA_PLACEHOLDER:-http://198.51.100.10:20002}
 # Phase 2 Line B proxy binary. The Line B repo lives as a sibling
@@ -76,10 +87,16 @@ PHASE5_CDA_PLACEHOLDER=${PHASE5_CDA_PLACEHOLDER:-http://198.51.100.10:20002}
 # D1, NOT a hard prerequisite.
 PROXY_BIN=${PROXY_BIN:-$REPO_ROOT/../../taktflow-embedded-production/posix/build/taktflow-can-doip-proxy}
 OBSERVER_NGINX_ENABLED=${OBSERVER_NGINX_ENABLED:-0}
+OBSERVER_OBSERVABILITY_ENABLED=${OBSERVER_OBSERVABILITY_ENABLED:-0}
 OBSERVER_DASHBOARD_DIR=${OBSERVER_DASHBOARD_DIR:-$REPO_ROOT/../dashboard/build}
 OBSERVER_SOVD_UPSTREAM=${OBSERVER_SOVD_UPSTREAM:-127.0.0.1:21002}
 OBSERVER_WS_BRIDGE_UPSTREAM=${OBSERVER_WS_BRIDGE_UPSTREAM:-127.0.0.1:8082}
 WS_BRIDGE_INTERNAL_TOKEN=${WS_BRIDGE_INTERNAL_TOKEN:-}
+WS_BRIDGE_MQTT_URL=${WS_BRIDGE_MQTT_URL:-mqtt://127.0.0.1:1883}
+WS_BRIDGE_BIND_ADDR=${WS_BRIDGE_BIND_ADDR:-127.0.0.1:8082}
+WS_BRIDGE_SUB_TOPIC=${WS_BRIDGE_SUB_TOPIC:-vehicle/#}
+WS_BRIDGE_LOG=${WS_BRIDGE_LOG:-info}
+GRAFANA_UPSTREAM=${GRAFANA_UPSTREAM:-127.0.0.1:3000}
 PROVISION_OBSERVER_CERTS=${PROVISION_OBSERVER_CERTS:-1}
 FORCE_OBSERVER_CERTS=${FORCE_OBSERVER_CERTS:-0}
 
@@ -89,12 +106,20 @@ err() { printf '[phase5-full-stack][ERR ] %s\n' "$*" >&2; }
 
 CONFIG_RENDER=
 OBSERVER_ENV_RENDER=
+WS_BRIDGE_ENV_RENDER=
+OBSERVER_OBS_ENV_RENDER=
 cleanup() {
     if [ -n "${CONFIG_RENDER:-}" ] && [ -f "$CONFIG_RENDER" ]; then
         rm -f "$CONFIG_RENDER"
     fi
     if [ -n "${OBSERVER_ENV_RENDER:-}" ] && [ -f "$OBSERVER_ENV_RENDER" ]; then
         rm -f "$OBSERVER_ENV_RENDER"
+    fi
+    if [ -n "${WS_BRIDGE_ENV_RENDER:-}" ] && [ -f "$WS_BRIDGE_ENV_RENDER" ]; then
+        rm -f "$WS_BRIDGE_ENV_RENDER"
+    fi
+    if [ -n "${OBSERVER_OBS_ENV_RENDER:-}" ] && [ -f "$OBSERVER_OBS_ENV_RENDER" ]; then
+        rm -f "$OBSERVER_OBS_ENV_RENDER"
     fi
 }
 trap cleanup EXIT
@@ -123,6 +148,11 @@ resolve_sovd_config_source() {
 }
 
 prepare_observer_overlay() {
+    if [ "$OBSERVER_OBSERVABILITY_ENABLED" = "1" ] && [ "$OBSERVER_NGINX_ENABLED" != "1" ]; then
+        err "OBSERVER_OBSERVABILITY_ENABLED=1 requires OBSERVER_NGINX_ENABLED=1"
+        exit 1
+    fi
+
     if [ "$OBSERVER_NGINX_ENABLED" != "1" ]; then
         return
     fi
@@ -142,32 +172,90 @@ prepare_observer_overlay() {
     cat > "$OBSERVER_ENV_RENDER" <<EOF
 SOVD_UPSTREAM=$OBSERVER_SOVD_UPSTREAM
 WS_BRIDGE_UPSTREAM=$OBSERVER_WS_BRIDGE_UPSTREAM
+GRAFANA_UPSTREAM=$GRAFANA_UPSTREAM
 WS_BRIDGE_INTERNAL_TOKEN=$WS_BRIDGE_INTERNAL_TOKEN
 EOF
+
+    WS_BRIDGE_ENV_RENDER=$(mktemp)
+    cat > "$WS_BRIDGE_ENV_RENDER" <<EOF
+WS_BRIDGE_MQTT_URL=$WS_BRIDGE_MQTT_URL
+WS_BRIDGE_BIND_ADDR=$WS_BRIDGE_BIND_ADDR
+WS_BRIDGE_SUB_TOPIC=$WS_BRIDGE_SUB_TOPIC
+WS_BRIDGE_TOKEN=$WS_BRIDGE_INTERNAL_TOKEN
+RUST_LOG=$WS_BRIDGE_LOG
+EOF
+
+    if [ "$OBSERVER_OBSERVABILITY_ENABLED" = "1" ]; then
+        OBSERVER_OBS_ENV_RENDER=$(mktemp)
+        cat > "$OBSERVER_OBS_ENV_RENDER" <<EOF
+GRAFANA_ROOT_URL=https://$PI_HTTP_HOST/grafana/
+GRAFANA_DOMAIN=$PI_HTTP_HOST
+EOF
+    fi
 
     log "observer overlay enabled"
     log "observer dashboard source: $OBSERVER_DASHBOARD_DIR"
 }
 
+pick_cargo_build_subcommand() {
+    case "$CARGO_BUILD_BACKEND" in
+        cargo)
+            printf '%s' "build"
+            ;;
+        zigbuild)
+            if cargo zigbuild --version >/dev/null 2>&1; then
+                printf '%s' "zigbuild"
+            else
+                err "CARGO_BUILD_BACKEND=zigbuild but 'cargo zigbuild' is not installed"
+                err "Install cargo-zigbuild (and zig) or set CARGO_BUILD_BACKEND=cargo"
+                exit 1
+            fi
+            ;;
+        auto)
+            if [ "$TARGET_TRIPLE" = "aarch64-unknown-linux-gnu" ] \
+               && cargo zigbuild --version >/dev/null 2>&1; then
+                printf '%s' "zigbuild"
+            else
+                printf '%s' "build"
+            fi
+            ;;
+        *)
+            err "CARGO_BUILD_BACKEND=$CARGO_BUILD_BACKEND is invalid (expected auto|cargo|zigbuild)"
+            exit 1
+            ;;
+    esac
+}
+
+ensure_release_binary() {
+    local package=$1
+    local bin_path=$2
+
+    if [ ! -x "$bin_path" ]; then
+        log "$package aarch64 release binary not found at $bin_path"
+        log "attempting cross-compile: cargo $CARGO_BUILD_SUBCOMMAND -p $package --release --target $TARGET_TRIPLE"
+        if ! (cd "$REPO_ROOT" && cargo "$CARGO_BUILD_SUBCOMMAND" -p "$package" --release --target "$TARGET_TRIPLE"); then
+            err "cross-compile for $package failed. Either install the aarch64 toolchain"
+            err "(rustup target add $TARGET_TRIPLE + a linker / cargo-zigbuild)"
+            err "or point the corresponding *_BIN env var at a pre-built binary and rerun."
+            exit 1
+        fi
+    fi
+
+    if [ ! -x "$bin_path" ]; then
+        err "$package binary still missing after build attempt: $bin_path"
+        exit 1
+    fi
+    log "using $package binary: $bin_path"
+}
+
 # ---------------------------------------------------------------
 # 1. Resolve or build the sovd-main release binary
 # ---------------------------------------------------------------
-if [ ! -x "$SOVD_MAIN_BIN" ]; then
-    log "sovd-main aarch64 release binary not found at $SOVD_MAIN_BIN"
-    log "attempting cross-compile: cargo build -p sovd-main --release --target $TARGET_TRIPLE"
-    if ! (cd "$REPO_ROOT" && cargo build -p sovd-main --release --target "$TARGET_TRIPLE"); then
-        err "cross-compile failed. Either install the aarch64 toolchain"
-        err "(rustup target add $TARGET_TRIPLE + a linker) or point"
-        err "SOVD_MAIN_BIN at a pre-built binary and rerun."
-        exit 1
-    fi
+CARGO_BUILD_SUBCOMMAND=$(pick_cargo_build_subcommand)
+ensure_release_binary "sovd-main" "$SOVD_MAIN_BIN"
+if [ "$OBSERVER_NGINX_ENABLED" = "1" ]; then
+    ensure_release_binary "ws-bridge" "$WS_BRIDGE_BIN"
 fi
-
-if [ ! -x "$SOVD_MAIN_BIN" ]; then
-    err "SOVD_MAIN_BIN=$SOVD_MAIN_BIN still missing after build attempt"
-    exit 1
-fi
-log "using sovd-main binary: $SOVD_MAIN_BIN"
 SOVD_CONFIG_SOURCE=$(resolve_sovd_config_source)
 log "using sovd-main config source: $SOVD_CONFIG_FILE"
 prepare_observer_overlay
@@ -176,7 +264,7 @@ prepare_observer_overlay
 # 2. rsync sovd-main + config to the Pi
 # ---------------------------------------------------------------
 log "[1/6] preparing /opt/taktflow on $PI"
-ssh "$PI" "sudo mkdir -p $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR \
+ssh "$PI" "sudo mkdir -p $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_WS_BRIDGE_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_OBS_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR \
            && sudo chown -R taktflow-pi:taktflow-pi /opt/taktflow"
 
 log "[2/6] rsync sovd-main binary -> $PI:$REMOTE_SOVD_DIR/"
@@ -187,7 +275,7 @@ rsync -az "$SOVD_CONFIG_SOURCE" "$PI:$REMOTE_SOVD_DIR/opensovd.toml"
 # CRLF -> LF (matches install-ecu-sim.sh pattern)
 ssh "$PI" "sed -i 's/\r\$//' $REMOTE_SOVD_DIR/opensovd.toml"
 log "[3b/6] repairing ownership under /opt/taktflow"
-ssh "$PI" "sudo chown -R taktflow-pi:taktflow-pi $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR"
+ssh "$PI" "sudo chown -R taktflow-pi:taktflow-pi $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_WS_BRIDGE_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_OBS_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR"
 
 # ---------------------------------------------------------------
 # 3. Install + start sovd-main systemd unit
@@ -223,7 +311,43 @@ else
 fi
 
 # ---------------------------------------------------------------
-# 5. Verification
+# 5. Optional: ws-bridge + observability for observer mode
+# ---------------------------------------------------------------
+if [ "$OBSERVER_NGINX_ENABLED" = "1" ]; then
+    log "[5b/6] deploying ws-bridge to $PI:$REMOTE_WS_BRIDGE_DIR/"
+    rsync -az --chmod=F755 "$WS_BRIDGE_BIN" "$PI:$REMOTE_WS_BRIDGE_DIR/ws-bridge"
+    rsync -az "$WS_BRIDGE_ENV_RENDER" "$PI:$REMOTE_WS_BRIDGE_DIR/ws-bridge.env"
+    scp "$DEPLOY_DIR/systemd/ws-bridge.service" "$PI:/tmp/ws-bridge.service"
+    ssh "$PI" "sudo mv /tmp/ws-bridge.service /etc/systemd/system/ws-bridge.service \
+               && sudo sed -i 's/\r\$//' /etc/systemd/system/ws-bridge.service \
+               && sed -i 's/\r\$//' $REMOTE_WS_BRIDGE_DIR/ws-bridge.env \
+               && sudo systemctl daemon-reload \
+               && sudo systemctl enable --now ws-bridge.service"
+    ssh "$PI" "curl -fsS --max-time 5 http://127.0.0.1:8082/healthz >/dev/null"
+    log "ws-bridge answered GET /healthz on 127.0.0.1:8082"
+
+    if [ "$OBSERVER_OBSERVABILITY_ENABLED" = "1" ]; then
+        log "[5c/6] syncing observer observability assets"
+        ssh "$PI" "sudo docker compose version >/dev/null"
+        rsync -az "$DEPLOY_DIR/docker-compose.observer-observability.yml" \
+            "$PI:$REMOTE_OBSERVER_OBS_DIR/docker-compose.observer-observability.yml"
+        rsync -az "$DEPLOY_DIR/observability/" "$PI:$REMOTE_OBSERVER_OBS_DIR/observability/"
+        rsync -az "$OBSERVER_OBS_ENV_RENDER" \
+            "$PI:$REMOTE_OBSERVER_OBS_DIR/observer-observability.env"
+
+        log "[5d/6] starting observer observability stack"
+        ssh "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_OBS_DIR/observer-observability.env \
+                   -f $REMOTE_OBSERVER_OBS_DIR/docker-compose.observer-observability.yml up -d"
+        ssh "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_OBS_DIR/observer-observability.env \
+                   -f $REMOTE_OBSERVER_OBS_DIR/docker-compose.observer-observability.yml ps"
+        ssh "$PI" "curl -fsS --max-time 5 http://127.0.0.1:9090/-/ready >/dev/null"
+        ssh "$PI" "curl -fsS --max-time 5 http://127.0.0.1:3000/api/health >/dev/null"
+        log "Prometheus and Grafana answered loopback health probes on the Pi"
+    fi
+fi
+
+# ---------------------------------------------------------------
+# 6. Verification
 # ---------------------------------------------------------------
 log "[6/6] verification"
 ssh "$PI" 'sudo systemctl --no-pager status sovd-main.service || true'

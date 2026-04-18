@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# Stage 1 observer ws-bridge on the Raspberry Pi bench.
+
+[Unit]
+Description=Taktflow OpenSOVD ws-bridge (ADR-0024 Stage 1 observer relay)
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=taktflow-pi
+Group=taktflow-pi
+WorkingDirectory=/opt/taktflow/ws-bridge
+EnvironmentFile=/opt/taktflow/ws-bridge/ws-bridge.env
+ExecStart=/opt/taktflow/ws-bridge/ws-bridge
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/taktflow/ws-bridge
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

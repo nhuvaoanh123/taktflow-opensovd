@@ -39,6 +39,32 @@ struct Frame<'a> {
     payload: serde_json::Value,
 }
 
+/// Encode one MQTT publish into the exact JSON text frame sent to
+/// browser clients.
+///
+/// The frame shape is stable and intentionally tiny:
+/// `{"topic":"...","payload":{...}}`.
+///
+/// If the MQTT payload is valid JSON, the `payload` field stays a JSON
+/// object/array/value. Otherwise we fall back to a lossy UTF-8 string so
+/// the relay frame remains valid JSON.
+///
+/// # Errors
+///
+/// Returns an error only if serializing the final wrapper frame fails.
+pub fn encode_relay_frame(topic: &str, payload: &[u8]) -> anyhow::Result<String> {
+    let payload_value = match serde_json::from_slice::<serde_json::Value>(payload) {
+        Ok(v) => v,
+        Err(_) => serde_json::Value::String(String::from_utf8_lossy(payload).into_owned()),
+    };
+    let frame = Frame {
+        topic,
+        payload: payload_value,
+    };
+    serde_json::to_string(&frame)
+        .map_err(|e| anyhow::anyhow!("failed to serialize relay frame: {e}"))
+}
+
 /// MQTT URL parsing result.
 #[derive(Debug)]
 struct MqttTarget {
@@ -130,17 +156,7 @@ async fn run(
                     // client is attached is a client concern.
                 }
 
-                let payload_value = match serde_json::from_slice::<serde_json::Value>(&p.payload) {
-                    Ok(v) => v,
-                    Err(_) => serde_json::Value::String(
-                        String::from_utf8_lossy(&p.payload).into_owned(),
-                    ),
-                };
-                let frame = Frame {
-                    topic: &p.topic,
-                    payload: payload_value,
-                };
-                match serde_json::to_string(&frame) {
+                match encode_relay_frame(&p.topic, &p.payload) {
                     Ok(json) => {
                         metrics.inc_forwarded();
                         // `send` returns Err when there are no
@@ -209,5 +225,17 @@ mod tests {
     fn parse_mqtt_url_rejects_empty_host() {
         let err = parse_mqtt_url("mqtt://:1883").unwrap_err();
         assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn encode_relay_frame_wraps_json_payload() {
+        let frame = encode_relay_frame("vehicle/dtc/new", br#"{"dtc":"P0A1F"}"#).unwrap();
+        assert_eq!(frame, r#"{"topic":"vehicle/dtc/new","payload":{"dtc":"P0A1F"}}"#);
+    }
+
+    #[test]
+    fn encode_relay_frame_falls_back_to_utf8_string() {
+        let frame = encode_relay_frame("vehicle/raw", b"not-json").unwrap();
+        assert_eq!(frame, r#"{"topic":"vehicle/raw","payload":"not-json"}"#);
     }
 }

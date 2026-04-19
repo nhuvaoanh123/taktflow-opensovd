@@ -1010,13 +1010,26 @@ execution_breakdown:
           - one endpoint and one topic flow are exercised in tests
           - config structure exists for later expansion
       - id: UP2-06
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: write the pilot OEM deployment playbook skeleton and SBOM placeholder path
         done_when:
           - bring-up steps, assumptions, and evidence slots are defined
           - the SBOM output location is fixed
+        resolution_2026_04_19: |
+          Created `docs/deploy/pilot-oem/README.md`. Playbook skeleton
+          covers six ordered sections: prerequisites (hardware,
+          identities + keys, upstream artifacts), install (fetch,
+          layout, bring-up), config (identity, auth, transport, COVESA
+          VSS per ADR-0026, Extended Vehicle per ADR-0027, observer per
+          ADR-0024), verify (core surface, VSS, Extended Vehicle, auth,
+          observer), evidence (SBOM, verify logs, round-trip trace, OTA
+          witnesses), teardown. SBOM output location fixed at
+          `docs/deploy/pilot-oem/sbom.spdx.json` (§5.1). Skeleton uses
+          "OEM-supplied value" for deferred strings rather than A1
+          placeholder tokens; every section lists concrete deliverable
+          paths.
       - id: UP2-07
         status: pending
         work_mode: repo_only

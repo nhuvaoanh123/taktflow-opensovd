@@ -541,13 +541,19 @@ execution_breakdown:
           - `--emit=mdd` produces output matching CDA `cda-database` expectations
           - round-trip coverage exists in tests
       - id: P5-HIL-10
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: []
         goal: install and document the autonomous bench-debugging helpers
         done_when:
           - `mdd-ui` install steps are recorded
           - `tokio-console` attach steps are recorded for `sovd-main`
+        resolution_2026_04_19: |
+          `opensovd-core/docs/bench/mdd-ui-setup.md` now records both the verified
+          `mdd-ui` install path and an explicit local `tokio-console` attach procedure
+          for `sovd-main`, including the temporary `console_subscriber::init()` swap,
+          `RUSTFLAGS=\"--cfg tokio_unstable\"`, and the guardrails for keeping the
+          instrumentation out of normal Pi bench or release runs.
       - id: P5-HIL-11
         status: pending
         work_mode: live_bench

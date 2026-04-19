@@ -57,20 +57,64 @@ mdd-ui <PATH_TO_FILE.mdd>
 mdd-ui diff <OLD_FILE.mdd> <NEW_FILE.mdd>
 ```
 
-## `tokio-console` Readiness
+## `tokio-console` attach steps for `sovd-main`
 
-D11 does not turn on `console-subscriber` by default in `sovd-main`; it
-keeps the crate available as a dev-only dependency so debug-only console
-instrumentation can be added without editing workspace dependencies again.
+`console-subscriber` is already present in
+`opensovd-core/sovd-main/Cargo.toml` under `[dev-dependencies]`, but
+`sovd-main` still boots with `tracing_subscriber::fmt::init()` by default.
+That means `tokio-console` attach is a **local debug procedure**, not an
+always-on runtime behavior.
 
-Typical local workflow:
+Use this sequence for a local `sovd-main` debug session:
+
+1. Install the CLI once:
 
 ```bash
-cargo install tokio-console
-RUST_LOG=info cargo run -p sovd-main
+cargo install tokio-console --locked
+```
+
+2. In a local debug-only branch or uncommitted working tree, replace the
+   tracing init call in `opensovd-core/sovd-main/src/main.rs` with:
+
+```rust
+console_subscriber::init();
+```
+
+3. Start `sovd-main` in the dev profile with Tokio's unstable console hooks
+   enabled:
+
+```bash
+cd opensovd-core
+RUSTFLAGS="--cfg tokio_unstable" cargo run -p sovd-main
+```
+
+PowerShell variant:
+
+```powershell
+$env:RUSTFLAGS="--cfg tokio_unstable"
+cargo run -p sovd-main
+```
+
+4. In a second terminal, attach the console client:
+
+```bash
 tokio-console
 ```
 
-If live console instrumentation is added in a later slice, keep it behind
-debug-only or explicitly opt-in code paths so release and Pi bench builds
-do not pay an always-on overhead.
+5. Drive the server with normal local requests, for example:
+
+```bash
+curl http://127.0.0.1:21002/sovd/v1/components
+```
+
+6. After the debug session, remove the temporary `console_subscriber::init()`
+   change unless a later unit introduces an explicit opt-in instrumentation
+   path.
+
+Guardrails:
+
+- Use the dev profile, not `--release`, because `console-subscriber` is a
+  dev dependency in the current tree.
+- Keep attach-only instrumentation local or behind an explicit opt-in path.
+- Do not treat `tokio-console` as a Pi bench default; this is a workstation
+  debug helper for investigating hangs or task stalls in `sovd-main`.

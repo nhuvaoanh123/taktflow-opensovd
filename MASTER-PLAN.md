@@ -112,6 +112,7 @@ current_state:
       host: AWS IoT Core (shared taktflow-embedded-production account)
       role: Fleet telemetry sink for HIL runs. DEVICE_ID=taktflow-sovd-hil-001 publishes to `vehicle/dtc/new` and `taktflow/cloud/status`.
       status: Live since 2026-04-19; ADR-0024 Stage 2 complete.
+    reference: See `docs/deploy/bench-topology.md` for the authoritative bench address map.
 
   files_touched:
     - opensovd-core/sovd-server/
@@ -262,7 +263,7 @@ hardening_gates:
     evidence: 8 HIL scenarios green for the first consecutive night at 2026-12-01 02:00 UTC; any red night resets the counter
     blocks_if_missed: success criterion cannot be satisfied by 2026-12-31
 
-next_steps:
+historical_next_steps:
   phase_5_public_sil_tier_vps:
     done:
       - Portfolio Project 4 tile added to apps/web with "Live Dashboard — coming soon" placeholder; primary link points to sil.taktflow-systems.com/sovd/ (awaits upload)
@@ -315,6 +316,494 @@ next_steps:
     - Safety case delta — HARA for new UDS services, DoIP + Fault Shim failure modes
     - CVC OTA end-to-end per ADR-0025 — dual-bank A/B, CMS/X.509, N=5 rollback, boot-OK witness
     - Contribution review — architect + Rust lead + safety engineer confirm readiness per §contribution_readiness; open PRs in §upstream_contribution_priority order
+
+execution_model:
+  purpose: |
+    Operational source of truth for future execution. The strategic phase
+    definitions below stay unchanged, but actual work must be selected from
+    the execution units in `execution_breakdown` instead of taking an entire
+    phase or large deliverable in one shot.
+  continue_rule_binding:
+    - When the user says continue, pick exactly one pending unit from `execution_breakdown`.
+    - Finish that unit end-to-end or stop on a named blocker with the failed check.
+    - Do not silently merge multiple pending units into one opaque deploy or long script run.
+  work_modes:
+    repo_only: code, docs, config, tests, or CI work with no live remote dependency
+    remote_with_preflight: remote host work allowed only after identity, reachability, and target-path checks pass
+    live_bench: physical bench, flashing, or fault injection; requires explicit green preflight and direct proof at each step
+    decision_doc: ADR, checklist, guide, or plan artifact only
+
+execution_breakdown:
+  notes:
+    - The `historical_next_steps` block above is kept only as a dated snapshot of the old coarse plan.
+    - Phases 0-4 remain recorded at the strategic layer only because they are complete.
+    - Phase 5 is split into bounded units so remote and bench work cannot hide inside one long command.
+    - Phase 6 and upstream work are split into repo-sized units so they can be advanced before the full phase window opens where that is safe.
+
+  phase_5_public_sil_tier_vps:
+    status: partially_complete
+    units:
+      - id: P5-VPS-01
+        status: done
+        work_mode: remote_with_preflight
+        goal: public SOVD host serves the engineering spec and base API on the dedicated VPS
+        done_when:
+          - `https://sovd.taktflow-systems.com/sovd/` returns 200
+          - `https://sovd.taktflow-systems.com/sovd/v1/components` returns the public component list
+      - id: P5-VPS-02
+        status: pending
+        work_mode: remote_with_preflight
+        depends_on: [P5-VPS-01]
+        goal: deploy the full SIL docker-compose stack on the dedicated VPS
+        done_when:
+          - VPS docker compose shows `sovd-main`, CDA, ecu-sim, Mosquitto, ws-bridge, Prometheus, and Grafana healthy
+          - the stack survives a restart without manual repair
+      - id: P5-VPS-03
+        status: pending
+        work_mode: remote_with_preflight
+        depends_on: [P5-VPS-02]
+        goal: expose Grafana on `/sovd/dashboard/` through the public reverse proxy
+        done_when:
+          - `https://sovd.taktflow-systems.com/sovd/dashboard/` returns the anonymous Grafana view
+          - Grafana is served from the intended subpath without broken asset links
+      - id: P5-VPS-04
+        status: pending
+        work_mode: repo_only
+        depends_on: [P5-VPS-03]
+        goal: flip the portfolio tile from placeholder wording to the real live dashboard URL
+        done_when:
+          - `apps/web` points the Project 4 dashboard button at the live URL
+          - external reachability proof is recorded from at least two networks
+      - id: P5-VPS-05
+        status: pending
+        work_mode: decision_doc
+        depends_on: [P5-VPS-04]
+        goal: archive one-time VPS deploy notes so the ongoing runbook stays clean
+        done_when:
+          - transient deploy notes are moved out of the active playbook path
+          - the retained runbook documents only repeatable operations
+
+  phase_5_hil_tier_pi:
+    status: active
+    units:
+      - id: P5-PI-01
+        status: done
+        work_mode: remote_with_preflight
+        goal: restore the laptop aarch64 build path and install fresh Pi binaries
+        done_when:
+          - laptop cross-build produces `sovd-main` and `ws-bridge` for `aarch64-unknown-linux-gnu`
+          - the Pi has the new binaries in `/opt/taktflow/sovd-main/` and `/opt/taktflow/ws-bridge/`
+      - id: P5-PI-02
+        status: done
+        work_mode: remote_with_preflight
+        depends_on: [P5-PI-01]
+        goal: lock the live host-role and address map before any further Pi redeploy
+        done_when:
+          - the control host, laptop, Pi, and CDA host are named explicitly with current IPs
+          - the Pi runtime config matches the intended deploy mode for this bench phase (default demo-only vs hybrid-with-cda_forward); hybrid mode is opt-in via `SOVD_CONFIG_FILE=deploy/pi/opensovd-pi-phase5-hybrid.toml` + `PHASE5_CDA_BASE_URL`, per `phase5-full-stack.sh`
+        resolution_2026_04_19: |
+          Authoritative address map landed at `docs/deploy/bench-topology.md` (control host
+          192.168.0.105, laptop an-dao@192.168.0.158, Pi taktflow-pi@192.168.0.197,
+          VPS 87.106.147.203) and cross-referenced from §current_state.tiers. Pi active TOML is
+          the default `opensovd-pi.toml` with no `cda_forward` section — correct for the current
+          demo-only deploy mode. Switching to hybrid requires the opt-in env vars above plus a
+          running CDA on 192.168.0.105:20002; that transition is the job of P5-PI-03, not this unit.
+      - id: P5-PI-03
+        status: pending
+        work_mode: remote_with_preflight
+        depends_on: [P5-PI-02]
+        goal: prove the Pi can reach CDA on the chosen host before observer work begins
+        done_when:
+          - Pi-side curl to CDA `/vehicle/v15/components` returns 200
+          - the chosen CDA host is recorded as the authoritative Phase 5 source
+      - id: P5-PI-04
+        status: pending
+        work_mode: remote_with_preflight
+        depends_on: [P5-PI-03]
+        goal: verify the existing Pi core runtime without a broad redeploy
+        done_when:
+          - `sovd-main --version` is recorded on the Pi
+          - local Pi health and components probes return 200 on the intended port
+      - id: P5-PI-05
+        status: pending
+        work_mode: remote_with_preflight
+        depends_on: [P5-PI-04]
+        goal: bring up `ws-bridge` only and prove the local websocket bridge health path
+        done_when:
+          - `ws-bridge.service` is active on the Pi
+          - `http://127.0.0.1:8082/healthz` returns 200 on the Pi
+      - id: P5-PI-06
+        status: pending
+        work_mode: remote_with_preflight
+        depends_on: [P5-PI-05]
+        goal: bring up observer nginx plus mTLS only
+        done_when:
+          - authenticated HTTPS to the Pi observer entrypoint succeeds
+          - unauthenticated HTTPS is rejected
+      - id: P5-PI-07
+        status: pending
+        work_mode: remote_with_preflight
+        depends_on: [P5-PI-06]
+        goal: bring up Prometheus and Grafana on the Pi observer stack
+        done_when:
+          - `127.0.0.1:9090/-/ready` returns 200 on the Pi
+          - `127.0.0.1:3000/api/health` returns 200 on the Pi
+      - id: P5-PI-08
+        status: pending
+        work_mode: remote_with_preflight
+        depends_on: [P5-PI-07]
+        goal: verify the bench-LAN dashboard surface end-to-end
+        done_when:
+          - `/sovd/v1/session`, `/sovd/v1/audit`, and `/sovd/v1/gateway/backends` render through the observer surface
+          - `/ws` and `/grafana/` work through the Pi-facing entrypoint
+      - id: P5-PI-09
+        status: pending
+        work_mode: remote_with_preflight
+        depends_on: [P5-PI-08]
+        goal: capture the Pi HIL performance baseline
+        done_when:
+          - latency and RSS measurements are written to a dated perf note
+          - any gap against the `<100 ms`, `P99 <500 ms`, and `<200 MB` targets is explicit
+
+  phase_5_physical_hil_and_repo_slices:
+    status: active
+    units:
+      - id: P5-HIL-01
+        status: pending
+        work_mode: live_bench
+        depends_on: [P5-PI-08]
+        goal: inject at least one clearable fault per bench component so the clear-fault tests have a real precondition
+        done_when:
+          - CVC, SC, and BCM each expose at least one readable clearable fault
+          - the injection method is written down so it can be repeated
+      - id: P5-HIL-02
+        status: pending
+        work_mode: live_bench
+        depends_on: [P5-HIL-01]
+        goal: flash the physical CVC and prove the real CAN VIN smoke path
+        done_when:
+          - `cargo xtask flash-cvc` lands the intended CVC image
+          - UDS `22F190` over real CAN returns the VIN from `cvc_identity.toml`
+      - id: P5-HIL-03
+        status: pending
+        work_mode: live_bench
+        depends_on: [P5-HIL-02]
+        goal: flash the physical SC and prove the Pi proxy can route to it
+        done_when:
+          - the TMS570 image is flashed via XDS110
+          - one routed SC diagnostic smoke step succeeds through the Pi path
+      - id: P5-HIL-04
+        status: pending
+        work_mode: live_bench
+        depends_on: [P5-HIL-03]
+        goal: run the read-only HIL cases first (`hil_sovd_01`, `hil_sovd_05`)
+        done_when:
+          - component inventory and metadata scenarios pass against the live 3-ECU bench
+          - failures, if any, are isolated to one named backend or component
+      - id: P5-HIL-05
+        status: pending
+        work_mode: live_bench
+        depends_on: [P5-HIL-04, P5-HIL-01]
+        goal: run the clear-fault and operation scenarios (`hil_sovd_02`, `hil_sovd_03`)
+        done_when:
+          - clear-fault flow proves non-empty to empty state transitions
+          - operation execution returns the expected start and completion behavior
+      - id: P5-HIL-06
+        status: pending
+        work_mode: live_bench
+        depends_on: [P5-HIL-05]
+        goal: run the fault-injection and error-handling scenarios (`hil_sovd_04`, `hil_sovd_08`)
+        done_when:
+          - injected fault behavior is visible through SOVD
+          - error-handling results match the scenario contract
+      - id: P5-HIL-07
+        status: pending
+        work_mode: live_bench
+        depends_on: [P5-HIL-06]
+        goal: run the concurrency and scale scenarios (`hil_sovd_06`, `hil_sovd_07`)
+        done_when:
+          - concurrent tester scenario passes without deadlock or stale-state corruption
+          - large fault list scenario proves pagination or list handling on seeded data
+      - id: P5-HIL-08
+        status: pending
+        work_mode: repo_only
+        depends_on: []
+        goal: complete the `doip-codec` PARTIAL migration in the proxy repo slice
+        done_when:
+          - the selected fork pins match the intended CDA-compatible revisions
+          - proxy tests prove the migrated frame and message handling paths
+      - id: P5-HIL-09
+        status: pending
+        work_mode: repo_only
+        depends_on: []
+        goal: add the MDD FlatBuffers emitter to `tools/odx-gen`
+        done_when:
+          - `--emit=mdd` produces output matching CDA `cda-database` expectations
+          - round-trip coverage exists in tests
+      - id: P5-HIL-10
+        status: pending
+        work_mode: repo_only
+        depends_on: []
+        goal: install and document the autonomous bench-debugging helpers
+        done_when:
+          - `mdd-ui` install steps are recorded
+          - `tokio-console` attach steps are recorded for `sovd-main`
+      - id: P5-HIL-11
+        status: pending
+        work_mode: live_bench
+        depends_on: [P5-HIL-07, P5-PI-09]
+        goal: collect nightly-green proof, performance proof, and the final demo video
+        done_when:
+          - nightly evidence shows all 8 HIL scenarios green
+          - the demo video and supporting latency evidence are archived
+
+  phase_6_prework_available_before_phase_5_exit:
+    status: available_now
+    units:
+      - id: P6-PREP-01
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: decide the auth model in ADR form (`OAuth2`, `mTLS`, or `hybrid`)
+        done_when:
+          - one option is selected with rationale and rejected alternatives
+          - server, gateway, and integrator-guide impacts are listed
+      - id: P6-PREP-02
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: create the integrator-guide skeleton under `docs/integration/`
+        done_when:
+          - install, config, auth, deployment-mode, and troubleshooting sections exist
+          - no section depends on unstated tribal knowledge
+      - id: P6-PREP-03
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: build the safety-delta inventory for new UDS routines, DoIP, and FaultShim
+        done_when:
+          - every required HARA and FMEA update item is enumerated
+          - each item names an owner, evidence target, and due point
+      - id: P6-PREP-04
+        status: pending
+        work_mode: repo_only
+        depends_on: []
+        goal: land a config-driven rate-limit slice in SIL only
+        done_when:
+          - per-client-IP rate limiting is behind config
+          - tests prove the intended `429` behavior
+      - id: P6-PREP-05
+        status: pending
+        work_mode: repo_only
+        depends_on: []
+        goal: wire one-binary OpenTelemetry export in local SIL
+        done_when:
+          - one request emits visible OTLP spans into Jaeger or Tempo
+          - the enablement steps are documented
+      - id: P6-PREP-06
+        status: pending
+        work_mode: repo_only
+        depends_on: []
+        goal: wire one-binary DLT emission in local SIL
+        done_when:
+          - one Rust binary emits DLT frames with a reproducible startup path
+          - follow-on rollout risks are documented
+      - id: P6-PREP-07
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: tighten ADR-0025 into an explicit scope-lock package
+        done_when:
+          - the exact CVC-only in-scope and out-of-scope items are written down
+          - deferred SC and BCM work is explicit rather than implied
+      - id: P6-PREP-08
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: create the contribution-readiness checklist and PR sequence pack
+        done_when:
+          - every planned upstream crate has an order, gate, and owner
+          - the contribution kickoff ADR has a ready outline
+
+  phase_6_after_entry:
+    status: blocked_on_phase_5_hil_green
+    units:
+      - id: P6-01
+        status: pending
+        work_mode: repo_only
+        depends_on: [P6-PREP-01]
+        goal: land TLS defaults and feature-flagged fallback plumbing in the server/gateway path
+        done_when:
+          - the default TLS path is wired in code and config
+          - fallback behavior is explicit and tested
+      - id: P6-02
+        status: pending
+        work_mode: repo_only
+        depends_on: [P6-PREP-06]
+        goal: roll DLT tracing from the spike into every intended Rust binary
+        done_when:
+          - correlation IDs propagate through the documented path
+          - a coverage checklist exists per binary
+      - id: P6-03
+        status: pending
+        work_mode: repo_only
+        depends_on: [P6-PREP-05]
+        goal: roll OpenTelemetry export from the spike into the production path
+        done_when:
+          - traces cover the main request path end-to-end
+          - exporter configuration is documented and tested
+      - id: P6-04
+        status: pending
+        work_mode: decision_doc
+        depends_on: [P6-PREP-03]
+        goal: complete the safety approval package
+        done_when:
+          - HARA and FMEA artifacts are updated
+          - the safety engineer sign-off target package is review-ready
+      - id: P6-05
+        status: pending
+        work_mode: live_bench
+        depends_on: [P6-PREP-07]
+        goal: implement and prove CVC OTA end-to-end
+        done_when:
+          - signed image download, verify, commit, and rollback paths are demonstrated
+          - boot-OK witness behavior is recorded
+      - id: P6-06
+        status: pending
+        work_mode: decision_doc
+        depends_on: [P6-PREP-08]
+        goal: record the Phase 6 contribution kickoff and open the first upstream PR batch
+        done_when:
+          - kickoff ADR exists
+          - the first PRs follow the committed sequence
+
+  upstream_phase_2_breakdown:
+    status: blocked_on_phase_6_complete
+    units:
+      - id: UP2-01
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: draft ADR-0026 for the VSS / semantic mapping strategy
+        done_when:
+          - the mapping boundary and rejected alternatives are documented
+          - the draft includes at least one example mapping table
+      - id: UP2-02
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: draft ADR-0027 for Extended Vehicle data scope and pub/sub contract
+        done_when:
+          - endpoint and topic shapes are defined
+          - scope boundaries and exclusions are explicit
+      - id: UP2-03
+        status: pending
+        work_mode: repo_only
+        depends_on: [UP2-01]
+        goal: scaffold the semantic schema directory and validation harness
+        done_when:
+          - one schema validates under automated tests
+          - the schema layout is ready for additional domain files
+      - id: UP2-04
+        status: pending
+        work_mode: repo_only
+        depends_on: [UP2-01]
+        goal: scaffold the `sovd-covesa` crate and the first VSS mapping slice
+        done_when:
+          - crate structure exists with one mapped example
+          - version tracking for VSS is pinned in the intended file
+      - id: UP2-05
+        status: pending
+        work_mode: repo_only
+        depends_on: [UP2-02]
+        goal: scaffold the `sovd-extended-vehicle` crate and one REST plus pub/sub flow
+        done_when:
+          - one endpoint and one topic flow are exercised in tests
+          - config structure exists for later expansion
+      - id: UP2-06
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: write the pilot OEM deployment playbook skeleton and SBOM placeholder path
+        done_when:
+          - bring-up steps, assumptions, and evidence slots are defined
+          - the SBOM output location is fixed
+      - id: UP2-07
+        status: pending
+        work_mode: repo_only
+        depends_on: [UP2-04, UP2-05]
+        goal: add scenario skeletons for SIL semantic and Extended Vehicle tests
+        done_when:
+          - test filenames and scenario contracts exist
+          - at least one happy-path skeleton runs in CI
+      - id: UP2-08
+        status: pending
+        work_mode: decision_doc
+        depends_on: [UP2-01, UP2-02]
+        goal: prepare the upstream discussion pack for maintainer review
+        done_when:
+          - discussion-ready summaries exist for both mapping and scope
+          - open questions are isolated from settled design decisions
+
+  upstream_phase_3_breakdown:
+    status: blocked_on_upstream_phase_2_complete
+    units:
+      - id: UP3-01
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: draft ADR-0028 for edge ML scope and lifecycle
+        done_when:
+          - model lifecycle, memory budget, and deployment boundary are explicit
+          - rollback expectations are written down
+      - id: UP3-02
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: draft ADR-0029 for ML model signing and rollback
+        done_when:
+          - signing, trust-root, and rollback triggers are defined
+          - rejected alternatives are documented
+      - id: UP3-03
+        status: pending
+        work_mode: decision_doc
+        depends_on: []
+        goal: create the ISO/DIS 17978-1.2 gap-analysis skeleton
+        done_when:
+          - clause-by-clause headings exist
+          - the delta-from-current-baseline method is written down
+      - id: UP3-04
+        status: pending
+        work_mode: repo_only
+        depends_on: [UP3-01]
+        goal: scaffold the `sovd-ml` crate and reference model layout
+        done_when:
+          - crate structure exists
+          - model and signature file locations are pinned
+      - id: UP3-05
+        status: pending
+        work_mode: repo_only
+        depends_on: [UP3-02, UP3-04]
+        goal: prove signed-model verify-before-load in SIL
+        done_when:
+          - the unsigned model path is rejected
+          - the signed model path loads in the intended harness
+      - id: UP3-06
+        status: pending
+        work_mode: repo_only
+        depends_on: [UP3-04]
+        goal: scaffold the observer ML widget and one end-to-end inference flow
+        done_when:
+          - the widget renders a real or stubbed inference result
+          - the request path is wired through SOVD
+      - id: UP3-07
+        status: pending
+        work_mode: repo_only
+        depends_on: [UP3-03, UP3-05]
+        goal: add the first ML and ISO compliance scenario skeletons
+        done_when:
+          - test files exist for ML inference and ISO 17978-1.2 compliance slices
+          - the compliance gate insertion point is identified in CI
 
   open_questions_to_resolve:
     - Fault IPC: Unix socket vs shared memory? — Rust lead, Phase 0 week 2 (decided: Unix socket, in prod)

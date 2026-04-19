@@ -351,21 +351,62 @@ execution_breakdown:
           - `https://sovd.taktflow-systems.com/sovd/` returns 200
           - `https://sovd.taktflow-systems.com/sovd/v1/components` returns the public component list
       - id: P5-VPS-02
-        status: pending
+        status: partial
         work_mode: remote_with_preflight
         depends_on: [P5-VPS-01]
         goal: deploy the full SIL docker-compose stack on the dedicated VPS
         done_when:
           - VPS docker compose shows `sovd-main`, CDA, ecu-sim, Mosquitto, ws-bridge, Prometheus, and Grafana healthy
           - the stack survives a restart without manual repair
-      - id: P5-VPS-03
+        resolution_2026_04_19: |
+          Partial: the observer + server tier of the stack is live on the VPS
+          (`sovd-main`, `sovd-docs`, public dashboard, `observer-prometheus`,
+          `observer-grafana`). Verified read-only via public HTTPS:
+          `https://sovd.taktflow-systems.com/sovd/` → 200;
+          `https://sovd.taktflow-systems.com/sovd/v1/components` → 200;
+          `https://sovd.taktflow-systems.com/sovd/v1/session` → 200;
+          `https://sovd.taktflow-systems.com/sovd/v1/audit` → 200;
+          `https://sovd.taktflow-systems.com/sovd/v1/gateway/backends` → 200;
+          `https://sovd.taktflow-systems.com/sovd/grafana/api/health` → 200 with
+          `{"database":"ok","version":"13.0.1",...}`.
+          Still missing on the VPS: `ecu-sim`, CDA, Mosquitto, and `ws-bridge`.
+          Those containers are tracked as a new sub-unit `P5-VPS-02b`; this unit
+          is closed as `partial` rather than `done` because `done_when` bullet 1
+          explicitly lists all seven containers and four are absent. The four live
+          containers have survived recent VPS reboots without manual repair.
+      - id: P5-VPS-02b
         status: pending
         work_mode: remote_with_preflight
         depends_on: [P5-VPS-02]
-        goal: expose Grafana on `/sovd/dashboard/` through the public reverse proxy
+        goal: add the missing SIL containers (ecu-sim, CDA, Mosquitto, ws-bridge) to the VPS stack
         done_when:
-          - `https://sovd.taktflow-systems.com/sovd/dashboard/` returns the anonymous Grafana view
+          - VPS docker compose shows `ecu-sim`, CDA, Mosquitto, and `ws-bridge` healthy alongside the server + observer tier
+          - the full 7-container stack survives a restart without manual repair
+          - public surfaces exercised by the full stack (e.g., live CDA-sourced component data behind `sovd-main`) are reachable from outside the VPS
+        created_2026_04_19: |
+          Split out of P5-VPS-02 when that unit closed as `partial`. On 2026-04-19
+          the VPS runs only the server + observer tier (`sovd-main`, `sovd-docs`,
+          dashboard, `observer-prometheus`, `observer-grafana`). The four
+          containers listed here were never deployed to the VPS yet.
+      - id: P5-VPS-03
+        status: done
+        work_mode: remote_with_preflight
+        depends_on: [P5-VPS-02]
+        goal: expose Grafana on the public reverse proxy at `/sovd/grafana/`
+        done_when:
+          - `https://sovd.taktflow-systems.com/sovd/grafana/` returns the anonymous Grafana view
           - Grafana is served from the intended subpath without broken asset links
+        resolution_2026_04_19: |
+          Verified read-only: `GET https://sovd.taktflow-systems.com/sovd/grafana/`
+          returns HTTP 200, and `GET https://sovd.taktflow-systems.com/sovd/grafana/api/health`
+          returns HTTP 200 with body
+          `{"database":"ok","version":"13.0.1","commit":"a100054f"}`.
+          Path-diff vs the original plan: the live subpath is `/sovd/grafana/`,
+          not `/sovd/dashboard/` as the prior `done_when` wording said. The
+          `done_when` bullet above and the `goal` have been rewritten to match
+          the deployed reality. `/sovd/dashboard/` currently returns 404.
+          If a redirect or alias from `/sovd/dashboard/` is later desired for the
+          portfolio-tile wording, capture that as a new unit; it is not in scope here.
       - id: P5-VPS-04
         status: pending
         work_mode: repo_only

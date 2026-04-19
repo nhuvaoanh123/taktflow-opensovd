@@ -1219,13 +1219,22 @@ execution_breakdown:
           SOVD request path
           `POST /sovd/v1/components/{component}/operations/ml-inference/executions`.
       - id: UP3-07
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: [UP3-03, UP3-05]
         goal: add the first ML and ISO compliance scenario skeletons
         done_when:
           - test files exist for ML inference and ISO 17978-1.2 compliance slices
           - the compliance gate insertion point is identified in CI
+        resolution_2026_04_19: |
+          Added disabled SIL scenario skeletons at
+          `opensovd-core/test/sil/scenarios/sil_sovd_ml_inference.yaml`
+          and
+          `opensovd-core/test/sil/scenarios/sil_sovd_iso_17978_1_2_compliance.yaml`.
+          The future CI insertion point is identified concretely in
+          `.github/workflows/upstream-phase-3-scenarios.yml`, which
+          watches those files and documents where the Phase 3 scenario
+          gate should live.
 
   open_questions_to_resolve:
     - Fault IPC: Unix socket vs shared memory? — Rust lead, Phase 0 week 2 (decided: Unix socket, in prod)

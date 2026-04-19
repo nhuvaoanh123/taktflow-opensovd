@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# Upstream Phase 3 SIL scenario skeleton â€” ML inference flow.
+#
+# Disabled until `sovd-ml` exposes a runnable inference operation over the
+# normal SOVD execution path and the signed reference model is present in
+# the SIL runtime.
+
+name: sil_sovd_ml_inference
+disabled: true
+reason: >-
+  Enable when `sovd-ml` mounts the `ml-inference` operation in SIL and
+  the signed reference model from UP3-05 is deployed into the local
+  runtime harness.
+
+topology:
+  description: >-
+    Local SIL flow. Tester talks to `sovd-main`, which forwards the
+    `ml-inference` execution request to the `sovd-ml` crate through the
+    normal SOVD operation path.
+
+  test_client:
+    host: 127.0.0.1
+    process: integration-tests (cargo test, local SIL)
+  sovd_main:
+    host: 127.0.0.1
+    port: 21002
+  sovd_ml:
+    crate: opensovd-core/sovd-ml
+    model: opensovd-core/sovd-ml/models/reference-fault-predictor.onnx
+    signature: opensovd-core/sovd-ml/models/reference-fault-predictor.sig
+    manifest: opensovd-core/sovd-ml/models/reference-fault-predictor.manifest.yaml
+
+calls:
+  - name: list_components
+    method: GET
+    path: /sovd/v1/components
+    expect_status: 200
+    expect_type: sovd_interfaces::spec::component::DiscoveredEntities
+    expect_contains_id: cvc
+
+  - name: start_ml_inference
+    method: POST
+    path: /sovd/v1/components/cvc/operations/ml-inference/executions
+    body:
+      mode: single-shot
+      input_window: last-5-fault-events
+    expect_status: 202
+    expect_type: sovd_interfaces::spec::operation::StartExecutionAsyncResponse
+
+  - name: poll_ml_inference
+    method: GET
+    path_template: /sovd/v1/components/cvc/operations/ml-inference/executions/{exec_id}
+    depends_on: start_ml_inference
+    expect_status: 200
+    expect_type: sovd_interfaces::spec::operation::ExecutionStatusResponse
+
+evidence:
+  - inference request accepted over the standard SOVD operation path
+  - model fingerprint and prediction payload returned in the execution result

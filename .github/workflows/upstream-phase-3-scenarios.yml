@@ -1,0 +1,34 @@
+name: Upstream Phase 3 Scenario Skeletons
+
+on:
+  push:
+    paths:
+      - 'MASTER-PLAN.md'
+      - 'opensovd-core/test/sil/scenarios/sil_sovd_ml_inference.yaml'
+      - 'opensovd-core/test/sil/scenarios/sil_sovd_iso_17978_1_2_compliance.yaml'
+      - '.github/workflows/upstream-phase-3-scenarios.yml'
+  pull_request:
+    paths:
+      - 'MASTER-PLAN.md'
+      - 'opensovd-core/test/sil/scenarios/sil_sovd_ml_inference.yaml'
+      - 'opensovd-core/test/sil/scenarios/sil_sovd_iso_17978_1_2_compliance.yaml'
+      - '.github/workflows/upstream-phase-3-scenarios.yml'
+  workflow_dispatch: {}
+
+jobs:
+  phase-3-scenario-skeletons:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify Phase 3 scenario skeleton files exist
+        run: |
+          test -f opensovd-core/test/sil/scenarios/sil_sovd_ml_inference.yaml
+          test -f opensovd-core/test/sil/scenarios/sil_sovd_iso_17978_1_2_compliance.yaml
+
+      - name: Pin the future CI insertion point
+        run: |
+          grep -q 'name: sil_sovd_ml_inference' opensovd-core/test/sil/scenarios/sil_sovd_ml_inference.yaml
+          grep -q 'name: sil_sovd_iso_17978_1_2_compliance' opensovd-core/test/sil/scenarios/sil_sovd_iso_17978_1_2_compliance.yaml
+          grep -q 'phase-3-scenario-skeletons' .github/workflows/upstream-phase-3-scenarios.yml

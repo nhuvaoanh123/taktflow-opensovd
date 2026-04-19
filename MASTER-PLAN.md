@@ -646,13 +646,24 @@ execution_breakdown:
           `curl.exe http://127.0.0.1:20002/sovd/v1/components`, and
           `curl.exe "http://127.0.0.1:16686/api/traces?service=sovd-main&limit=20"`.
       - id: P6-PREP-06
-        status: pending
+        status: blocked
         work_mode: repo_only
         depends_on: []
         goal: wire one-binary DLT emission in local SIL
         done_when:
           - one Rust binary emits DLT frames with a reproducible startup path
           - follow-on rollout risks are documented
+        blocker_2026_04_19: |
+          The repo-side DLT crates are real (`tracing-dlt`, `dlt-rs`, `dlt-sys`), but
+          this Windows workstation is not DLT-ready: `where.exe dlt.dll`, `where.exe
+          libdlt.dll`, and `where.exe dlt.lib` return nothing, `pkg-config --libs
+          --cflags automotive-dlt` returns nothing, no `DLT_INCLUDE_DIR` /
+          `DLT_USER_INCLUDE_DIR` / `DLT_LIB_DIR` environment variables are set, and a
+          targeted scan under `C:\tools\msys64` finds no DLT package. That means the
+          required `libdlt` library and headers are unavailable here, so the unit
+          cannot prove that one Rust binary emits DLT frames with a reproducible
+          startup path until the DLT toolchain is installed or the unit is rerun on a
+          DLT-capable host.
       - id: P6-PREP-07
         status: done
         work_mode: decision_doc

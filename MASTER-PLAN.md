@@ -440,13 +440,16 @@ execution_breakdown:
           Note: P5-PI-03 remains pending (hybrid/CDA-forward opt-in is out of scope today); this unit
           verifies the demo-mode runtime that today's deploy actually exercised.
       - id: P5-PI-05
-        status: pending
+        status: done
         work_mode: remote_with_preflight
         depends_on: [P5-PI-04]
         goal: bring up `ws-bridge` only and prove the local websocket bridge health path
         done_when:
           - `ws-bridge.service` is active on the Pi
           - `http://127.0.0.1:8082/healthz` returns 200 on the Pi
+        resolution_2026_04_19: |
+          Verified via `ssh taktflow-pi@192.168.0.197`. `systemctl is-active ws-bridge.service`
+          returns `active`; `curl http://127.0.0.1:8082/healthz` returns HTTP 200 with body `ok`.
       - id: P5-PI-06
         status: pending
         work_mode: remote_with_preflight

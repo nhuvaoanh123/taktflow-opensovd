@@ -407,15 +407,19 @@ execution_breakdown:
           VPS 87.106.147.203) and cross-referenced from §current_state.tiers. Pi active TOML is
           the default `opensovd-pi.toml` with no `cda_forward` section — correct for the current
           demo-only deploy mode. Switching to hybrid requires the opt-in env vars above plus a
-          running CDA on 192.168.0.105:20002; that transition is the job of P5-PI-03, not this unit.
+          running CDA on the laptop 192.168.0.158:20002 per the master-plan architectural split
+          (laptop is the sole dev host; this Windows control PC does not run CDA); that transition
+          is the job of P5-PI-03, not this unit.
       - id: P5-PI-03
         status: pending
         work_mode: remote_with_preflight
         depends_on: [P5-PI-02]
-        goal: prove the Pi can reach CDA on the chosen host before observer work begins
+        goal: start CDA on the laptop and prove the Pi can reach it
         done_when:
-          - Pi-side curl to CDA `/vehicle/v15/components` returns 200
-          - the chosen CDA host is recorded as the authoritative Phase 5 source
+          - CDA is running on the laptop `192.168.0.158:20002` and serves `/vehicle/v15/components`
+          - Pi is flipped to hybrid mode via `SOVD_CONFIG_FILE=deploy/pi/opensovd-pi-phase5-hybrid.toml` + `PHASE5_CDA_BASE_URL=http://192.168.0.158:20002`
+          - Pi-side `curl http://192.168.0.158:20002/vehicle/v15/components` returns 200
+          - `docs/deploy/bench-topology.md` Pi runtime config section updated with the active hybrid `[cda_forward]` base_url lines verbatim
       - id: P5-PI-04
         status: pending
         work_mode: remote_with_preflight

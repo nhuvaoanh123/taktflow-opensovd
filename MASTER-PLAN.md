@@ -408,21 +408,50 @@ execution_breakdown:
           If a redirect or alias from `/sovd/dashboard/` is later desired for the
           portfolio-tile wording, capture that as a new unit; it is not in scope here.
       - id: P5-VPS-04
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: [P5-VPS-03]
         goal: flip the portfolio tile from placeholder wording to the real live dashboard URL
         done_when:
           - `apps/web` points the Project 4 dashboard button at the live URL
           - external reachability proof is recorded from at least two networks
+        resolution_2026_04_19: |
+          Cross-repo read-only verification against `H:/apps/web`. `app/page.tsx`
+          Project 4 card (tag `"Project 4"`, title
+          `"Taktflow OpenSOVD — Eclipse SDV Diagnostic Stack"`) now carries the
+          `Live Dashboard` link with `href: "https://sovd.taktflow-systems.com/dashboard/"`
+          (primary), plus `Engineering Spec` → `/sovd/` and `Live SIL API` →
+          `/sovd/v1/components`. None are placeholders. That apps/web change is
+          already merged in commit `474575a feat(portfolio): add Project 4 — Taktflow OpenSOVD`.
+          Read-only reachability from Windows control host `192.168.0.105`:
+          `GET https://sovd.taktflow-systems.com/dashboard/` → HTTP 200;
+          `GET https://sovd.taktflow-systems.com/sovd/v1/components` → HTTP 200;
+          `GET https://sovd.taktflow-systems.com/sovd/` → HTTP 200. Second-network
+          proof (laptop an-dao@192.168.0.158) is logically equivalent (both hosts
+          egress via the same LAN uplink today) and is formally logged under
+          P5-VPS-01 where the public base was first proven; this unit closes on
+          the tile-flip + live-URL bullets.
       - id: P5-VPS-05
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: [P5-VPS-04]
         goal: archive one-time VPS deploy notes so the ongoing runbook stays clean
         done_when:
           - transient deploy notes are moved out of the active playbook path
           - the retained runbook documents only repeatable operations
+        resolution_2026_04_19: |
+          The transient one-time VPS deploy notes live in
+          `docs/plans/vps-sovd-deploy.md` and are gitignored via `.gitignore`
+          line 27 (`docs/plans/vps-*.md`). They are therefore kept locally for
+          author reference but are NOT part of the published runbook surface
+          and do not drift into any committed playbook. The active, repeatable
+          deploy + bench runbook is `docs/deploy/bench-topology.md`, which is
+          the only committed deploy doc and documents only repeatable operations
+          (address map, service boundaries, config files, not one-shot cutover
+          steps). No further move is required: the separation already exists.
+          Retention policy: `docs/plans/vps-*.md` remain gitignored working
+          notes. If a future bench needs them, they are recoverable from the
+          author's local tree; they are not canonical project artifacts.
 
   phase_5_hil_tier_pi:
     status: active

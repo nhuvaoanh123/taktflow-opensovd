@@ -468,13 +468,20 @@ execution_breakdown:
           `curl https://127.0.0.1/` returns HTTP 400 (nginx "No required SSL certificate
           was sent", TLS verify=20), confirming mTLS client-cert gate is enforced.
       - id: P5-PI-07
-        status: pending
+        status: done
         work_mode: remote_with_preflight
         depends_on: [P5-PI-06]
         goal: bring up Prometheus and Grafana on the Pi observer stack
         done_when:
           - `127.0.0.1:9090/-/ready` returns 200 on the Pi
           - `127.0.0.1:3000/api/health` returns 200 on the Pi
+        resolution_2026_04_19: |
+          Verified via `ssh taktflow-pi@192.168.0.197`.
+          `curl http://127.0.0.1:9090/-/ready` → HTTP 200, body `Prometheus Server is Ready.`;
+          `curl http://127.0.0.1:3000/api/health` → HTTP 200, body
+          `{"database":"ok","version":"12.0.2","commit":"5bda17e7c1cb313eb96266f2fdda73a6b35c3977"}`.
+          Containers `observer-observability-observer-prometheus-1` and
+          `observer-observability-observer-grafana-1` have been up ~3 hours.
       - id: P5-PI-08
         status: pending
         work_mode: remote_with_preflight

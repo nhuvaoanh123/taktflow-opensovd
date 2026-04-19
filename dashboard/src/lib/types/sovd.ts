@@ -77,6 +77,18 @@ export interface GatewayHealthProbe {
 	reason?: string;
 }
 
+export interface MlInferenceResult {
+	component: EcuId;
+	modelName: string;
+	modelVersion: string;
+	prediction: 'normal' | 'warning' | 'critical';
+	confidence: number;
+	fingerprint: string;
+	updatedAt: string; // ISO 8601
+	source: 'live' | 'stub';
+	status: 'completed' | 'running' | 'failed';
+}
+
 export interface GatewayHealth {
 	status: string;
 	version: string;

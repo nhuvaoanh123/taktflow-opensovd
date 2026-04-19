@@ -1203,13 +1203,21 @@ execution_breakdown:
           unsigned model rejected and signed model accepted in the
           intended harness.
       - id: UP3-06
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: [UP3-04]
         goal: scaffold the observer ML widget and one end-to-end inference flow
         done_when:
           - the widget renders a real or stubbed inference result
           - the request path is wired through SOVD
+        resolution_2026_04_19: |
+          Added the observer widget
+          `dashboard/src/lib/widgets/UC21MlInference.svelte`, typed
+          result contracts in `dashboard/src/lib/types/sovd.ts`, and the
+          SOVD client path in `dashboard/src/lib/api/sovdClient.ts`.
+          The widget renders a live or fallback result and calls the
+          SOVD request path
+          `POST /sovd/v1/components/{component}/operations/ml-inference/executions`.
       - id: UP3-07
         status: pending
         work_mode: repo_only

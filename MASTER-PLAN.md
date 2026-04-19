@@ -578,13 +578,21 @@ execution_breakdown:
           LAN client 192.168.0.105 and a real websocket handshake with the live token are
           scheduled for the 2026-05-16 bench run under P5-HIL-11.
       - id: P5-PI-09
-        status: pending
+        status: done
         work_mode: remote_with_preflight
         depends_on: [P5-PI-08]
         goal: capture the Pi HIL performance baseline
         done_when:
           - latency and RSS measurements are written to a dated perf note
           - any gap against the `<100 ms`, `P99 <500 ms`, and `<200 MB` targets is explicit
+        resolution_2026_04_19: |
+          `docs/bench/phase5-pi-perf-2026-04-19.md` records a 60 s `wrk`
+          baseline taken on `taktflow-pi@192.168.0.197` against the live
+          `sovd-main` endpoint `http://127.0.0.1:21002/sovd/v1/components`.
+          Observed results: average latency `0.97 ms`, P50 `0.90 ms`, P99
+          `3.08 ms`, and max observed RSS `10120 KB` (`9.9 MiB`) sampled from
+          `/proc/<pid>/status` during the run. All current Pi HIL targets pass:
+          `<100 ms`, `P99 <500 ms`, and `<200 MB`.
 
   phase_5_physical_hil_and_repo_slices:
     status: active

@@ -609,13 +609,18 @@ execution_breakdown:
           - one Rust binary emits DLT frames with a reproducible startup path
           - follow-on rollout risks are documented
       - id: P6-PREP-07
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: tighten ADR-0025 into an explicit scope-lock package
         done_when:
           - the exact CVC-only in-scope and out-of-scope items are written down
           - deferred SC and BCM work is explicit rather than implied
+        resolution_2026_04_19: |
+          ADR-0025 (`docs/adr/0025-ota-firmware-update-scope.md`) tightened with
+          explicit CVC-only in-scope and out-of-scope bullet lists and an explicit
+          "deferred SC and BCM work" section documenting what is intentionally
+          excluded from Phase 6 and why.
       - id: P6-PREP-08
         status: pending
         work_mode: decision_doc

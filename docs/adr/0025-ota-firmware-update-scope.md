@@ -54,9 +54,70 @@ successful boot from the new slot, back through the cloud connector,
 so the cloud has auditable proof that the commit landed on real
 hardware rather than only the pre-reset "device said OK" signal.
 
-SC and BCM OTA are deferred to a future ADR-0026 (SC) — BCM OTA is
-virtual-only and has no customer value until it is needed for a
-multi-ECU demo.
+SC and BCM OTA are explicitly outside this Phase 6 package. Their
+follow-on work needs separate acceptance after this CVC slice lands;
+they are not silently pulled in by "while we are here" implementation.
+
+## Scope lock package
+
+This ADR is the scope lock for the first OTA slice. Anything not listed
+as in scope below is out of scope for ADR-0025 and must not be claimed
+as implicit Phase 6 work.
+
+### In scope for Phase 6
+
+1. **CVC only.** The only OTA target is the CVC on STM32G474RE
+   (ASIL-B). No other ECU shares the initial implementation.
+2. **SOVD API surface for the CVC OTA flow.** `sovd-main` adds the ASAM
+   SOVD v1.1 `bulk-data` endpoints needed for UC21, UC22, and UC23 for
+   the `cvc` component only.
+3. **CVC firmware receive path.** The CVC application implements UDS
+   `0x34 RequestDownload`, `0x36 TransferData`, and `0x37
+   RequestTransferExit`, plus the transfer-state handling required to
+   drive the inactive slot.
+4. **CVC boot and rollback path.** A dual-bank / A-B bootloader, atomic
+   boot-selector commit, and automatic rollback after `N = 5`
+   consecutive failed post-boot self-checks are part of this slice.
+5. **Signing and verification path.** The signed-image format is CMS
+   (RFC 5652) over X.509, reusing the existing PKI root as the trust
+   anchor and adding the code-signing certificate purpose under that
+   root.
+6. **Commit witness on the existing cloud path.** A signed boot-OK
+   witness over the already-chosen MQTT/cloud connector path is part of
+   the acceptance target for this CVC slice.
+7. **Phase 6 evidence tied to the CVC only.** FR-8.1..FR-8.6, SR-6.1..
+   SR-6.5, UC21..UC23, and the corresponding HIL evidence are satisfied
+   by proving the flow on the CVC bench target only.
+
+### Explicitly out of scope for ADR-0025
+
+1. **SC OTA.** No TMS570LC43x bootloader, no SC flashing-over-SOVD, no
+   SC-specific signed-image handling, and no SC rollback policy are in
+   scope here.
+2. **BCM OTA.** No POSIX-container image update flow, no BCM package
+   manager integration, and no "restart the binary" surrogate are in
+   scope here.
+3. **Multi-ECU OTA orchestration.** No campaign coordinator, no fleet
+   rollout scheduler, no cross-ECU dependency graph, and no "update the
+   whole bench at once" story are part of this ADR.
+4. **Pi, VPS, or cloud-service self-update.** This ADR covers ECU
+   firmware OTA only, not infrastructure self-update for the observer,
+   gateway, Pi, or VPS tiers.
+5. **Second-wave OTA features.** Delta updates, staged ring deployment,
+   pause/resume across power cycles for non-CVC targets, and operator UI
+   beyond the UC21..UC23 observer widgets remain outside this slice.
+
+### Deferred follow-on packages
+
+- **SC follow-on package.** Requires a separate accepted ADR after the
+  CVC slice, because SC is ASIL-D, uses a different flashing toolchain,
+  and needs its own safety and rollback review.
+- **BCM follow-on package.** Requires a separate accepted ADR only if a
+  later demo or customer asks for OTA on the virtual backend; until
+  then, BCM OTA remains out of scope by default.
+- **Scope-reopen rule.** No Phase 6 task may claim SC or BCM OTA work
+  under ADR-0025 unless a later ADR and matching requirements update are
+  accepted first.
 
 ## What we reuse
 
@@ -192,7 +253,9 @@ the bootloader, sign-image tool on the release side), but the
   update in §6.2.
 - **SYSTEM-SPECIFICATION.html** gains three UC rows in §7.5 and a
   revision entry.
-- **Future ADR-0026** will decide SC OTA scope (likely deferred).
+- **Future OTA follow-on ADR** will decide whether SC OTA ever enters
+  scope; BCM OTA needs its own separate decision if it becomes worth the
+  complexity.
 - **ARCHITECTURE.md §6** should eventually gain a UC21 sequence
   diagram showing off-board → SOVD bulk-data → UDS 0x34/0x36/0x37 →
   bootloader. Not part of this ADR round.

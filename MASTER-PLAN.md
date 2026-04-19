@@ -609,13 +609,20 @@ execution_breakdown:
           the evidence artifact expected, and the due point tied to the
           2026-09-30 safety case delta gate.
       - id: P6-PREP-04
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: []
         goal: land a config-driven rate-limit slice in SIL only
         done_when:
           - per-client-IP rate limiting is behind config
           - tests prove the intended `429` behavior
+        resolution_2026_04_19: |
+          `opensovd-core/sovd-server/src/rate_limit.rs` adds a small in-process
+          per-client-IP rate-limit middleware and `opensovd-core/sovd-main/src/config/`
+          now exposes the disabled-by-default `[rate_limit]` TOML section that turns
+          it on for SIL. `cargo test --locked -p sovd-server -p sovd-main` proves the
+          config parse and the `429 Too Many Requests` behavior for repeated requests
+          from the same client IP.
       - id: P6-PREP-05
         status: pending
         work_mode: repo_only

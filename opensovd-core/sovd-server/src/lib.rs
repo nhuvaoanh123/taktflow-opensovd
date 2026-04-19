@@ -34,12 +34,14 @@ pub mod backends;
 pub mod correlation;
 pub mod in_memory;
 pub mod openapi;
+pub mod rate_limit;
 pub mod routes;
 
 pub use auth::{AuthConfig, BearerToken};
 pub use backends::CdaBackend;
 pub use correlation::CorrelationId;
 pub use in_memory::{InMemoryComponentServer, InMemoryServer};
+pub use rate_limit::{RateLimitConfig, RateLimiter};
 
 /// Build a bare-bones SOVD HTTP router that only exposes the health
 /// endpoint. Used when `sovd-main` is configured with `server.mode =

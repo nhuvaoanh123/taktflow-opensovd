@@ -75,6 +75,9 @@ mod tests {
         );
         assert_eq!(config.dfm_component_id.as_deref(), Some("dfm"));
         assert!(config.cda_forwards.is_empty());
+        assert!(!config.rate_limit.enabled);
+        assert_eq!(config.rate_limit.requests_per_second, 20);
+        assert_eq!(config.rate_limit.window_seconds, 1);
     }
 
     #[test]
@@ -118,6 +121,23 @@ path_prefix = "vehicle/v15"
         assert_eq!(first.remote_component_id.as_deref(), Some("cvc00000"));
         assert_eq!(first.base_url, "http://127.0.0.1:20002");
         assert_eq!(first.path_prefix, "vehicle/v15");
+        Ok(())
+    }
+
+    #[test]
+    fn toml_parses_rate_limit_overrides() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[rate_limit]
+enabled = true
+requests_per_second = 7
+window_seconds = 2
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        assert!(config.rate_limit.enabled);
+        assert_eq!(config.rate_limit.requests_per_second, 7);
+        assert_eq!(config.rate_limit.window_seconds, 2);
         Ok(())
     }
 

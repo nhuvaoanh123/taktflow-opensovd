@@ -28,6 +28,7 @@
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
+use axum::middleware::from_fn_with_state;
 use clap::Parser;
 use opcycle_taktflow::TaktflowOperationCycle;
 use sovd_db_sqlite::SqliteSovdDb;
@@ -36,12 +37,12 @@ use sovd_interfaces::{
     ComponentId, SovdBackend,
     traits::{fault_sink::FaultSink, operation_cycle::OperationCycle, sovd_db::SovdDb},
 };
-use sovd_server::{CdaBackend, InMemoryServer};
+use sovd_server::{CdaBackend, InMemoryServer, RateLimiter};
 use url::Url;
 
-use crate::config::configfile::{CdaForwardConfig, Configuration, ServerMode};
 #[cfg(feature = "fault-sink-mqtt")]
 use crate::config::configfile::MqttConfig;
+use crate::config::configfile::{CdaForwardConfig, Configuration, ServerMode};
 
 mod config;
 
@@ -373,6 +374,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.mqtt.as_ref(),
     );
 
+    let app = if config.rate_limit.enabled {
+        tracing::info!(
+            requests_per_second = config.rate_limit.requests_per_second,
+            window_seconds = config.rate_limit.window_seconds,
+            "Per-client-IP rate limiting enabled for the local SOVD surface"
+        );
+        let limiter = Arc::new(RateLimiter::new(config.rate_limit.clone()));
+        app.layer(from_fn_with_state(
+            limiter,
+            sovd_server::rate_limit::middleware,
+        ))
+    } else {
+        app
+    };
+
     let addr: SocketAddr = format!("{}:{}", config.server.address, config.server.port).parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
@@ -381,7 +397,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.server.address,
         config.server.port
     );
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
@@ -425,6 +445,7 @@ mod tests {
                 path_prefix: "sovd/v1".to_owned(),
             }],
             mqtt: None,
+            rate_limit: defaults.rate_limit,
         };
 
         let assembled = build_in_memory_server(&config)
@@ -487,6 +508,7 @@ mod tests {
                 path_prefix: "sovd/v1".to_owned(),
             }],
             mqtt: None,
+            rate_limit: defaults.rate_limit,
         };
 
         let err = build_in_memory_server(&config)

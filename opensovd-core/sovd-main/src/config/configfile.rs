@@ -18,6 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 use sovd_dfm::DfmBackendConfig;
+use sovd_server::RateLimitConfig;
 use sovd_server::backends::cda::DEFAULT_CDA_PATH_PREFIX;
 
 /// Optional `[mqtt]` TOML section for the `fault-sink-mqtt` backend.
@@ -81,6 +82,10 @@ pub struct Configuration {
     /// registered as a fault-sink alongside the DFM.
     #[serde(default)]
     pub mqtt: Option<MqttConfig>,
+    /// Optional per-client-IP request limiting for the local HTTP surface.
+    /// Disabled by default; Phase 6 enables it via TOML for SIL hardening.
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -142,6 +147,7 @@ impl Default for Configuration {
             local_demo_components: default_local_demo_components(),
             cda_forwards: Vec::new(),
             mqtt: None,
+            rate_limit: RateLimitConfig::default(),
         }
     }
 }

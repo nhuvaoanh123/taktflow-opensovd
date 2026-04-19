@@ -729,7 +729,7 @@ execution_breakdown:
           `classic-diagnostic-adapter/cda-database/src/flatbuf/diagnostic_description.fbs`
           (root `EcuData`, ~80 tables, 10 unions).
       - id: P5-HIL-09b
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: [P5-HIL-09]
         goal: complete the MDD FlatBuffers emitter (variants + full round-trip)
@@ -742,6 +742,19 @@ execution_breakdown:
             round-trip assertions (not byte-level)
           - remaining-work list in `tools/odx-gen/MDD_EMITTER_NOTES.md` is
             closed out or re-triaged
+        resolution_2026_04_19: |
+          Closed on `taktflow-embedded-production` commit `47bc577a`
+          (branch `auto/line-b/proxy-can-isotp-fc-fix-2026-04-15`). Added
+          `tools/odx-gen/diagnostic_description_emit_subset.fbs` plus checked-in
+          generated Python bindings under `tools/odx-gen/odx_gen/_mdd_fb/`.
+          `odx_gen/emit_mdd.py` now emits one base `Variant` whose `DiagLayer`
+          contains every discovered `ServiceEntry` as a minimal `DiagService`,
+          and `tests/test_emit_mdd.py` now uses the generated reader for
+          structural round-trip assertions (5 passing tests). The remaining-work
+          note in `tools/odx-gen/MDD_EMITTER_NOTES.md` is re-triaged to capture
+          the full-schema Python-generation blocker: even upstream `flatc`
+          fails on vectors of unions in the authoritative
+          `diagnostic_description.fbs`.
       - id: P5-HIL-10
         status: done
         work_mode: repo_only

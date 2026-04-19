@@ -1026,13 +1026,22 @@ execution_breakdown:
           `Vehicle.OBD.DTCList` -> `GET /sovd/v1/components/{id}/faults`,
           and the crate pins `v5.0` in the intended version file.
       - id: UP2-05
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: [UP2-02]
         goal: scaffold the `sovd-extended-vehicle` crate and one REST plus pub/sub flow
         done_when:
           - one endpoint and one topic flow are exercised in tests
           - config structure exists for later expansion
+        resolution_2026_04_19: |
+          Added the new crate scaffold at
+          `opensovd-core/sovd-extended-vehicle/` with ADR-0027-aligned
+          config loading in `src/lib.rs`, the config file
+          `config/extended-vehicle.toml`, and tests in
+          `tests/contract_flow.rs`. The first exercised REST slice is
+          `GET /sovd/v1/extended/vehicle/fault-log`, and the first
+          exercised MQTT publish slice is
+          `sovd/extended-vehicle/fault-log/new`.
       - id: UP2-06
         status: done
         work_mode: decision_doc

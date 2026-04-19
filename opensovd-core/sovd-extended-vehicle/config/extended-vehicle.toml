@@ -1,0 +1,12 @@
+vehicle_id = "taktflow-pilot-ev-001"
+bench_id = "hil-bench-a"
+enabled_data_items = ["vehicle-info", "state", "fault-log", "energy"]
+
+[retention_policy]
+subscription_ttl_seconds = 900
+heartbeat_seconds = 30
+
+[publish_rate_limits]
+state_hz_max = 1
+fault_log_new_burst = 10
+energy_period_seconds = 5

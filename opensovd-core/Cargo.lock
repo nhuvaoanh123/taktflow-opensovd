@@ -3226,6 +3226,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sovd-covesa"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_yaml",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "sovd-db"
 version = "0.1.0"
 dependencies = [

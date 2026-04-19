@@ -561,13 +561,19 @@ execution_breakdown:
     status: available_now
     units:
       - id: P6-PREP-01
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: decide the auth model in ADR form (`OAuth2`, `mTLS`, or `hybrid`)
         done_when:
           - one option is selected with rationale and rejected alternatives
           - server, gateway, and integrator-guide impacts are listed
+        resolution_2026_04_19: |
+          `docs/adr/0030-phase-6-auth-profile-hybrid-default.md` selects the hybrid
+          auth profile as the Phase 6 integrator-ready default, while keeping
+          `mTLS-only` and `OAuth2-only behind trusted ingress` as explicit exceptions.
+          The ADR lists rejected alternatives plus the concrete server, gateway, and
+          integrator-guide impacts that follow from making hybrid the default.
       - id: P6-PREP-02
         status: pending
         work_mode: decision_doc

@@ -1112,13 +1112,30 @@ execution_breakdown:
           operator-only rollback, per-inference rollback, and folding
           signing into ADR-0028.
       - id: UP3-03
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: create the ISO/DIS 17978-1.2 gap-analysis skeleton
         done_when:
           - clause-by-clause headings exist
           - the delta-from-current-baseline method is written down
+        resolution_2026_04_19: |
+          Created `docs/compliance/iso-17978-1-2-gap-analysis.md`.
+          Document pins the delta-from-17978-3-baseline method in §1
+          (four-pass per clause: read, baseline mapping, delta
+          classification into four buckets, evidence pin) and the row
+          shape for the filled-in ledger. Clause-by-clause heading
+          structure is present for Part 1 (§2, eleven headings — front
+          matter through annexes and bibliography) and Part 2 (§3,
+          fifteen headings including interim AUTOSAR R24-11 mapping
+          targets for fault management, routines, data, session /
+          security, gateway / routing, and bulk-data / software-update
+          use-case clauses). Clause content deliberately empty with
+          "basis pending: Parts 1/2 acquisition" notes per STRICT MODE
+          and A1 guardrails — no placeholder tokens. Evidence ledger
+          (§4) and deferral log (§5) structures are defined; an
+          acquisition plan (§6) names what is needed and where to drop
+          it.
       - id: UP3-04
         status: pending
         work_mode: repo_only

@@ -33,6 +33,7 @@ score = [
     "opcycle-score-lifecycle",
 ]
 fault-sink-mqtt = ["dep:fault-sink-mqtt"]
+dlt-tracing = ["dep:tracing-dlt"]
 
 [dependencies]
 sovd-server = { workspace = true }
@@ -56,6 +57,7 @@ tower-http = { workspace = true, features = ["trace"] }
 opentelemetry = { workspace = true, features = ["trace"] }
 opentelemetry_sdk = { workspace = true, features = ["trace"] }
 opentelemetry-otlp = { workspace = true, features = ["grpc-tonic"] }
+tracing-dlt = { path = "../../dlt-tracing-lib/tracing-dlt", optional = true }
 
 [dev-dependencies]
 console-subscriber = { workspace = true }

@@ -339,6 +339,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     args.update_config(&mut config);
     let _tracing_guard = tracing_setup::init(&config.logging)?;
 
+    if config.logging.dlt.enabled {
+        tracing::info!(
+            app_id = %config.logging.dlt.app_id,
+            app_description = %config.logging.dlt.app_description,
+            "DLT tracing enabled for local SIL"
+        );
+    }
+
     if config.logging.otel.enabled {
         tracing::info!(
             endpoint = %config.logging.otel.endpoint,
@@ -399,7 +407,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let app = if config.logging.otel.enabled {
-        app.layer(TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().level(tracing::Level::INFO)))
+        app.layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(tracing::Level::INFO)),
+        )
     } else {
         app
     };

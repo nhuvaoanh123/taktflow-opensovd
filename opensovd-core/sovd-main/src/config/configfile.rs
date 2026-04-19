@@ -56,6 +56,8 @@ fn default_mqtt_bench_id() -> String {
 pub struct LoggingConfig {
     #[serde(default)]
     pub otel: OtelConfig,
+    #[serde(default)]
+    pub dlt: DltConfig,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -82,6 +84,34 @@ impl Default for OtelConfig {
             enabled: false,
             endpoint: default_otel_endpoint(),
             service_name: default_otel_service_name(),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct DltConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_dlt_app_id")]
+    pub app_id: String,
+    #[serde(default = "default_dlt_app_description")]
+    pub app_description: String,
+}
+
+fn default_dlt_app_id() -> String {
+    "SOVD".to_owned()
+}
+
+fn default_dlt_app_description() -> String {
+    "OpenSOVD core local SIL".to_owned()
+}
+
+impl Default for DltConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            app_id: default_dlt_app_id(),
+            app_description: default_dlt_app_description(),
         }
     }
 }
@@ -117,7 +147,8 @@ pub struct Configuration {
     #[serde(default)]
     pub mqtt: Option<MqttConfig>,
     /// Shared logging and tracing configuration for the local SIL runtime.
-    /// `[logging.otel]` stays disabled by default until Phase 6 enables it.
+    /// `[logging.otel]` and `[logging.dlt]` stay disabled by default until
+    /// Phase 6 enables them for specific slices.
     #[serde(default)]
     pub logging: LoggingConfig,
     /// Optional per-client-IP request limiting for the local HTTP surface.

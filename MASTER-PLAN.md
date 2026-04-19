@@ -785,24 +785,28 @@ execution_breakdown:
           `curl.exe http://127.0.0.1:20002/sovd/v1/components`, and
           `curl.exe "http://127.0.0.1:16686/api/traces?service=sovd-main&limit=20"`.
       - id: P6-PREP-06
-        status: blocked
+        status: done
         work_mode: repo_only
         depends_on: []
         goal: wire one-binary DLT emission in local SIL
         done_when:
           - one Rust binary emits DLT frames with a reproducible startup path
           - follow-on rollout risks are documented
-        blocker_2026_04_19: |
-          `P6-PREP-06` belongs on the laptop (the intended development host), not on
-          the Windows control PC. The laptop at `an-dao@192.168.0.158` is reachable
-          and has `cargo 1.95.0` + `rustc 1.95.0`, and `libdlt.so.2` is present via
-          the installed `libdlt2` runtime package. But the laptop is still not
-          DLT-build-ready: `/usr/include/dlt` is absent (`NO_DLT_HEADERS`), no
-          `libdlt-dev` package is installed, and the development headers required by
-          `dlt-sys` are unavailable. That means the unit cannot yet prove that one
-          Rust binary emits DLT frames with a reproducible startup path until the DLT
-          development package and headers are installed on the laptop or the unit is
-          rerun on another DLT-capable development host.
+        resolution_2026_04_19: |
+          `opensovd-core/sovd-main` now exposes an optional `dlt-tracing` Cargo
+          feature and a `[logging.dlt]` config section with default app id `SOVD`
+          and description `OpenSOVD core local SIL`. The checked-in verifier
+          doc `opensovd-core/docs/local-sil-dlt.md` and example config
+          `opensovd-core/docs/examples/sovd-main-local-sil-dlt.toml` record the
+          reproducible startup path and the follow-on rollout risks. Verified live
+          on 2026-04-19 on the laptop `an-dao@192.168.0.158` by building
+          `sovd-main` with `--features dlt-tracing`, running the built binary,
+          and capturing raw DLT socket output from `127.0.0.1:3490`; the capture
+          included `ApplicationID 'SOVD' registered` plus the startup message
+          `sovd_main: DLT tracing enabled for local SIL`. On the current Ubuntu
+          package set the daemon FIFO `/tmp/dlt` is `_dlt:_dlt`, so the verified
+          smoke path runs the built binary with `sudo` until a future
+          group/ACL hardening pass replaces that requirement.
       - id: P6-PREP-07
         status: done
         work_mode: decision_doc

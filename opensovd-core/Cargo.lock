@@ -747,6 +747,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "dlt-rs"
+version = "0.1.2"
+dependencies = [
+ "dlt-sys",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "dlt-sys"
+version = "0.1.2"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "dlv-list"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3321,6 +3337,7 @@ dependencies = [
  "tokio",
  "tower-http",
  "tracing",
+ "tracing-dlt",
  "tracing-opentelemetry",
  "tracing-subscriber",
  "url",
@@ -4042,6 +4059,18 @@ checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
  "valuable",
+]
+
+[[package]]
+name = "tracing-dlt"
+version = "0.1.2"
+dependencies = [
+ "dlt-rs",
+ "indexmap",
+ "tokio",
+ "tracing",
+ "tracing-core",
+ "tracing-subscriber",
 ]
 
 [[package]]

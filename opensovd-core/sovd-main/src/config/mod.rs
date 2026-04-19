@@ -78,6 +78,12 @@ mod tests {
         assert!(!config.logging.otel.enabled);
         assert_eq!(config.logging.otel.endpoint, "http://127.0.0.1:4317");
         assert_eq!(config.logging.otel.service_name, "sovd-main");
+        assert!(!config.logging.dlt.enabled);
+        assert_eq!(config.logging.dlt.app_id, "SOVD");
+        assert_eq!(
+            config.logging.dlt.app_description,
+            "OpenSOVD core local SIL"
+        );
         assert!(!config.rate_limit.enabled);
         assert_eq!(config.rate_limit.requests_per_second, 20);
         assert_eq!(config.rate_limit.window_seconds, 1);
@@ -158,6 +164,26 @@ service_name = "sovd-main-local"
         assert!(config.logging.otel.enabled);
         assert_eq!(config.logging.otel.endpoint, "http://127.0.0.1:4317");
         assert_eq!(config.logging.otel.service_name, "sovd-main-local");
+        Ok(())
+    }
+
+    #[test]
+    fn toml_parses_dlt_overrides() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[logging.dlt]
+enabled = true
+app_id = "SOVD"
+app_description = "OpenSOVD core DLT smoke"
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        assert!(config.logging.dlt.enabled);
+        assert_eq!(config.logging.dlt.app_id, "SOVD");
+        assert_eq!(
+            config.logging.dlt.app_description,
+            "OpenSOVD core DLT smoke"
+        );
         Ok(())
     }
 

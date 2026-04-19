@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD
+
+[server]
+address = "127.0.0.1"
+port = 20012
+
+[logging.dlt]
+enabled = true
+app_id = "SOVD"
+app_description = "OpenSOVD core local SIL"
+
+[logging.otel]
+enabled = false

@@ -1170,13 +1170,22 @@ execution_breakdown:
           acquisition plan (§6) names what is needed and where to drop
           it.
       - id: UP3-04
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: [UP3-01]
         goal: scaffold the `sovd-ml` crate and reference model layout
         done_when:
           - crate structure exists
           - model and signature file locations are pinned
+        resolution_2026_04_19: |
+          Added the new crate scaffold at `opensovd-core/sovd-ml/` with
+          path constants in `src/lib.rs`, the reserved model-layout note
+          in `models/README.md`, and tests in `tests/model_layout.rs`.
+          The pinned artifact locations are
+          `opensovd-core/sovd-ml/models/reference-fault-predictor.onnx`
+          and
+          `opensovd-core/sovd-ml/models/reference-fault-predictor.sig`,
+          as required by ADR-0028.
       - id: UP3-05
         status: pending
         work_mode: repo_only

@@ -3364,6 +3364,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "sovd-ml"
+version = "0.1.0"
+
+[[package]]
 name = "sovd-server"
 version = "0.1.0"
 dependencies = [

@@ -22,6 +22,7 @@ members = [
   "sovd-interfaces",
   "sovd-covesa",
   "sovd-extended-vehicle",
+  "sovd-ml",
   "sovd-dfm",
   "sovd-db",
   "sovd-server",
@@ -45,6 +46,7 @@ members = [
 sovd-interfaces = { path = "sovd-interfaces" }
 sovd-covesa = { path = "sovd-covesa" }
 sovd-extended-vehicle = { path = "sovd-extended-vehicle" }
+sovd-ml = { path = "sovd-ml" }
 sovd-dfm = { path = "sovd-dfm", default-features = false }
 sovd-db = { path = "sovd-db" }
 sovd-server = { path = "sovd-server" }

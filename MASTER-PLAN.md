@@ -583,13 +583,19 @@ execution_breakdown:
           - install, config, auth, deployment-mode, and troubleshooting sections exist
           - no section depends on unstated tribal knowledge
       - id: P6-PREP-03
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: build the safety-delta inventory for new UDS routines, DoIP, and FaultShim
         done_when:
           - every required HARA and FMEA update item is enumerated
           - each item names an owner, evidence target, and due point
+        resolution_2026_04_19: |
+          `docs/adr/0031-phase-6-safety-delta-inventory.md` enumerates the
+          required HARA rows for the exposed `0x31` routine paths and the
+          required DoIP / FaultShim FMEA rows. Every item now names an owner,
+          the evidence artifact expected, and the due point tied to the
+          2026-09-30 safety case delta gate.
       - id: P6-PREP-04
         status: pending
         work_mode: repo_only

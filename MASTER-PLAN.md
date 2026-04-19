@@ -994,13 +994,21 @@ execution_breakdown:
           broker, pub/sub-only, exposing raw UDS, and folding pub/sub
           into the COVESA adapter.
       - id: UP2-03
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: [UP2-01]
         goal: scaffold the semantic schema directory and validation harness
         done_when:
           - one schema validates under automated tests
           - the schema layout is ready for additional domain files
+        resolution_2026_04_19: |
+          Added the first semantic schema contract at
+          `opensovd-core/sovd-interfaces/schemas/semantic/vss-map.schema.yaml`
+          and an automated loader/validation harness at
+          `opensovd-core/sovd-interfaces/tests/semantic_schema_harness.rs`.
+          The harness scans every `*.schema.yaml` file under
+          `opensovd-core/sovd-interfaces/schemas/semantic/`, so future
+          domain schema files can be added without changing the test shape.
       - id: UP2-04
         status: pending
         work_mode: repo_only

@@ -1010,13 +1010,21 @@ execution_breakdown:
           `opensovd-core/sovd-interfaces/schemas/semantic/`, so future
           domain schema files can be added without changing the test shape.
       - id: UP2-04
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: [UP2-01]
         goal: scaffold the `sovd-covesa` crate and the first VSS mapping slice
         done_when:
           - crate structure exists with one mapped example
           - version tracking for VSS is pinned in the intended file
+        resolution_2026_04_19: |
+          Added the new crate scaffold at `opensovd-core/sovd-covesa/`
+          with YAML contract loaders in `src/lib.rs`, the pinned VSS
+          release file `schemas/vss-version.yaml`, the first mapping slice
+          `schemas/vss-map.yaml`, and tests in
+          `tests/contract_loading.rs`. The first mapping row is
+          `Vehicle.OBD.DTCList` -> `GET /sovd/v1/components/{id}/faults`,
+          and the crate pins `v5.0` in the intended version file.
       - id: UP2-05
         status: pending
         work_mode: repo_only

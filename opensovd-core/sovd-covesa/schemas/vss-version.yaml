@@ -1,0 +1,9 @@
+schema_version: 1
+vss_release: v5.0
+pin_status: provisional-taktflow-default
+source_ref: https://github.com/COVESA/vehicle_signal_specification/releases/tag/v5.0
+notes: >-
+  Scaffold pin for ADR-0026. Upstream main still carries open question
+  OQ-PP2.1 about the default shipped VSS pin, but this crate records one
+  explicit internal release so version drift is a file diff instead of an
+  implicit assumption.

@@ -20,6 +20,7 @@ repository = "https://github.com/eclipse-opensovd/opensovd-core"
 resolver = "3"
 members = [
   "sovd-interfaces",
+  "sovd-covesa",
   "sovd-dfm",
   "sovd-db",
   "sovd-server",
@@ -41,6 +42,7 @@ members = [
 
 [workspace.dependencies]
 sovd-interfaces = { path = "sovd-interfaces" }
+sovd-covesa = { path = "sovd-covesa" }
 sovd-dfm = { path = "sovd-dfm", default-features = false }
 sovd-db = { path = "sovd-db" }
 sovd-server = { path = "sovd-server" }

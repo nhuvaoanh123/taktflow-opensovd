@@ -1039,13 +1039,25 @@ execution_breakdown:
           - test filenames and scenario contracts exist
           - at least one happy-path skeleton runs in CI
       - id: UP2-08
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: [UP2-01, UP2-02]
         goal: prepare the upstream discussion pack for maintainer review
         done_when:
           - discussion-ready summaries exist for both mapping and scope
           - open questions are isolated from settled design decisions
+        resolution_2026_04_19: |
+          Created `docs/upstream/phase-2-discussion-pack.md`. Pack is
+          split into two parallel halves: §1 COVESA mapping (summary,
+          settled decisions, open questions) citing ADR-0026 by path,
+          §2 Extended Vehicle (summary, settled decisions, open
+          questions) citing ADR-0027 by path, and §3 cross-ADR concerns
+          (why pub/sub lives only in ADR-0027, shared broker coupling,
+          error envelope reuse). Open questions are isolated from
+          settled decisions in dedicated subsections (§1.3 / §2.3); nine
+          numbered open questions (OQ-PP2.1..OQ-PP2.9) are listed.
+          Review targets for upstream OpenSOVD, COVESA, and ISO 20078
+          are called out in §4.
 
   upstream_phase_3_breakdown:
     status: blocked_on_upstream_phase_2_complete

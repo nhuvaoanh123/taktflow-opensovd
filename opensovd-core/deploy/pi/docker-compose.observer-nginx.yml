@@ -22,6 +22,7 @@ services:
       - /var/cache/nginx
       - /var/run
       - /tmp
+      - /etc/nginx/conf.d
     environment:
       SOVD_UPSTREAM: ${SOVD_UPSTREAM:-127.0.0.1:21002}
       WS_BRIDGE_UPSTREAM: ${WS_BRIDGE_UPSTREAM:-127.0.0.1:8082}

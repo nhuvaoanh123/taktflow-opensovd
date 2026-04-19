@@ -23,3 +23,11 @@ workspace = true
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

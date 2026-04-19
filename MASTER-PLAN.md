@@ -1187,13 +1187,21 @@ execution_breakdown:
           `opensovd-core/sovd-ml/models/reference-fault-predictor.sig`,
           as required by ADR-0028.
       - id: UP3-05
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: [UP3-02, UP3-04]
         goal: prove signed-model verify-before-load in SIL
         done_when:
           - the unsigned model path is rejected
           - the signed model path loads in the intended harness
+        resolution_2026_04_19: |
+          Extended `opensovd-core/sovd-ml/` with a repo-only
+          verify-before-load harness in `src/lib.rs` that reads model +
+          manifest, rejects a missing detached signature, and verifies a
+          CMS detached signature via `openssl cms -verify`. The test file
+          `tests/model_loading.rs` proves both required outcomes in SIL:
+          unsigned model rejected and signed model accepted in the
+          intended harness.
       - id: UP3-06
         status: pending
         work_mode: repo_only

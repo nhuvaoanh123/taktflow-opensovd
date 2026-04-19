@@ -697,13 +697,43 @@ execution_breakdown:
           embedded-production branch. Preflight on 2026-04-19 reconfirmed
           this split before execution.
       - id: P5-HIL-09
-        status: pending
+        status: partial
         work_mode: repo_only
         depends_on: []
         goal: add the MDD FlatBuffers emitter to `tools/odx-gen`
         done_when:
           - `--emit=mdd` produces output matching CDA `cda-database` expectations
           - round-trip coverage exists in tests
+        resolution_2026_04_19: |
+          Partial landing on `taktflow-embedded-production` commit `b5a804aa`
+          (branch `auto/line-b/proxy-can-isotp-fc-fix-2026-04-15`). `--emit=mdd`
+          is wired into `odx_gen/__main__.py` and dispatches to the new
+          `odx_gen/emit_mdd.py` (hand-rolled `flatbuffers.Builder` emitter).
+          It currently writes a minimal `EcuData` record with `version`,
+          `ecu_name`, `revision`, `metadata` KeyValue pairs (tx/rx PDU ids and
+          symbols, S3 timeout, service/DID counts) and the DTC list derived
+          from `EcuDiagnosticModel`. 6 byte-level round-trip tests pass
+          (`tests/test_emit_mdd.py`). Full structural round-trip and the
+          `variants`/`functional_groups`/`feature_flags` slices require
+          `flatc`-generated Python bindings and are scheduled as
+          `P5-HIL-09b`. Remaining-work catalogue and blockers are recorded in
+          `tools/odx-gen/MDD_EMITTER_NOTES.md`. Schema reference:
+          `classic-diagnostic-adapter/cda-database/src/flatbuf/diagnostic_description.fbs`
+          (root `EcuData`, ~80 tables, 10 unions).
+      - id: P5-HIL-09b
+        status: pending
+        work_mode: repo_only
+        depends_on: [P5-HIL-09]
+        goal: complete the MDD FlatBuffers emitter (variants + full round-trip)
+        done_when:
+          - `flatc`-generated Python bindings are checked in under
+            `tools/odx-gen/odx_gen/_mdd_fb/`
+          - `emit_mdd` populates `variants` with one base `Variant` containing
+            every discovered `DiagService` from `EcuDiagnosticModel.services`
+          - `tests/test_emit_mdd.py` uses the generated reader for structural
+            round-trip assertions (not byte-level)
+          - remaining-work list in `tools/odx-gen/MDD_EMITTER_NOTES.md` is
+            closed out or re-triaged
       - id: P5-HIL-10
         status: done
         work_mode: repo_only

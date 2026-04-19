@@ -1063,13 +1063,29 @@ execution_breakdown:
     status: blocked_on_upstream_phase_2_complete
     units:
       - id: UP3-01
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: draft ADR-0028 for edge ML scope and lifecycle
         done_when:
           - model lifecycle, memory budget, and deployment boundary are explicit
           - rollback expectations are written down
+        resolution_2026_04_19: |
+          Drafted `docs/adr/ADR-0028-edge-ml-fault-prediction.md`.
+          `sovd-ml` embeds ONNX runtime on the Pi class; MCU tiers
+          (STM32 H7, TMS570) consume a pre-converted artifact — memory
+          envelopes expressed in relative language (~1/4 of on-chip
+          flash, ~1/4 of on-chip SRAM on the STM32 H7 class, < 256 MiB
+          RAM on Pi) cited against ST and TI public product docs.
+          Lifecycle states (load, hot-swap, rollback, unload) owned by
+          Taktflow; Eclipse Edge Native integration is a data boundary
+          for deployment + observability only, not a runtime
+          dependency. ML output is tagged `advisory_only: true` and
+          never surfaces as a confirmed DTC. Rollback via shadow-slot
+          hot-swap; trigger policy delegated to ADR-0029 (UP3-02).
+          Rejected alternatives include ML-as-DTC, Edge-Native-owned
+          lifecycle, parallel `/sovd/v1/ml/*` tree, reflash-only
+          rollback.
       - id: UP3-02
         status: pending
         work_mode: decision_doc

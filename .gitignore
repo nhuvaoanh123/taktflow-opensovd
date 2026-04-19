@@ -21,3 +21,8 @@ Thumbs.db
 # Contains: TASKS.md, WORKING-LINES.md, prompts/, progress/, logs/,
 # phase-specific runs, HIL captures, architecture snapshots, scratch notes
 work/
+
+# Deploy / infra plans (contain VPS IPs, SSH targets, nginx paths)
+# — internal playbooks, never public
+docs/plans/vps-*.md
+docs/plans/vps-*-notes.md

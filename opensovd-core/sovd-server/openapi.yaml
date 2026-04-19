@@ -7,6 +7,26 @@ info:
     identifier: Apache-2.0
   version: 0.1.0
 paths:
+  /sovd/v1/audit:
+    get:
+      tags:
+      - observer-extras
+      operationId: audit
+      parameters:
+      - name: limit
+        in: query
+        description: Maximum number of most recent entries to return
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: Append-only observer audit log
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLog'
   /sovd/v1/components:
     get:
       tags:
@@ -82,6 +102,42 @@ paths:
                 $ref: '#/components/schemas/Datas'
         '404':
           description: Component not found
+  /sovd/v1/components/{component_id}/data/{data_id}:
+    get:
+      tags:
+      - data-access
+      summary: |-
+        `GET /sovd/v1/components/{component_id}/data/{data_id}` — read one
+        live data value.
+      description: |-
+        # Errors
+
+        Returns 404 if the component or data id is unknown; other
+        [`SovdError`](sovd_interfaces::SovdError) values are mapped via
+        [`ApiError`].
+      operationId: readData
+      parameters:
+      - name: component_id
+        in: path
+        description: Stable component identifier
+        required: true
+        schema:
+          type: string
+      - name: data_id
+        in: path
+        description: Stable data identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Live data value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SovdReadValue'
+        '404':
+          description: Component or data id not found
   /sovd/v1/components/{component_id}/faults:
     get:
       tags:
@@ -338,6 +394,30 @@ paths:
                 $ref: '#/components/schemas/ExecutionStatusResponse'
         '404':
           description: Execution not found
+  /sovd/v1/gateway/backends:
+    get:
+      tags:
+      - observer-extras
+      operationId: gateway_backends
+      responses:
+        '200':
+          description: Live gateway routing table
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackendRoutes'
+  /sovd/v1/session:
+    get:
+      tags:
+      - observer-extras
+      operationId: session
+      responses:
+        '200':
+          description: Observer session snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStatus'
 components:
   schemas:
     ApplyCapabilityRequest:
@@ -365,6 +445,44 @@ components:
           - 'null'
           format: int64
           description: Server-side timeout in seconds.
+    AuditEntry:
+      type: object
+      description: One append-only audit event for the observer dashboard.
+      required:
+      - timestamp_ms
+      - actor
+      - action
+      - target
+      - result
+      properties:
+        action:
+          type: string
+          description: Stable action identifier, e.g. `"LIST_COMPONENTS"`.
+        actor:
+          type: string
+          description: Human-readable actor label.
+        result:
+          type: string
+          description: Result label. Stage 1 uses `"ok"`, `"denied"`, or `"error"`.
+        target:
+          type: string
+          description: Logical target identifier, e.g. `"cvc"` or `"cvc:battery_voltage"`.
+        timestamp_ms:
+          type: integer
+          format: int64
+          description: Event timestamp in unix milliseconds.
+          minimum: 0
+    AuditLog:
+      type: object
+      description: Audit-log collection response.
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+          description: Most recent entries first.
     BackendHealth:
       oneOf:
       - type: object
@@ -409,6 +527,44 @@ components:
         extras-level health envelope reported by `GET /sovd/v1/health`. Per
         ADR-0015, this is an extras type (not spec) because ISO 17978-3 has
         no notion of a per-backend probe result.
+    BackendRoute:
+      type: object
+      description: One live gateway/backend route entry.
+      required:
+      - id
+      - address
+      - protocol
+      - reachable
+      - latency_ms
+      properties:
+        address:
+          type: string
+          description: Human-readable address or endpoint for this route.
+        id:
+          type: string
+          description: Stable route id shown in the dashboard.
+        latency_ms:
+          type: integer
+          format: int64
+          description: Probe latency in milliseconds.
+          minimum: 0
+        protocol:
+          type: string
+          description: Transport label shown by the dashboard, e.g. `"sovd"`.
+        reachable:
+          type: boolean
+          description: Reachability inferred from the backend probe.
+    BackendRoutes:
+      type: object
+      description: Gateway backend/route collection response.
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BackendRoute'
+          description: All known routes, sorted by `id`.
     Capability:
       type: string
       description: |-
@@ -1147,6 +1303,42 @@ components:
           description: |-
             `true` when this response is a degraded / last-known fallback
             rather than a full-strength answer.
+    SessionStatus:
+      type: object
+      description: |-
+        Current observer session summary.
+
+        Extra (per ADR-0006): the dashboard needs one compact view of the
+        most recently observed tester session without walking spec-level
+        `modes/*` resources across every component.
+      required:
+      - session_id
+      - level
+      - security_level
+      - expires_at_ms
+      - active
+      properties:
+        active:
+          type: boolean
+          description: |-
+            `true` when the session is currently active, `false` when the
+            record is idle / expired.
+        expires_at_ms:
+          type: integer
+          format: int64
+          description: Absolute expiration timestamp in unix milliseconds.
+          minimum: 0
+        level:
+          type: string
+          description: Friendly session level label, e.g. `"default"` or `"extended"`.
+        security_level:
+          type: integer
+          format: int32
+          description: Effective security level. `0` means no elevated access.
+          minimum: 0
+        session_id:
+          type: string
+          description: Stable id for the currently active or most recently observed session.
     Severity:
       type: string
       description: |-
@@ -1383,3 +1575,5 @@ tags:
   description: Operation execution endpoints
 - name: data-access
   description: Data resource access endpoints
+- name: observer-extras
+  description: Observer dashboard extension endpoints

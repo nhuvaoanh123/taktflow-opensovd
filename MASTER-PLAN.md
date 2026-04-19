@@ -6,10 +6,17 @@
   current_state / blockers / next_steps). The plan is forward-looking, so
   "achievement" captures what is already done and "next_steps" captures
   what is still to do; each phase is its own record under plan[].
+
+  Rewritten again 2026-04-19 to reflect the three-tier deployment
+  architecture (VPS for public SIL, Pi for HIL, laptop for dev). The
+  VPS-specific deploy playbook is private and lives outside this
+  repository (see docs/plans/vps-sovd-deploy.md, which is gitignored).
+  This master plan is the public single source of truth; infra specifics
+  are intentionally excluded.
 -->
 
 ```yaml
-date: 2026-04-18
+date: 2026-04-19
 project: taktflow-opensovd
 part: master-plan
 task: opensovd-mvp-end-of-2026
@@ -19,39 +26,48 @@ achievement:
   - Phase 1 embedded UDS + DoIP POSIX complete — Dcm 0x19/0x14/0x31 handlers pass HIL, DoIP listener on 13400
   - Phase 2 CDA integration complete — CAN-to-DoIP proxy reaches physical CVC, SIL + HIL smoke green
   - Phase 3 Fault Lib + DFM complete — embedded Fault Shim → DFM SQLite → SOVD GET round-trip <100 ms in Docker
-  - Phase 4 SOVD Server + Gateway complete — 5 MVP use cases pass in Docker Compose, every crate upstream-ready (no PRs opened)
-  - Phase 5 Stage 1 in progress — fault-sink-mqtt + ws-bridge + live observer dashboard/overlay work merged to main; Mosquitto kit ready on feat/mqtt-broker-deploy
+  - Phase 4 SOVD Server + Gateway complete — 5 MVP use cases pass in Docker Compose, every crate is contribution-ready
+  - Phase 5 Stage 1 in progress — fault-sink-mqtt + ws-bridge + observer dashboard + observability wiring merged to main; Mosquitto kit still isolated on feat/mqtt-broker-deploy
   - doip-codec evaluation spike complete — partial migration plan documented (docs/doip-codec-evaluation.md), CDA fork pins captured
   - ADR-0023 trimmed physical bench to 3 ECUs (CVC, SC, BCM); FZC/RZC retired
   - ADR-0024 capability-showcase observer dashboard accepted — two-stage plan (self-hosted mTLS first, optional AWS later)
-  - ADR-0025 CVC OTA accepted 2026-04-17 — folded into Phase 6 deliverable 8
-  - 2026-04-18 observer cert provisioning + nginx overlay scripted — `deploy/pi/scripts/provision-observer-certs.sh` + `phase5-full-stack.sh` overlay (opt-in via `OBSERVER_NGINX_ENABLED=1`); generates root CA + server leaf + curl client leaf + PKCS#12 bundle; locally verified (SANs + subject); awaits live Pi run with bench access + `WS_BRIDGE_INTERNAL_TOKEN`
+  - ADR-0025 CVC OTA accepted 2026-04-17 — folded into Phase 6 deliverable
+  - 2026-04-18 observer cert provisioning + nginx overlay scripted for the HIL bench Pi — `deploy/pi/scripts/provision-observer-certs.sh` + `phase5-full-stack.sh` overlay (opt-in via `OBSERVER_NGINX_ENABLED=1`); locally verified; awaits live Pi run
   - 2026-04-18 UC15/UC16/UC18 dashboard stubs retired — `GET /sovd/v1/session`, `GET /sovd/v1/audit`, `GET /sovd/v1/gateway/backends` extras endpoints landed with shared-middleware audit/session derivation; canned data demoted to on-error fallback only; 45 sovd-server + 56 sovd-interfaces + 36 schema-snapshot tests green; `pnpm run check` + `pnpm run build` clean
+  - 2026-04-19 Stage 1 observability + MQTT contract hardening landed — Prometheus/Grafana bundle added under `opensovd-core/deploy/pi/observability/`, `docker-compose.observer-observability.yml` wires loopback-only services, and `ws-bridge` schema snapshots now pin the MQTT→WS frame in CI; merged on main as `3a30032`
+  - 2026-04-19 AWS IoT Core uplink live — `cloud_connector` on the Pi pushes DFM fault events to the shared taktflow-embedded-production AWS account under `DEVICE_ID=taktflow-sovd-hil-001`; ADR-0024 Stage 2 delivered ahead of plan (still non-blocking for Phase 5 exit, just already done)
+  - 2026-04-19 repository flattened — opensovd-core/ nested git retired; single monorepo tracked at github.com/nhuvaoanh123/taktflow-opensovd
+  - 2026-04-19 portfolio tile drafted — Project 4 added to apps/web landing page (Taktflow Systems), linking to sil.taktflow-systems.com/sovd/ (spec), /sovd/v1/components (live SIL API), and GitHub repo
+  - 2026-04-19 **public SOVD SIL live at `https://sovd.taktflow-systems.com/`** — sovd-main binary cross-built on the laptop, deployed to Docker on the second VPS (87.106.147.203) as `taktflow_sovd_main` container, dockerized nginx:alpine sidecar `taktflow_sovd_docs` serves the spec HTML, dockerized Caddy (`taktflow_caddy`) terminates TLS with Let's Encrypt and reverse-proxies `/sovd/v1/*` → sovd-main:20002 and `/sovd/*` → sovd-docs; `GET https://sovd.taktflow-systems.com/sovd/v1/components` returns 4 components (bcm, cvc, sc, dfm) with pre-seeded faults on cvc (P0A1F, P0562) and sc (U0100); UC1 read faults, UC3 clear faults, UC5 list operations, UC6 start operation, UC8 components metadata, UC9 DID data, UC14 component topology, UC15 session, UC16 audit log, UC18 gateway backends all exercisable publicly. Old VPS (152.53.245.209) retained for foxBMS + taktflow-embedded-production only; legacy `/sovd/*` URLs 301-redirect to the new host.
 
 decisions_with_rationale:
-  - decision: Build first, contribute later — no upstream PRs during Phases 0–3
-    rationale: Owning finished, tested code avoids upstream churn, design-by-committee, and maintainer-responsiveness dependencies
-    how_to_apply: All Phase 0–3 work lives in local feature branches; nothing pushed to our forks without explicit team approval
+  - decision: Mature the implementation before upstream contribution
+    rationale: Upstream contributions land better when the component is end-to-end working with tests and documentation. Pushing half-built code triggers repeated review cycles that slow both sides.
+    how_to_apply: Contributions upstream are opened only after the component has passing integration tests, an ADR, and architect review. Timing is decision-driven, not calendar-driven (see §upstream_contribution_priority).
 
-  - decision: Taktflow owns opensovd-core; CDA is vendored as-is from upstream (scope change 2026-04-19)
-    rationale: Upstream `eclipse-opensovd/opensovd-core` is an empty stub — we built DFM, sovd-gateway, SOVD Server, fault-sink-mqtt, ws-bridge, observer API, dashboard here; the architecture is ours. CDA is real upstream code we use unmodified as the SOVD→UDS/DoIP bridge for legacy ECUs. Keeping opensovd-core nested under its own git history was enforcing synchronization discipline for content that only exists downstream — removed 2026-04-19.
-    how_to_apply: opensovd-core/ has no nested .git — it's a normal monorepo subdirectory under taktflow-opensovd. Contributions upstream (when team decides, §8) go via `git subtree split --prefix=opensovd-core/<crate>` into a throwaway branch pushed to a fresh fork of eclipse-opensovd/opensovd-core. CDA (`classic-diagnostic-adapter/`) stays mirrored verbatim: copy build.yml / feature flags / patches / deny.toml / workflows untouched; any CDA modifications land in separate Taktflow crates or external patches, never inline edits. Upstream-awareness is a monthly read of upstream commits, not a weekly rebase cron.
+  - decision: Taktflow-maintained opensovd-core tree; CDA vendored from upstream (repo-structure update 2026-04-19)
+    rationale: Upstream `eclipse-opensovd/opensovd-core` was at the stub stage when this work started. The implementation (DFM, Gateway, Server, fault-sink-mqtt, ws-bridge, observer API, dashboard) was written in this tree. CDA is stable upstream code used unmodified as the SOVD→UDS/DoIP bridge.
+    how_to_apply: opensovd-core/ is a regular monorepo subdirectory. When components mature enough for contribution, a throwaway branch is produced via `git subtree split --prefix=opensovd-core/<crate>` and submitted via a fresh fork of eclipse-opensovd/opensovd-core per the Eclipse contribution workflow. CDA (`classic-diagnostic-adapter/`) stays mirrored verbatim; any CDA modifications land in separate crates or external patches, never inline edits. Upstream-awareness is a monthly review of upstream commits and discussions.
 
-  - decision: Fault Library shim is C on embedded side, Rust only on POSIX / Pi components
+  - decision: Three-tier deployment — VPS serves public SIL, Pi serves HIL, laptop is the development host (architectural split finalized 2026-04-19)
+    rationale: SIL runs entirely in software (DoIP over loopback, virtual ECUs) and has no hardware dependency, so it belongs on a publicly reachable host. The Pi is the only host with a USB-CAN adapter attached to physical ECUs, so HIL must stay on the Pi. Mixing the two tiers on the same host ties public availability to bench state and makes the Pi's 4 GB RAM a single point of failure for demos.
+    how_to_apply: Public SIL demo (Docker Compose stack, Grafana dashboard, engineering spec HTML) is deployed to the Netcup VPS under sil.taktflow-systems.com/sovd/. The Pi hosts the CAN-to-DoIP proxy + observer nginx + cloud_connector + AWS IoT Core bridge for HIL runs only. The laptop hosts cross-compile toolchains, dev-time Docker, and receives deployed binaries for the Pi. VPS deploy steps are outside this repository (`docs/plans/vps-sovd-deploy.md`, gitignored, contains infra specifics).
+
+  - decision: Fault Library shim is C on embedded side, Rust only on POSIX / Pi / laptop / VPS components
     rationale: Avoids dragging Rust toolchain into ASIL-D firmware lifecycle
     how_to_apply: FaultShim_Posix.c + FaultShim_Stm32.c wrap DFM IPC; all opensovd-core crates stay Rust
 
   - decision: Never hard fail — backends log-and-continue, locks are bounded try_lock_for, no panic/unwrap/expect in HTTP-reachable code
-    rationale: Upstream CDA proved aggressive error propagation breaks in realistic environments (ADR-0018); we copy the behavior not their prose
+    rationale: Upstream CDA proved aggressive error propagation breaks in realistic environments (ADR-0018); we copy the behavior, not their prose
     how_to_apply: Clippy lints enforce on backend crates; degraded responses carry stale:true and error_kind label; spec-boundary rejection stays strict
 
   - decision: SIL first, HIL second, physical hardware last
     rationale: Docker SIL feedback loop is seconds; Pi HIL is minutes; physical ECU re-flashing is hours — defer expensive debug surfaces
-    how_to_apply: Nothing touches physical ECUs until Docker topology passes; HIL gated on SIL-green
+    how_to_apply: Nothing touches physical ECUs until SIL topology passes; HIL gated on SIL-green; public demos use SIL (VPS) by default
 
   - decision: Capability-showcase dashboard Stage 1 is self-hosted mTLS, zero cloud cost
     rationale: $0 recurring cost, authority stays on-bench, defers AWS fleet-uplink complexity to Stage 2 without blocking Phase 5 exit
-    how_to_apply: Reuse taktflow-embedded-production cloud_connector+ws_bridge with AWS_IOT_ENDPOINT=""; Prometheus+Grafana replaces Timestream; SvelteKit static served by nginx with client-cert auth
+    how_to_apply: Reuse taktflow-embedded-production cloud_connector+ws_bridge; Prometheus+Grafana replaces Timestream; SvelteKit static served by nginx with client-cert auth
 
   - decision: Upstream house style before custom patterns — adopt CDA conventions by default
     rationale: Minimizes diff when we eventually upstream; avoids reinventing solved problems
@@ -67,13 +83,35 @@ decisions_with_rationale:
 
 current_state:
   summary: |
-    Phases 0–4 complete; Phase 5 Stage 1 in progress. Fault fan-out to MQTT
-    is wired end-to-end and tested; dashboard is consuming real REST + WS
-    from the bench. Observer nginx + cert provisioning are scripted and on
-    main, but Phase 5 Stage 1 still needs a live Pi run, Prometheus/Grafana,
-    the D3 clear-fault precondition, and restored Pi redeploy capability.
-    Physical-ECU flashing (STM32 + TMS570) still remains in Phase 5. Code is
-    upstream-ready and no upstream PRs are open.
+    Phases 0–4 complete; Phase 5 Stage 1 in progress. The software stack
+    (fault fan-out to MQTT, observer dashboard consuming real REST + WS,
+    observability bundle, MQTT schema snapshots) is end-to-end green in
+    Docker SIL and in CI. AWS IoT Core uplink from the Pi is live. Repo
+    flattened to a single monorepo. Deployment architecture finalized as
+    three tiers — public SIL on the Netcup VPS, HIL on the Pi, development
+    on the laptop. Remaining work before Phase 5 exit: deploy the public
+    SIL demo (VPS), finish aarch64 cross-compile so the Pi HIL can be
+    redeployed, flash the physical STM32 + TMS570 for HIL runs, capture
+    performance baselines on each tier, and merge the Mosquitto broker
+    branch.
+
+  tiers:
+    public_sil_on_vps:
+      host: second Netcup VPS (sovd.taktflow-systems.com, 87.106.147.203) — dedicated to OpenSOVD, isolated from foxBMS
+      role: Public demo — engineering spec HTML at /sovd/, live SOVD SIL API at /sovd/v1/*, live Grafana at /sovd/dashboard/ (follow-up). Reachable by the Eclipse SDV Architecture Board and anyone with the URL.
+      status: all running as Docker containers under /opt/taktflow-systems/taktflow-systems on 87.106.147.203 — taktflow_sovd_main (Rust binary + SQLite backend on :20002), taktflow_sovd_docs (nginx:alpine serving the spec), taktflow_caddy (TLS terminator, Let's Encrypt cert for sovd.taktflow-systems.com); old VPS 152.53.245.209 retains foxBMS only; legacy /sovd/* on old VPS 301-redirects to new host. Full SIL docker stack extensions (ecu-sim + CDA + MQTT + Grafana) still pending for S-VPS-08..10.
+    hil_on_pi:
+      host: Raspberry Pi 4 (Ubuntu 24.04 aarch64, on bench LAN)
+      role: HIL — CAN-to-DoIP proxy, observer nginx + mTLS, cloud_connector → AWS IoT Core, bench LAN dashboard. Only tier that touches physical ECUs.
+      status: Software scripted and locally verified; awaits live Pi run after aarch64 cross-compile is restored and a clearable fault is injected.
+    development_on_laptop:
+      host: Ubuntu 24.04 x86_64 laptop on bench LAN
+      role: Cross-compile, unit/integration tests, dev-time Docker, deploy origin for Pi and VPS.
+      status: aarch64 target installed; cross-linker (aarch64-linux-gnu-gcc) still missing — hardening gate due 2026-04-25.
+    cloud_telemetry_on_aws:
+      host: AWS IoT Core (shared taktflow-embedded-production account)
+      role: Fleet telemetry sink for HIL runs. DEVICE_ID=taktflow-sovd-hil-001 publishes to `vehicle/dtc/new` and `taktflow/cloud/status`.
+      status: Live since 2026-04-19; ADR-0024 Stage 2 complete.
 
   files_touched:
     - opensovd-core/sovd-server/
@@ -82,8 +120,8 @@ current_state:
     - opensovd-core/sovd-interfaces/
     - opensovd-core/sovd-db/migrations/
     - opensovd-core/integration-tests/
-    - opensovd-core/fault-sink-mqtt/
-    - opensovd-core/ws-bridge/
+    - opensovd-core/crates/fault-sink-mqtt/
+    - opensovd-core/crates/ws-bridge/
     - gateway/can_to_doip_proxy/
     - firmware/bsw/services/Dcm/Dcm_ReadDtcInfo.c
     - firmware/bsw/services/Dcm/Dcm_ClearDtc.c
@@ -103,11 +141,16 @@ current_state:
     - opensovd-core/deploy/pi/phase5-full-stack.sh
     - opensovd-core/deploy/pi/scripts/provision-observer-certs.sh
     - opensovd-core/deploy/pi/docker-compose.observer-nginx.yml
-    - opensovd-core/deploy/pi/nginx/README.md
+    - opensovd-core/deploy/pi/docker-compose.observer-observability.yml
+    - opensovd-core/deploy/pi/nginx/
+    - opensovd-core/deploy/pi/observability/
     - opensovd-core/deploy/pi/README-phase5.md
+    - opensovd-core/deploy/pi/systemd/ws-bridge.service
+    - opensovd-core/deploy/sil/
     - opensovd-core/sovd-interfaces/src/extras/mod.rs
     - opensovd-core/sovd-interfaces/src/extras/observer.rs
     - opensovd-core/sovd-server/src/routes/observer.rs
+    - ENGINEERING-SPECIFICATION.html
 
   status:
     - Phase 0 complete — 2026-04-30
@@ -118,48 +161,62 @@ current_state:
     - Phase 5 in progress — target 2026-11-30 (M5 ships end of Phase 6)
     - Phase 6 not started — target 2026-12-31
     - 3 active ECUs on HIL bench (CVC physical CAN, SC TMS570 CAN, BCM virtual DoIP)
-    - Upstream sync current — weekly Monday 09:00 rebase, no drift
+    - Upstream-awareness current — monorepo owns opensovd-core, CDA stays vendored verbatim, monthly review cadence
     - Zero MISRA violations, zero clippy pedantic violations on new code
-    - No upstream PRs opened — decision deferred to Phase 6
+    - AWS IoT Core uplink live (ADR-0024 Stage 2 delivered)
+    - No upstream PRs opened — first PR scheduled after Phase 5 physical HIL green
 
 blockers:
   active_technical:
-    - Pi binary rebuild pinned to nightly-2025-07-14 lacks aarch64-unknown-linux-gnu target on the Windows dev host; Pi itself has no Rust toolchain or source checkout — blocks Phase 5 live redeploy after the Windows-binary copy incident; owner must resolve by 2026-04-25 (hard stop before physical HW work starts)
+    - Public SIL on VPS not yet deployed — engineering spec HTML upload (S-VPS-01..07 in the deploy playbook) must close before Monday 2026-04-20 11:30 CET for the Eclipse SDV Architecture Board link to resolve. Current portfolio tile links to sil.taktflow-systems.com/sovd/ which returns 404 until deploy.
+    - aarch64 cross-compile partial — Rust target installed on Windows dev host, but `cargo build --target=aarch64-unknown-linux-gnu` fails on missing `aarch64-linux-gnu-gcc`; laptop has the toolchain native and should become the primary cross-compile host (laptop is Ubuntu 24.04 x86_64); blocks Pi HIL redeploy after the Windows-binary copy incident
     - D3 SOVD clear-faults HIL precondition unmet on live bench — no clearable fault has been injected; test stays red until inject-step lands
-    - Observer nginx overlay not yet live-verified on the real Pi — blocked on bench access plus real `WS_BRIDGE_INTERNAL_TOKEN`; local `bash -n` and cert-chain checks passed 2026-04-18
-    - Auth model for SOVD Server unresolved (OAuth2 vs cert vs both) — twice deferred; HARD DEADLINE 2026-06-30 before Phase 6 design lock, else Phase 6 TLS/rate-limit work lands on shifting foundations
+    - Observer nginx overlay on the Pi not yet live-verified — blocked on bench access plus real `WS_BRIDGE_INTERNAL_TOKEN`; local `bash -n` and cert-chain checks passed 2026-04-18
+    - Auth model for SOVD Server unresolved (OAuth2 vs cert vs both) — twice deferred; hard deadline 2026-06-30 before Phase 6 design lock
 
   schedule_timeline:
-    - Physical hardware execution has not started — zero STM32 ARM builds, zero ST-LINK flash runs, zero TMS570 flashing, zero real-CAN smoke as of 2026-04-18; plan budgets Phase 5 for 2026-10-16..11-30 but first ARM cross-compile must land by 2026-07-31 to preserve debug surface before M5
+    - Physical hardware execution has not started — zero STM32 ARM builds, zero ST-LINK flash runs, zero TMS570 flashing, zero real-CAN smoke as of 2026-04-19; plan budgets Phase 5 HIL for 2026-10-16..11-30 but first ARM cross-compile must land by 2026-07-31 to preserve debug surface before M5
     - OTA scope/time mismatch — ADR-0025 estimates 4–6 weeks of CVC OTA work squeezed into a 4-week Phase 6 window (2026-12-01..12-31); either scope down (drop boot-OK witness, defer N=5 rollback metrics), steal 2 weeks from late Phase 5, or slip M5 into Q1 2027
-    - 30-day consecutive HIL-green success criterion requires Phase 5 exit by 2026-12-01 (not 2026-11-30) to count the 30 days before year-end; zero calendar slack
-    - Upstream PR decision timing risk — plan says "after Phase 5"; if team votes go on 2026-12-10, PRs land into Eclipse holiday freeze; dry-run rehearsal (CLA/ECA verification + public design discussion seed) needed by 2026-11-15
-    - Safety case delta claimed "ongoing" but no HARA-update work products evidenced in `docs/safety/` for new UDS routines (0x31 motor_self_test / brake_check); safety engineer veto (§13.1) can block Phase 6 exit if work concentrates in Dec — pull HARA work forward to finish by 2026-09-30
+    - 30-day consecutive HIL-green success criterion requires Phase 5 HIL exit by 2026-12-01 (not 2026-11-30) to count the 30 days before year-end; zero calendar slack
+    - Upstream contribution timing — first PRs planned after Phase 5; if they land in late December they hit the Eclipse holiday freeze. Sequencing rehearsal (CLA/ECA verification + design discussion in `opensovd/discussions`) needed by 2026-11-15 to avoid Q1 2027 slip.
+    - Safety case delta claimed "ongoing" but no HARA-update work products evidenced in `docs/safety/` for new UDS routines (0x31 motor_self_test / brake_check); safety engineer veto (§governance.decision_authority) can block Phase 6 exit if work concentrates in Dec — pull HARA work forward to finish by 2026-09-30
 
   standing:
     - TMS570 Ethernet still absent — not a current blocker (CAN-to-DoIP proxy path handles it) but blocks any future native-DoIP-on-TMS570 ambition
-    - R9 — OpenSOVD maintainers starting opensovd-core in parallel would force rebase-onto-their-scaffolding; mitigated but not eliminated by weekly upstream-sync watch
+    - R9 — If upstream begins parallel work on opensovd-core, coordination is required: either adopt their scaffolding or align designs via the architecture board. Handled through regular upstream-awareness review and early contribution of sovd-interfaces as a coordination surface.
     - R11 — 14-person peak allocation depends on Taktflow not pulling workstream members to other priorities; plan rates High/High with no concrete buffer; architect reserves a 10% schedule buffer per phase starting Phase 5 and escalates to program lead if any phase trends >5% over plan-days
     - ODX schema licensing (R3) — ASAM official vs community XSD still undecided for odx-converter; we ship the community subset under Apache-2.0 as fallback; decision owner = embedded lead, due 2026-05-15
 
 hardening_gates:
-  - gate: aarch64 toolchain restored
+  - gate: VPS public SIL spec upload — sil.taktflow-systems.com/sovd/ returns 200
+    due: 2026-04-20 (before Architecture Board)
+    owner: Architect
+    evidence: `curl -sI https://sil.taktflow-systems.com/sovd/` returns 200; external-network browser renders the engineering spec; portfolio tile on taktflow-systems.com links resolve. Execution steps in `docs/plans/vps-sovd-deploy.md` (gitignored infra playbook) S-VPS-01..07.
+    blocks_if_missed: Architecture Board meeting on 2026-04-20 sees a 404 from the primary project link
+
+  - gate: aarch64 cross-compile toolchain green on the laptop
     due: 2026-04-25
     owner: DevOps / CI
-    evidence: `cargo build --target=aarch64-unknown-linux-gnu --release` produces a Pi-runnable binary on Windows dev host OR native `rustup` toolchain installed on Pi with source checkout
-    blocks_if_missed: all Phase 5 live redeploy + observer nginx live run + bench HIL runs
+    evidence: `cargo build -p sovd-main --target=aarch64-unknown-linux-gnu --release` produces a Pi-runnable binary on the laptop (primary) or Windows dev host (backup)
+    blocks_if_missed: Pi HIL redeploy remains blocked; physical HIL exercises cannot start
 
-  - gate: performance baseline measured on current bench
+  - gate: performance baseline measured on Docker SIL
     due: 2026-05-02
     owner: Test lead
-    evidence: `/sovd/v1/components/{id}/faults` P50/P95/P99 + DFM RSS captured in `docs/perf/baseline-2026-05.md`; gap-to-target computed
-    blocks_if_missed: no feedback loop on whether /faults <100 ms, P99 <500 ms, <200 MB RAM targets need scope change — late surprise risk
+    evidence: `/sovd/v1/components/{id}/faults` P50/P95/P99 + DFM RSS captured in `docs/perf/baseline-sil-2026-05.md`; gap-to-target computed
+    blocks_if_missed: no feedback loop on whether /faults <100 ms, P99 <500 ms targets need scope change
 
-  - gate: live observer Pi run verified
-    due: 2026-05-09
+  - gate: live observer Pi run verified (HIL-only, post-Monday)
+    due: 2026-05-16
     owner: Pi engineer
-    evidence: `OBSERVER_NGINX_ENABLED=1 ./deploy/pi/phase5-full-stack.sh` serves dashboard over mTLS on bench LAN; unauthenticated curl rejected; dashboard loads all 20 UC widgets from real endpoints
-    blocks_if_missed: Stage 1 exit deliverable incomplete
+    evidence: `OBSERVER_NGINX_ENABLED=1 ./deploy/pi/phase5-full-stack.sh` serves the HIL-bench dashboard over mTLS on bench LAN; unauthenticated curl rejected; dashboard loads all 20 UC widgets from real endpoints
+    blocks_if_missed: Stage 1 HIL deliverable incomplete; public SIL on VPS is the fallback demo surface
+
+  - gate: VPS SIL Docker Compose live — sil.taktflow-systems.com/sovd/dashboard/ returns Grafana anonymous view
+    due: 2026-05-16
+    owner: Architect
+    evidence: `docker compose ps` on VPS shows all SIL services healthy; Grafana reachable via nginx reverse proxy; portfolio tile Live Dashboard button can be flipped from placeholder to real URL
+    blocks_if_missed: portfolio tile remains "coming soon"; public cannot see live dashboard
 
   - gate: auth model decision
     due: 2026-06-30
@@ -171,7 +228,7 @@ hardening_gates:
     due: 2026-07-31
     owner: Embedded lead + Pi engineer
     evidence: `cargo xtask flash-cvc` lands CVC ARM ELF via COM3 ST-LINK; UDS 22F190 over real CAN returns VIN matching `cvc_identity.toml`
-    blocks_if_missed: all HIL scenarios 1–8 against physical CVC delayed; Phase 5 exit at risk
+    blocks_if_missed: all HIL scenarios 1–8 against physical CVC delayed; Phase 5 HIL exit at risk
 
   - gate: safety case delta (HARA for 0x31 routines, DoIP + FaultShim FMEA) approved
     due: 2026-09-30
@@ -185,39 +242,58 @@ hardening_gates:
     evidence: ADR-0025 amended to lock CVC-only scope, explicit in/out list for N=5 rollback metrics + boot-OK witness + MQTT uplink; revised effort estimate fits Phase 6 window or steals named Phase 5 days
     blocks_if_missed: Phase 6 OTA overruns Dec-31 and M5 slips
 
-  - gate: upstream PR dry-run
+  - gate: upstream PR sequencing rehearsal
     due: 2026-11-15
     owner: Architect + upstream liaison
-    evidence: ECA signatures verified for every contributor in `CONTRIBUTORS`; neutral design-intent discussion thread seeded in `opensovd/discussions` (no code pushed); PR sequencing per §8.2 confirmed with Rust lead + safety engineer
-    blocks_if_missed: go-decision on Dec 10 lands PRs into Eclipse holiday freeze; contribution slips Q1 2027
+    evidence: ECA signatures verified for every contributor in `CONTRIBUTORS`; design-intent discussion thread opened in `opensovd/discussions` to coordinate sequencing with maintainers; PR order per §upstream_contribution_priority confirmed
+    blocks_if_missed: first PRs land into Eclipse holiday freeze in late December; contribution slips Q1 2027
 
   - gate: performance targets measured on physical bench
     due: 2026-11-20
     owner: Test lead
     evidence: SIL vs HIL latency + throughput + RSS captured with 200+ request samples; all targets met OR explicit waiver recorded with Rust lead sign-off
-    blocks_if_missed: Phase 5 exit blocked or shipped with unmeasured perf
+    blocks_if_missed: Phase 5 HIL exit blocked or shipped with unmeasured perf
 
   - gate: 30-day HIL-green window starts
     due: 2026-12-01
     owner: Test lead
     evidence: 8 HIL scenarios green for the first consecutive night at 2026-12-01 02:00 UTC; any red night resets the counter
-    blocks_if_missed: §12.1 success criterion cannot be satisfied by 2026-12-31
+    blocks_if_missed: success criterion cannot be satisfied by 2026-12-31
 
 next_steps:
-  phase_5_stage_1_exit:
+  phase_5_public_sil_tier_vps:
+    done:
+      - Portfolio Project 4 tile added to apps/web with "Live Dashboard — coming soon" placeholder; primary link points to sil.taktflow-systems.com/sovd/ (awaits upload)
+      - VPS deploy playbook drafted at `docs/plans/vps-sovd-deploy.md` (gitignored) — S-VPS-01..11 with Goal / Inputs / Deliverables / Acceptance / Gate / Definition-of-done per plan-writing rule
+    open_before_2026_04_20:
+      - S-VPS-01 ssh probe of Netcup VPS nginx state (read-only)
+      - S-VPS-02 prepare single-file engineering spec HTML with pinned mermaid CDN
+      - S-VPS-03 add nginx location /sovd/ block on VPS
+      - S-VPS-04 upload index.html to VPS /sovd/ and smoke from external network
+      - S-VPS-05 deploy portfolio update to Vercel
+      - S-VPS-06 multi-network reachability check
+      - S-VPS-07 final pre-meeting review
+    open_after_2026_04_20:
+      - S-VPS-08 SIL docker-compose for VPS (sovd-main + cda + ecu-sim + mosquitto + ws-bridge + prometheus + grafana)
+      - S-VPS-09 nginx reverse proxy /sovd/dashboard/ to Grafana anonymous view
+      - S-VPS-10 flip portfolio Live Dashboard link from placeholder to real URL
+      - S-VPS-11 archive the one-time notes file
+
+  phase_5_hil_tier_pi:
     done:
       - Dashboard data-wiring — UC15 session, UC16 audit log, UC18 gateway routing now live via `/sovd/v1/session` + `/sovd/v1/audit` + `/sovd/v1/gateway/backends` extras; canned data only as on-error fallback (2026-04-18)
       - Observer nginx + cert provisioning + Pi overlay deploy scripted — `docker-compose.observer-nginx.yml` + `provision-observer-certs.sh` + `phase5-full-stack.sh` overlay, locally verified (T24.1.15-T24.1.17 closed 2026-04-18, pending live Pi run)
+      - Prometheus scrape config + Grafana dashboards wired into the Pi deploy overlay — observability compose/config tree plus `/grafana/` nginx proxying landed on main (2026-04-19, `3a30032`)
+      - MQTT wire contract pinned with ws-bridge insta snapshots — canonical producer payload now relays to the dashboard frame in CI (2026-04-19, `3a30032`)
+      - AWS IoT Core uplink live — cloud_connector on the Pi publishes to shared embedded-production AWS account under DEVICE_ID=taktflow-sovd-hil-001
     open:
-      - Provision aarch64-unknown-linux-gnu toolchain on Windows dev host, OR stand up native Rust toolchain on the Pi with a source checkout — unblocks live redeploy (hardening gate, due 2026-04-25)
+      - Stand up aarch64 cross-compile on the laptop (primary), or the Windows dev host (backup) — hardening gate due 2026-04-25
       - Inject a clearable fault on the bench to unblock D3 HIL precondition
-      - Live Pi run of `OBSERVER_NGINX_ENABLED=1 ./deploy/pi/phase5-full-stack.sh` — verify nginx serves dashboard over mTLS on bench LAN (hardening gate, due 2026-05-09)
-      - Land Prometheus scrape config + Grafana dashboards on Pi (T24.1.9, ~1 day)
-      - Pin MQTT wire contract with insta snapshots across crate boundaries (~1 h)
+      - Live Pi run of `OBSERVER_NGINX_ENABLED=1 ./deploy/pi/phase5-full-stack.sh` — verify bench-LAN dashboard over mTLS (hardening gate, due 2026-05-16)
       - Merge feat/mqtt-broker-deploy into main
-      - Capture performance baseline on current bench before Phase 5 HW work starts (hardening gate, due 2026-05-02)
+      - Capture performance baseline on Pi HIL (after ARM binaries land)
 
-  phase_5_remainder:
+  phase_5_physical_hil_runs:
     - Cross-compile firmware/ecu/cvc/ as ARM ELF; flash via ST-LINK (COM3) with `cargo xtask flash-cvc`
     - Smoke test: UDS 22F190 over real CAN via Pi GS_USB; assert VIN matches cvc_identity.toml
     - Flash TMS570 TCU via XDS110 (COM11/COM12) using TI Uniflash or Code Composer CLI
@@ -236,7 +312,7 @@ next_steps:
     - Integrator guide in docs/integration/, shaped as upstream-ready PR
     - Safety case delta — HARA for new UDS services, DoIP + Fault Shim failure modes
     - CVC OTA end-to-end per ADR-0025 — dual-bank A/B, CMS/X.509, N=5 rollback, boot-OK witness
-    - Contribution decision — architect + Rust lead + safety engineer review §12.2 checklist; if go, open PRs in §8.2 priority order
+    - Contribution review — architect + Rust lead + safety engineer confirm readiness per §contribution_readiness; open PRs in §upstream_contribution_priority order
 
   open_questions_to_resolve:
     - Fault IPC: Unix socket vs shared memory? — Rust lead, Phase 0 week 2 (decided: Unix socket, in prod)
@@ -297,7 +373,7 @@ plan:
       - CDA smoke test green in SIL nightly
       - Proxy ≥80% line coverage
       - HIL scenario passes against physical CVC
-      - CDA bugs staged as internal fix branches, not upstreamed yet
+      - CDA bugs captured as local fix branches, prepared for upstream submission when each patch is reviewed and tested
       - Taktflow ODX example staged locally under odx-converter/examples/
 
   phase_3_fault_lib_dfm_prototype:
@@ -313,7 +389,7 @@ plan:
       - DFM prototype opensovd-core/sovd-dfm/ — in-memory table, sqlx+SQLite persistence, axum stub endpoint
       - Wiring test — synthetic fault in CVC Docker → SOVD GET within 100 ms
       - SQLite schema opensovd-core/sovd-db/migrations/ — dtcs, fault_events, operation_cycles, catalog_version
-      - Internal DFM ADR in docs/adr/ (upstream-ready shape per §8.1)
+      - Internal DFM ADR in docs/adr/ (contribution-ready shape per §upstream_contribution_priority)
     exit:
       - End-to-end fault report → SOVD visibility works in Docker
       - DFM integration tests cover ingestion, query, clear, operation cycle
@@ -331,13 +407,13 @@ plan:
       - OpenAPI spec sovd-server/openapi.yaml; types via utoipa
       - SOVD Gateway — DFM + CDA + future-native-SOVD backends; opensovd-gateway.toml route map; DTC de-dup by code
       - Authentication middleware scaffold — bearer token accepted, validation deferred to Phase 6
-      - Docker Compose demo topology (internal, not upstreamed) — services + tester script for 5 MVP use cases
-      - Upstream-ready polish — every crate technically PR-able, just no PR opened
+      - Docker Compose demo topology — services + tester script for 5 MVP use cases; candidate for upstreaming to opensovd/examples/ when mature
+      - Contribution-ready polish — every crate shaped for review, tests and ADRs in place
     exit:
       - Docker Compose demo runs 5 MVP use cases end-to-end
       - SOVD Server ≥70% line coverage
       - Integration tests cover full SOVD → Gateway → CDA → ECU chain
-      - No code change needed to open upstream PRs — only a team decision
+      - Each crate is in review shape — tests, ADR, docstrings — ready to submit in §upstream_contribution_priority order
 
   phase_5_e2e_demo_hil_physical:
     window: 2026-10-16 .. 2026-11-30
@@ -346,47 +422,34 @@ plan:
     parallel_to: []
     entry: Phase 4 Docker demo working
     deliverables:
-      - Pi deployment — Ansible or Docker Compose; Server + Gateway + DFM + proxy on Pi with systemd/restart policies
+      - Public SIL on VPS — full Docker Compose stack on Netcup serving sil.taktflow-systems.com/sovd/ (spec) and /sovd/dashboard/ (Grafana anonymous read)
+      - Pi HIL deployment — Ansible or Docker Compose; Server + Gateway + DFM + proxy on Pi with systemd/restart policies; observer nginx + mTLS overlay
       - HIL suite hil_sovd_01..08 — read_faults_all, clear_faults, operation_motor_test, fault_injection, components_metadata, concurrent_testers, large_fault_list, error_handling
       - Real STM32 flashing via ST-LINK (COM3) on Windows dev host — `cargo xtask flash-cvc`, smoke via UDS 22F190
       - TMS570 TCU integration via XDS110 (COM11/COM12) — TI Uniflash or CCS CLI; CAN routing through Pi proxy
       - doip-codec PARTIAL migration in proxy-doip — theswiftfox fork at 0dba319 + doip-definitions at bdeab8c
       - MDD FlatBuffers emitter in tools/odx-gen/ — --emit=mdd, round-trip against CDA cda-database
       - Autonomous bench debugging — alexmohr/mdd-ui on dev host, console-subscriber on sovd-main
-      - Performance validation — /faults <100 ms, P99 <500 ms, <200 MB RAM on Pi
+      - Performance validation — /faults <100 ms, P99 <500 ms, <200 MB RAM on Pi (HIL) and on VPS (SIL)
       - Capability-showcase observer dashboard (ADR-0024):
           stage_1_self_hosted_mTLS:
             - fault-sink-mqtt crate publishing DFM events to Mosquitto (JSON wire format)
-            - cloud_connector + ws_bridge reused from taktflow-embedded-production with AWS_IOT_ENDPOINT=""
-            - Prometheus + Grafana on Pi for historical view (replaces Timestream — $0 recurring)
-            - nginx TLS terminator + mTLS client-cert auth aligned with SEC-2.1
-            - SvelteKit + Tailwind + shadcn-svelte dashboard, static build at https://<pi-ip>/
+            - cloud_connector + ws_bridge reused from taktflow-embedded-production
+            - Prometheus + Grafana on Pi and VPS for historical view (replaces Timestream — $0 recurring)
+            - nginx TLS terminator + mTLS client-cert auth aligned with SEC-2.1 (Pi HIL); anonymous read-only Grafana on VPS
+            - SvelteKit + Tailwind + shadcn-svelte dashboard, static build served from Pi (HIL) and VPS (SIL)
             - 20 OpenSOVD use-case widgets live, including UC19 Prometheus panel
-            - stage_1_progress_2026_04_17_to_18:
-                merged_to_main:
-                  - fault-sink-mqtt scaffolded (6df34fb)
-                  - fault-sink-mqtt wired into DFM fan-out + in-process rumqttd round-trip (3d3d040, 4743dc8)
-                  - ws-bridge MQTT→WS relay + bearer auth + /metrics + round-trip test (0263422)
-                  - SvelteKit scaffold, 20 widgets, canned stubs (e52267e)
-                local_unpushed:
-                  - Mosquitto broker deployment kit — conf.d, ACL, systemd, cert provisioning, TLS 1.2 floor (27019d2c)
-                merged_to_main_and_pushed_2026_04_18:
-                  - Dashboard hybrid data-wiring — live components/faults/operations/data/health/session/audit/gateway-backends + ws-bridge relay in dashboard/; canned only as on-error fallback (33b07c3)
-                  - Observer nginx deploy assets — standalone Pi compose file plus nginx TLS/mTLS config for static dashboard + `/sovd/` + `/ws` proxying in `opensovd-core/deploy/pi/` (33b07c3)
-                  - Observer cert provisioning + Pi deploy wiring — `provision-observer-certs.sh` plus optional observer overlay in `phase5-full-stack.sh` for dashboard sync, cert generation, nginx compose-up, and mTLS verification (33b07c3)
-                remaining_for_stage_1_exit:
-                  - Prometheus scrape + Grafana dashboards on Pi — T24.1.9 (~1 day)
-                  - Pin MQTT wire contract with insta snapshots across crate boundaries (~1 h)
-                  - Merge feat/mqtt-broker-deploy into main
-          stage_2_optional_aws_uplink:
+          stage_2_aws_uplink:
             - DEVICE_ID=taktflow-sovd-hil-001 under shared embedded-production AWS account
             - scripts/aws-iot-setup.sh flips AWS_IOT_ENDPOINT; no Timestream
             - bench_id=sovd-hil tag for data attribution; fleet cross-bench aggregation lands here
+            - **delivered 2026-04-19** — live ahead of plan
     exit:
       - All 8 HIL scenarios green in nightly pipeline
-      - Performance targets met
-      - Stage 1 dashboard serves all 20 use-case widgets on bench LAN; fault visible <200 ms; 7 days history; nginx rejects unauthenticated
-      - Stage 2 optional exit — fault visible on AWS IoT Core test console <2 s on vehicle/dtc/new with bench_id=sovd-hil
+      - Performance targets met on both SIL (VPS) and HIL (Pi)
+      - VPS public SIL dashboard serves all 20 use-case widgets; external fault injection visible within SLA
+      - Pi HIL dashboard serves all 20 use-case widgets on bench LAN; fault visible <200 ms; 7 days history; nginx rejects unauthenticated
+      - Stage 2 AWS uplink continues operating; fault visible on AWS IoT Core test console <2 s on vehicle/dtc/new with bench_id=sovd-hil
       - Demo video recorded
 
   phase_6_hardening:
@@ -400,30 +463,50 @@ plan:
       - DLT tracing — all Rust binaries emit DLT; daemon on Pi forwards to laptop/cloud; correlation IDs propagate
       - OpenTelemetry spans — OTLP export to Jaeger or Tempo
       - Rate limiting — tower::limit per-client-IP
-      - Integrator guide in docs/integration/ — upstream-ready format per §8
+      - Integrator guide in docs/integration/ — upstream-ready format
       - Safety case delta — HARA for new UDS services, new DoIP + Fault Shim failure modes
-      - Contribution decision — §12.2 checklist applied; PRs in §8.2 order if go
+      - Contribution review — §contribution_readiness checklist applied; open PRs in §upstream_contribution_priority order
       - OTA on CVC (ADR-0025) — STM32G474RE dual-bank A/B, CMS/X.509 sharing device mTLS PKI root, N=5 rollback threshold, signed boot-OK witness over MQTT; SOVD bulk-data + UDS 0x34/0x36/0x37; flash state machine Idle → Downloading → Verifying → Committed ↔ Rollback; FR-8.1..8.6 + SR-6.1..6.5 (ASPICE-append); UC21 initiate / UC22 progress / UC23 abort+rollback; ~4–6 weeks CVC-only
     exit:
       - All prior exit criteria still hold
       - Safety case delta approved
-      - Integrator guide complete (pushed upstream only if team decides)
-      - Contribution decision recorded in docs/adr/phase-6-contribution-decision.md
+      - Integrator guide complete and ready for upstream submission
+      - Phase 6 contribution kickoff recorded in docs/adr/phase-6-contribution-kickoff.md
       - OTA on CVC demonstrable end-to-end — signed image via SOVD bulk-data, flashed to inactive slot, committed after signature pass, boot-OK witness acknowledged at cloud
 
 reference:
   what_opensovd_is:
     - SOVD = Service-Oriented Vehicle Diagnostics, ISO 17978 (ASAM)
     - Modern replacement for UDS (ISO 14229); REST/HTTP+JSON instead of CAN+binary byte frames
-    - Eclipse OpenSOVD = open-source reference implementation under Eclipse Automotive / S-CORE
+    - Eclipse OpenSOVD = open-source implementation under Eclipse Automotive / S-CORE
     - S-CORE v1.0 integration target end of 2026
     - Classic Diagnostic Adapter (CDA) translates SOVD REST → UDS/DoIP for legacy ECUs
 
-  why_taktflow_is_doing_this:
-    technical: Add SOVD so every Taktflow ECU becomes reachable via modern REST diagnostics
-    product: OEMs are moving to SOVD; Taktflow speaking SOVD natively is more valuable and cheaper to integrate
-    strategic: opensovd-core is an empty stub; landing the first real code there is the single highest-leverage spot in Eclipse SDV — shadow-ninja, never ping maintainers, let the work speak
-    tactical: Build ourselves first; upstream finished working systems, not half-built code
+  motivation:
+    - Provide a working ASAM SOVD v1.1 / ISO 17978-3 implementation covering Server, Gateway, DFM, and Diagnostic DB on top of CDA
+    - Align the implementation with Eclipse S-CORE v1.0 targets (end of 2026)
+    - Use the Taktflow zonal bench (CVC / SC / BCM) as an early real deployment to validate the implementation against physical ECUs
+    - Contribute mature components upstream in the priority order documented below
+
+  deployment_topology:
+    public_sil_on_vps:
+      host: Netcup VPS (sil.taktflow-systems.com)
+      purpose: Public SIL demo — engineering spec HTML, live Grafana, full Docker Compose SIL stack
+      reached_by: Eclipse SDV Architecture Board, upstream maintainers, anyone with the URL
+      exposes: /sovd/ (spec), /sovd/dashboard/ (Grafana anonymous view)
+    hil_on_pi:
+      host: Raspberry Pi 4 (Ubuntu 24.04 aarch64, bench LAN)
+      purpose: Only host with USB-CAN adapter → required for physical ECU scenarios
+      reached_by: on bench LAN only
+      runs: CAN-to-DoIP proxy, observer nginx + mTLS, cloud_connector → AWS IoT Core, bench dashboard
+    development_on_laptop:
+      host: Ubuntu 24.04 x86_64 laptop
+      purpose: Cross-compile, unit/integration tests, dev-time Docker, deploy origin for Pi and VPS
+      reached_by: developer, CI/CD
+    cloud_telemetry_on_aws:
+      host: AWS IoT Core (shared taktflow-embedded-production account)
+      purpose: Fleet telemetry sink, live since 2026-04-19
+      topics: vehicle/dtc/new, taktflow/cloud/status
 
   current_upstream_state:
     classic-diagnostic-adapter: Active, ~MVP-ready — reusable as-is for SOVD→UDS bridge
@@ -432,8 +515,8 @@ reference:
     dlt-tracing-lib: Active — reusable for observability
     uds2sovd-proxy: Early — optional, only if legacy tester compat needed
     cpp-bindings: Stub — we grow this for C/C++ integration
-    opensovd-core: Empty stub — we build this from scratch
-    opensovd: Active docs — where we upstream architecture decisions
+    opensovd-core: Empty stub — this tree fills it
+    opensovd: Active docs — contribution channel for architecture decisions
 
   mvp_use_cases:
     UC1_read_faults: Tester GET /faults → Server → DFM → SQLite + CDA (UDS 0x19 over DoIP) → unified JSON ListOfFaults
@@ -442,21 +525,22 @@ reference:
     UC4_reach_uds_ecu_via_cda: Tester GET /faults → Server → Gateway → CDA (not DFM) → MDD → UDS 0x19
     UC5_trigger_diagnostic_service: Tester POST /operations/{op_id}/executions → CDA → UDS 0x31 StartRoutine → Swc handler
 
-  upstream_contribution_priority_when_decision_is_made:
-    1: sovd-interfaces trait contracts — opensovd-core (lowest risk, establishes presence)
-    2: sovd-dfm with design doc — opensovd-core (fills major gap)
-    3: sovd-server MVP — opensovd-core (central piece)
-    4: sovd-gateway — opensovd-core (routing + multi-ECU)
-    5: Taktflow ODX examples — odx-converter/examples/ (low risk, demonstrates real use)
-    6: CDA bugs found during integration — classic-diagnostic-adapter (isolated fixes)
+  upstream_contribution_priority:
+    1: sovd-interfaces trait contracts — opensovd-core (smallest, reviewable first, establishes shared API surface)
+    2: sovd-dfm with design ADR — opensovd-core (addresses a current gap)
+    3: sovd-server MVP — opensovd-core (implementation of the SOVD REST surface)
+    4: sovd-gateway — opensovd-core (multi-backend routing)
+    5: ODX examples — odx-converter/examples/ (demonstrates real-world use)
+    6: CDA fixes found during integration — classic-diagnostic-adapter (isolated patches, submitted per-fix)
     7: Docker Compose demo topology — opensovd/examples/
     8: Integrator guide — opensovd/docs/integration/
 
-  never_upstreamed:
-    - Taktflow-specific DBC files and codegen pipelines
-    - Embedded Dcm modifications to taktflow-embedded-production firmware
-    - ASPICE + ISO 26262 process artifacts
-    - Raspberry Pi deployment Ansible playbooks and systemd units
+  not_upstreamed_for_integrator_specific_reasons:
+    - Taktflow-specific DBC files and codegen pipelines (proprietary vehicle signal definitions)
+    - Embedded Dcm modifications in taktflow-embedded-production firmware (ASIL-D safety-case scoped)
+    - ASPICE + ISO 26262 process artifacts (integrator-specific compliance evidence)
+    - Raspberry Pi deployment Ansible playbooks and systemd units (site-specific deployment)
+    - VPS / nginx / DNS configuration and deploy scripts (site-specific deployment; see gitignored docs/plans/vps-sovd-deploy.md)
     - Safety case deltas, HARA updates, FMEA tables
     - Internal ADRs and knowledge-base notes under docs/sovd/notes-*
 
@@ -465,22 +549,22 @@ reference:
     M2_cda_integration_green: 2026-06-30 — SOVD GET via CDA round-trips to Docker ECU; Pi proxy reaches physical CVC
     M3_dfm_prototype_serving_dtcs: 2026-08-15 — fault inject → DFM ingest → SOVD GET <100 ms
     M4_sovd_server_mvp_in_docker: 2026-10-15 — 5 MVP use cases pass in Docker Compose
-    M5_hardened_hil_green_upstream_ready: 2026-12-31 — physical HIL passes; demo recorded; code upstream-ready
+    M5_hardened_hil_green_contribution_ready: 2026-12-31 — physical HIL passes; public SIL on VPS live; demo recorded; code in review shape
 
   success_criteria:
     technical:
-      - All 5 OpenSOVD MVP use cases pass against Taktflow hardware in SIL and HIL
-      - Server + Gateway + DFM + CAN-to-DoIP proxy running on Pi in production mode
+      - All 5 OpenSOVD MVP use cases pass on SIL (VPS) and HIL (Pi)
+      - Server + Gateway + DFM + CAN-to-DoIP proxy running on Pi; full SIL stack running on VPS
       - DTC round-trip <500 ms P99 across 3 active ECUs (ADR-0023)
       - Zero MISRA violations on new embedded code
       - Zero clippy pedantic violations on new Rust code
       - Safety case delta approved by safety engineer
       - Nightly SIL + HIL green 30 consecutive days
-    contribution_readiness_not_required:
-      - All code stylistically indistinguishable from upstream CDA
-      - sovd-interfaces is the cleanest public-facing artifact in the workspace
-      - Internal design ADRs exist for every major component
-      - No blocker prevents opening upstream PRs — decision is pure policy
+    contribution_readiness:
+      - Code style consistent with upstream CDA conventions
+      - sovd-interfaces reviewable as a standalone PR
+      - Design ADRs in place for every major component
+      - No technical blocker for submitting PRs in the priority order documented above
     process:
       - All new work products traceable in ASPICE
       - All 5 MVP use cases have requirements → design → test traceability
@@ -510,11 +594,14 @@ reference:
     cadence:
       daily_standup: 15 min, workstream only
       weekly_sync: 45 min, SOVD workstream + architect
-      weekly_upstream_review: 30 min, architect reviews discussions + PRs
+      monthly_upstream_review: 30 min, architect reviews discussions + commits + PRs
       phase_gate_review: end of each phase, all leads, go/no-go
     documentation:
       - Every ADR in opensovd/docs/design/adr/ (upstream) or docs/adr/ (Taktflow internal)
       - Every phase produces retro in docs/retro/phase-<n>.md
       - Every HIL scenario YAML has one-paragraph intent comment
-      - Every ADR written in upstream-ready PR shape
+      - Every ADR written in contribution-ready shape
+
+  related_plans:
+    - docs/plans/vps-sovd-deploy.md — VPS deploy playbook (gitignored; contains infra specifics); 11 steps S-VPS-01..11; closes the "VPS public SIL spec upload" hardening gate due 2026-04-20 and follow-up "VPS SIL Docker Compose live" gate due 2026-05-16
 ```

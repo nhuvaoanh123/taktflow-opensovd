@@ -13,6 +13,11 @@ const config = {
 			precompress: false,
 			strict: false
 		}),
+		paths: {
+			// Production deploy mounts at /dashboard/ on sovd.taktflow-systems.com.
+			// Set SOVD_BASE_PATH=/dashboard at build time; dev server stays at /.
+			base: process.env.SOVD_BASE_PATH || ''
+		},
 		alias: {
 			$lib: './src/lib'
 		}

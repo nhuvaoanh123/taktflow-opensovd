@@ -116,6 +116,35 @@
 				</p>
 				<UC05FaultsTimeline extraFaults={liveFaults} refreshNonce={faultRefreshNonce} />
 			</div>
+
+			<div class="rounded-lg border border-border bg-card/50 p-3">
+				<p class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+					How it works
+				</p>
+				<ul class="space-y-1.5 text-[11px] leading-snug text-foreground/90">
+					<li>
+						<span class="font-semibold text-cyan-400">Browser</span> &rarr; Caddy TLS &rarr;
+						<span class="font-semibold text-emerald-400">sovd-main</span> (Rust + axum, SQLite).
+					</li>
+					<li>
+						Every widget above is a live fetch against
+						<code class="rounded bg-muted px-1 py-0.5 text-[10px]">/sovd/v1/*</code> &mdash; ASAM
+						SOVD v1.1 / ISO 17978-3.
+					</li>
+					<li>
+						CDA bridge translates SOVD REST &rarr; UDS/DoIP for the physical ECU tier.
+					</li>
+					<li>
+						DFM scores faults, publishes to MQTT; ws-bridge relays to this dashboard for live
+						timeline updates.
+					</li>
+					<li>
+						Prometheus + blackbox-exporter probe
+						<code class="rounded bg-muted px-1 py-0.5 text-[10px]">/health</code>; Grafana panels
+						under UC19.
+					</li>
+				</ul>
+			</div>
 		</div>
 
 		<div class="flex flex-col gap-3">

@@ -941,13 +941,27 @@ execution_breakdown:
     status: blocked_on_phase_6_complete
     units:
       - id: UP2-01
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: draft ADR-0026 for the VSS / semantic mapping strategy
         done_when:
           - the mapping boundary and rejected alternatives are documented
           - the draft includes at least one example mapping table
+        resolution_2026_04_19: |
+          Drafted `docs/adr/ADR-0026-covesa-semantic-api-mapping.md`. The
+          ADR pins the `sovd-covesa` crate as a thin adapter over the
+          existing SOVD REST surface, exposes a diagnostic-oriented VSS
+          subtree only, and delegates pub/sub to ADR-0027. Mapping
+          boundary is explicit (three op shapes: read, whitelisted
+          actuator write, catalog list); rejected alternatives include
+          full VSS exposure, VSS-as-wire-format, and hosting VSS in
+          `sovd-server` directly. Mapping table with seven concrete rows
+          is included (first slice covers `Vehicle.OBD.DTCList`,
+          `Vehicle.OBD.DTC`, SoC, SoH, `Vehicle.VersionVSS`,
+          `Vehicle.Service.ClearDTCs`, and a whitelisted routine-start
+          actuator). VSS version pinning lives at
+          `opensovd-core/sovd-covesa/schemas/vss-version.yaml`.
       - id: UP2-02
         status: pending
         work_mode: decision_doc

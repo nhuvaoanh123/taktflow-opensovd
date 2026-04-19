@@ -421,13 +421,24 @@ execution_breakdown:
           - Pi-side `curl http://192.168.0.158:20002/vehicle/v15/components` returns 200
           - `docs/deploy/bench-topology.md` Pi runtime config section updated with the active hybrid `[cda_forward]` base_url lines verbatim
       - id: P5-PI-04
-        status: pending
+        status: done
         work_mode: remote_with_preflight
         depends_on: [P5-PI-03]
         goal: verify the existing Pi core runtime without a broad redeploy
         done_when:
           - `sovd-main --version` is recorded on the Pi
           - local Pi health and components probes return 200 on the intended port
+        resolution_2026_04_19: |
+          Verified via `ssh taktflow-pi@192.168.0.197`. `/opt/taktflow/sovd-main/sovd-main --version`
+          prints `sovd-main 0.1.0` (the systemd unit launches by absolute path, so `sovd-main` is not
+          on the interactive login PATH — this is expected). Pi loopback probes:
+          `curl http://127.0.0.1:21002/sovd/v1/health` returns
+          `{"status":"ok","version":"0.1.0","sovd_db":{"status":"ok"},"fault_sink":{"status":"ok"}}`
+          with HTTP 200; `curl http://127.0.0.1:21002/sovd/v1/components` returns HTTP 200.
+          Binary on disk at `/opt/taktflow/sovd-main/sovd-main` dated 2026-04-19 17:47 matches today's
+          deploy cycle, with prior backups `.bak-2026-04-19` and `.bak-pre-3ecu` preserved alongside.
+          Note: P5-PI-03 remains pending (hybrid/CDA-forward opt-in is out of scope today); this unit
+          verifies the demo-mode runtime that today's deploy actually exercised.
       - id: P5-PI-05
         status: pending
         work_mode: remote_with_preflight

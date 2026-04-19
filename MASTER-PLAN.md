@@ -575,13 +575,19 @@ execution_breakdown:
           The ADR lists rejected alternatives plus the concrete server, gateway, and
           integrator-guide impacts that follow from making hybrid the default.
       - id: P6-PREP-02
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: create the integrator-guide skeleton under `docs/integration/`
         done_when:
           - install, config, auth, deployment-mode, and troubleshooting sections exist
           - no section depends on unstated tribal knowledge
+        resolution_2026_04_19: |
+          `docs/integration/README.md` now provides the integrator-guide skeleton with
+          concrete install commands, canonical config file paths, the default auth
+          profile from ADR-0030, deployment-mode guidance for local SIL / bench HIL /
+          public SIL, and troubleshooting commands that point to the authoritative docs
+          rather than tribal knowledge.
       - id: P6-PREP-03
         status: done
         work_mode: decision_doc

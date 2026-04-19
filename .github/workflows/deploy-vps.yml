@@ -34,49 +34,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Detect what changed
-        id: changes
-        run: |
-          set -e
-          base="${{ github.event.before }}"
-          head="${{ github.sha }}"
-          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
-            changed_all=true
-          else
-            changed_all=false
-          fi
-          if [ "$changed_all" = "true" ]; then
-            spec=true
-            dash=true
-          else
-            spec=false
-            dash=false
-            git diff --name-only "$base" "$head" | while read -r f; do
-              case "$f" in
-                ENGINEERING-SPECIFICATION.html) echo "spec=true" >> "$GITHUB_OUTPUT" ;;
-                dashboard/*)                    echo "dash=true" >> "$GITHUB_OUTPUT" ;;
-                .github/workflows/deploy-vps.yml) echo "spec=true" >> "$GITHUB_OUTPUT"; echo "dash=true" >> "$GITHUB_OUTPUT" ;;
-              esac
-            done
-            # Ensure at least one output key exists
-            echo "spec=${spec}" >> "$GITHUB_OUTPUT"
-            echo "dash=${dash}" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Set up Node
-        if: steps.changes.outputs.dash == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Set up pnpm
-        if: steps.changes.outputs.dash == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
       - name: Build dashboard for VPS topology
-        if: steps.changes.outputs.dash == 'true'
         working-directory: dashboard
         env:
           VITE_SOVD_BASE: ''
@@ -85,7 +53,6 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           test -d build
-          grep -L 'localhost:21002' build/_app/immutable/entry/*.js || true
 
       - name: Configure SSH
         run: |
@@ -96,13 +63,11 @@ jobs:
           chmod 644 ~/.ssh/known_hosts
 
       - name: Deploy engineering spec
-        if: steps.changes.outputs.spec == 'true'
         run: |
           scp -i ~/.ssh/id_ed25519 ENGINEERING-SPECIFICATION.html \
             root@87.106.147.203:/opt/taktflow-systems/taktflow-systems/spec-root/index.html
 
       - name: Deploy dashboard
-        if: steps.changes.outputs.dash == 'true'
         run: |
           rsync -az --delete -e "ssh -i ~/.ssh/id_ed25519" \
             dashboard/build/ \

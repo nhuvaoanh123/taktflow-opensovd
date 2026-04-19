@@ -963,13 +963,28 @@ execution_breakdown:
           actuator). VSS version pinning lives at
           `opensovd-core/sovd-covesa/schemas/vss-version.yaml`.
       - id: UP2-02
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: draft ADR-0027 for Extended Vehicle data scope and pub/sub contract
         done_when:
           - endpoint and topic shapes are defined
           - scope boundaries and exclusions are explicit
+        resolution_2026_04_19: |
+          Drafted `docs/adr/ADR-0027-extended-vehicle-scope.md`. Pins
+          `sovd-extended-vehicle` as a thin REST + MQTT adapter over the
+          core SOVD surface. REST endpoint table lists nine concrete
+          paths under `/sovd/v1/extended/vehicle/*` (catalog, vehicle-info,
+          state, fault-log + drill-in, energy, subscription CRUD). MQTT
+          topic table lists six concrete topics under the
+          `sovd/extended-vehicle/` root (state, fault-log/new, energy,
+          subscription health, control ack + subscribe). Scope boundaries
+          are explicit with six "exposed" items and six "not exposed"
+          items (raw UDS frames, calibration, freeze-frame, actuation,
+          infotainment, fleet aggregation). Rejected alternatives
+          include REST-only, full ISO 20078 feature set, second MQTT
+          broker, pub/sub-only, exposing raw UDS, and folding pub/sub
+          into the COVESA adapter.
       - id: UP2-03
         status: pending
         work_mode: repo_only

@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# Upstream Phase 2 SIL scenario skeleton - COVESA VSS DTC list read.
+#
+# Disabled until `sovd-covesa` mounts the VSS adapter catalog and the
+# `Vehicle.OBD.DTCList` read path into the SIL runtime. The contract below
+# pins the first happy-path slice from ADR-0026 and UP2-04.
+
+name: sil_covesa_dtc_list
+scenario_class: happy_path
+disabled: true
+reason: >-
+  Enable when `sovd-covesa` exposes the VSS catalog and the mapped
+  `Vehicle.OBD.DTCList` read path in local SIL with an OEM component-id
+  resolver that maps the first row to `cvc`.
+
+topology:
+  description: >-
+    Local SIL flow. Tester talks to `sovd-main`; the `sovd-covesa`
+    adapter translates `Vehicle.OBD.DTCList` onto the first mapped
+    SOVD faults endpoint for component `cvc`.
+
+  test_client:
+    host: 127.0.0.1
+    process: integration-tests (cargo test, local SIL)
+  sovd_main:
+    host: 127.0.0.1
+    port: 21002
+  covesa_adapter:
+    crate: opensovd-core/sovd-covesa
+    mapping_file: opensovd-core/sovd-covesa/schemas/vss-map.yaml
+
+contracts:
+  semantic_path: Vehicle.OBD.DTCList
+  catalog_endpoint: /sovd/v1/covesa/
+  translated_endpoint: /sovd/v1/components/cvc/faults
+  component_id: cvc
+
+calls:
+  - name: covesa_catalog
+    method: GET
+    path: /sovd/v1/covesa/
+    expect_status: 200
+    expect_contains_path: Vehicle.OBD.DTCList
+
+  - name: read_vss_dtc_list
+    method: GET
+    logical_path: Vehicle.OBD.DTCList
+    translated_endpoint: /sovd/v1/components/cvc/faults
+    expect_status: 200
+    expect_type: covesa.vss.dtc_list
+
+evidence:
+  - the VSS catalog lists `Vehicle.OBD.DTCList`
+  - the mapped VSS read resolves to the CVC faults endpoint
+  - the happy-path semantic read returns confirmed DTC content

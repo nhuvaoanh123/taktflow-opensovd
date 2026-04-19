@@ -1,0 +1,39 @@
+name: Upstream Phase 2 Scenario Skeletons
+
+on:
+  push:
+    paths:
+      - 'MASTER-PLAN.md'
+      - 'opensovd-core/test/sil/scenarios/sil_covesa_dtc_list.yaml'
+      - 'opensovd-core/test/sil/scenarios/sil_extended_vehicle_fault_log.yaml'
+      - 'opensovd-core/sovd-interfaces/tests/phase2_scenario_skeletons.rs'
+      - '.github/workflows/upstream-phase-2-scenarios.yml'
+  pull_request:
+    paths:
+      - 'MASTER-PLAN.md'
+      - 'opensovd-core/test/sil/scenarios/sil_covesa_dtc_list.yaml'
+      - 'opensovd-core/test/sil/scenarios/sil_extended_vehicle_fault_log.yaml'
+      - 'opensovd-core/sovd-interfaces/tests/phase2_scenario_skeletons.rs'
+      - '.github/workflows/upstream-phase-2-scenarios.yml'
+  workflow_dispatch: {}
+
+jobs:
+  phase-2-scenario-skeletons:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: opensovd-core
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify Phase 2 scenario skeleton files exist
+        run: |
+          test -f test/sil/scenarios/sil_covesa_dtc_list.yaml
+          test -f test/sil/scenarios/sil_extended_vehicle_fault_log.yaml
+
+      - name: Run the Phase 2 happy-path scenario harness
+        run: cargo test --locked -p sovd-interfaces --test phase2_scenario_skeletons

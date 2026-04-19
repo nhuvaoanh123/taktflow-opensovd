@@ -1083,13 +1083,26 @@ execution_breakdown:
           placeholder tokens; every section lists concrete deliverable
           paths.
       - id: UP2-07
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: [UP2-04, UP2-05]
         goal: add scenario skeletons for SIL semantic and Extended Vehicle tests
         done_when:
           - test filenames and scenario contracts exist
           - at least one happy-path skeleton runs in CI
+        resolution_2026_04_20: |
+          Added the Phase 2 SIL scenario contracts
+          `opensovd-core/test/sil/scenarios/sil_covesa_dtc_list.yaml` and
+          `opensovd-core/test/sil/scenarios/sil_extended_vehicle_fault_log.yaml`
+          matching the filename convention promised in the strategic exit
+          criteria. Added the validation harness
+          `opensovd-core/sovd-interfaces/tests/phase2_scenario_skeletons.rs`,
+          which loads both YAML files, pins the COVESA `Vehicle.OBD.DTCList`
+          and Extended Vehicle fault-log contracts, and asserts that at least
+          one scenario is explicitly marked `scenario_class: happy_path`.
+          `.github/workflows/upstream-phase-2-scenarios.yml` runs that harness
+          in CI with `cargo test --locked -p sovd-interfaces --test
+          phase2_scenario_skeletons`.
       - id: UP2-08
         status: done
         work_mode: decision_doc

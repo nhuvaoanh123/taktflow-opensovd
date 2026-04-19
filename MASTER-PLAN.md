@@ -1087,13 +1087,30 @@ execution_breakdown:
           lifecycle, parallel `/sovd/v1/ml/*` tree, reflash-only
           rollback.
       - id: UP3-02
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: draft ADR-0029 for ML model signing and rollback
         done_when:
           - signing, trust-root, and rollback triggers are defined
           - rejected alternatives are documented
+        resolution_2026_04_19: |
+          Drafted `docs/adr/ADR-0029-ml-model-signing-rollback.md`.
+          Signing scheme: CMS (RFC 5652) detached envelope over model +
+          manifest; fingerprint is SHA-256 of `bytes || canonical
+          manifest`. Trust root reuses the ADR-0025 X.509 root CA
+          (third certificate purpose under one root — mTLS, OTA
+          firmware, ML model — with disjoint EKUs). Three rollback
+          triggers defined with bounds: (A) inference-failure threshold
+          N = 5 within an operation-cycle window, default confidence
+          floor 0.1; (B) periodic 24-hour signature re-verification
+          failure; (C) operator-initiated rollback authorised per
+          ADR-0030. Time-based rollback explicitly rejected. Post-
+          rollback retention + forensic-marker clearance path is
+          documented. Rejected alternatives include separate PKI root,
+          Ed25519 bare-key manifests, load-time-only verification,
+          operator-only rollback, per-inference rollback, and folding
+          signing into ADR-0028.
       - id: UP3-03
         status: pending
         work_mode: decision_doc

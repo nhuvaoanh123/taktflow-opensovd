@@ -628,13 +628,18 @@ execution_breakdown:
           "deferred SC and BCM work" section documenting what is intentionally
           excluded from Phase 6 and why.
       - id: P6-PREP-08
-        status: pending
+        status: done
         work_mode: decision_doc
         depends_on: []
         goal: create the contribution-readiness checklist and PR sequence pack
         done_when:
           - every planned upstream crate has an order, gate, and owner
           - the contribution kickoff ADR has a ready outline
+        resolution_2026_04_19: |
+          `docs/contribution/phase-6-contribution-readiness-and-sequence.md`
+          defines the crate-by-crate upstream order, the gate to open each PR,
+          and the responsible owner role. The same pack also includes the ready
+          outline that `P6-06` should turn into the Phase 6 contribution kickoff ADR.
 
   phase_6_after_entry:
     status: blocked_on_phase_5_hil_green

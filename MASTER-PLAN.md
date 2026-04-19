@@ -451,13 +451,22 @@ execution_breakdown:
           Verified via `ssh taktflow-pi@192.168.0.197`. `systemctl is-active ws-bridge.service`
           returns `active`; `curl http://127.0.0.1:8082/healthz` returns HTTP 200 with body `ok`.
       - id: P5-PI-06
-        status: pending
+        status: done
         work_mode: remote_with_preflight
         depends_on: [P5-PI-05]
         goal: bring up observer nginx plus mTLS only
         done_when:
           - authenticated HTTPS to the Pi observer entrypoint succeeds
           - unauthenticated HTTPS is rejected
+        resolution_2026_04_19: |
+          Verified via `ssh taktflow-pi@192.168.0.197`. Container
+          `observer-nginx-observer-nginx-1` is Up 2h (healthy), listening on 0.0.0.0:443.
+          Client cert material provisioned under `/opt/taktflow/observer-certs/`
+          (`observer-client.crt/.key/.pem/.p12` + CA). Auth probe with
+          `--cert observer-client.crt --key observer-client.key` returns HTTP 200 for
+          `https://127.0.0.1/` and `https://127.0.0.1/sovd/v1/health`; unauthenticated
+          `curl https://127.0.0.1/` returns HTTP 400 (nginx "No required SSL certificate
+          was sent", TLS verify=20), confirming mTLS client-cert gate is enforced.
       - id: P5-PI-07
         status: pending
         work_mode: remote_with_preflight

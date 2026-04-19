@@ -646,35 +646,56 @@ execution_breakdown:
           - concurrent tester scenario passes without deadlock or stale-state corruption
           - large fault list scenario proves pagination or list handling on seeded data
       - id: P5-HIL-08
-        status: blocked
+        status: done
         work_mode: repo_only
         depends_on: []
         goal: complete the `doip-codec` PARTIAL migration in the proxy repo slice
         done_when:
           - the selected fork pins match the intended CDA-compatible revisions
           - proxy tests prove the migrated frame and message handling paths
-        blocker_2026_04_19: |
-          The PARTIAL migration described in `work/doip-codec-evaluation.md`
-          (2026-04-15, author: Claude autonomous spike) replaces
-          `proxy-doip/src/frame.rs` + `proxy-doip/src/message_types.rs` with the
-          theswiftfox fork of `doip-codec` (rev `0dba319`) and
-          `doip-definitions` (rev `bdeab8c`), keeping `proxy-doip/src/server.rs`.
-          Preflight on 2026-04-19 confirms there is NO `proxy-doip` crate in
-          this repo (taktflow-opensovd): searched `H:/taktflow-opensovd/**` and
-          `H:/eclipse-opensovd/**`; only references live in docs/ADRs and the
-          eval doc itself. The only Cargo.lock entries for `doip-codec` are
-          inside `classic-diagnostic-adapter/target/…` build artifacts, not a
-          first-party proxy crate source.
-          Two blockers:
-          1. `proxy-doip` source crate is not present on this workstation (the
-             eval doc refers to a repo slice that needs to be either created
-             here or cross-referenced to its canonical home before migration).
-          2. Session guardrails: "cross-repo edits STOP". If the canonical
-             `proxy-doip` lives in another repo (e.g., a HIL-bench repo not on
-             this host), the migration cannot be executed from this session
-             without user direction.
-          Unit paused pending: user confirmation of the authoritative
-          `proxy-doip` source location + permission to edit it.
+        resolution_2026_04_19: |
+          PARTIAL migration executed cross-repo in
+          `taktflow-embedded-production` (not in this `taktflow-opensovd`
+          checkout): the authoritative `proxy-doip` crate lives at
+          `gateway/can_to_doip_proxy/proxy-doip/` on the laptop host
+          (`an-dao@192.168.0.158:~/taktflow-embedded-production`).
+          Branch: `auto/line-b/proxy-can-isotp-fc-fix-2026-04-15` (user
+          approved bundling with PR #9). Laptop commit SHA: `4a7457b5`,
+          subject `feat(proxy-doip): adopt theswiftfox doip-codec fork pins
+          [P5-HIL-08]`. Not pushed yet.
+          Fork pins added to `proxy-doip/Cargo.toml`:
+          - `doip-codec = git = theswiftfox/doip-codec rev 0dba319`
+          - `doip-definitions = git = theswiftfox/doip-definitions rev bdeab8c`
+          (same revs Eclipse classic-diagnostic-adapter uses per
+          `work/doip-codec-evaluation.md`, 2026-04-15.)
+          Scope:
+          - `frame.rs` + `message_types.rs` are now thin wrappers. Internals
+            delegate to `doip_definitions::header::DoipHeader` and the fork's
+            `RoutingActivationRequest/Response` + `DiagnosticMessage` types.
+            Public API (PayloadType / Header / encode_frame / decode_header /
+            FrameError / parse_* / build_* / ACTIVATION_OK) kept stable so
+            `server.rs` compiles unchanged.
+          - `lib.rs` gains a `fork::` re-export namespace surfacing the full
+            fork API (`DoipCodec`, `DoipMessage`, `DoipPayload`, etc.) for
+            external callers that want to bypass the wrappers.
+          - `server.rs` (DoipHandler trait, AliveCheck auto-response,
+            DiagnosticAck dispatch) is untouched per ADR-0010 PARTIAL scope.
+          - `proxy-can` (ISO-TP FlowControl) is untouched; PR #9 FC fix work
+            remains in its separate commits on the same branch.
+          - `Cargo.lock` at `gateway/can_to_doip_proxy/Cargo.lock` captures
+            the fork rev pins for reproducible builds.
+          Verification on the laptop (aarch64 Ubuntu, Rust 1.88):
+          - `cargo build --release`: green.
+          - `cargo test --release`: 17 passed / 0 failed. Includes the
+            byte-for-byte regression pins against DoIp_Posix.c golden frames
+            (routing activation request, Read VIN diagnostic message) and
+            the server roundtrip test covering RoutingActivation +
+            DiagnosticMessage + ack + response.
+          Cross-repo note: work does NOT live in `taktflow-opensovd`. The
+          eval doc (`work/doip-codec-evaluation.md`) stays here as the
+          decision record; the executed migration is tracked on the
+          embedded-production branch. Preflight on 2026-04-19 reconfirmed
+          this split before execution.
       - id: P5-HIL-09
         status: pending
         work_mode: repo_only

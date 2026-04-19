@@ -770,13 +770,19 @@ execution_breakdown:
           `RUSTFLAGS=\"--cfg tokio_unstable\"`, and the guardrails for keeping the
           instrumentation out of normal Pi bench or release runs.
       - id: P5-HIL-11
-        status: pending
+        status: blocked
         work_mode: live_bench
         depends_on: [P5-HIL-07, P5-PI-09]
         goal: collect nightly-green proof, performance proof, and the final demo video
         done_when:
           - nightly evidence shows all 8 HIL scenarios green
           - the demo video and supporting latency evidence are archived
+        blocker_2026_04_20: |
+          Blocked on unresolved live-bench dependency `P5-HIL-07`. `P5-HIL-11`
+          cannot start honestly until the concurrency and scale HIL scenarios are
+          green, because its own evidence gate requires "all 8 HIL scenarios
+          green" plus the archived demo capture. As of 2026-04-20,
+          `P5-HIL-07` remains `status: pending` while `P5-PI-09` is already done.
 
   phase_6_prework_available_before_phase_5_exit:
     status: available_now

@@ -38,6 +38,7 @@ use sovd_interfaces::{
     traits::{fault_sink::FaultSink, operation_cycle::OperationCycle, sovd_db::SovdDb},
 };
 use sovd_server::{CdaBackend, InMemoryServer, RateLimiter};
+use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use url::Url;
 
 #[cfg(feature = "fault-sink-mqtt")]
@@ -45,6 +46,7 @@ use crate::config::configfile::MqttConfig;
 use crate::config::configfile::{CdaForwardConfig, Configuration, ServerMode};
 
 mod config;
+mod tracing_setup;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -326,8 +328,6 @@ fn assemble_fault_sink(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
-
     let args = AppArgs::parse();
     let config_file = args.config_file.clone();
     let mut config = config::load_config(config_file.as_deref()).unwrap_or_else(|e| {
@@ -337,6 +337,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     args.update_config(&mut config);
+    let _tracing_guard = tracing_setup::init(&config.logging)?;
+
+    if config.logging.otel.enabled {
+        tracing::info!(
+            endpoint = %config.logging.otel.endpoint,
+            service_name = %config.logging.otel.service_name,
+            "OTLP tracing enabled for local SIL"
+        );
+    }
 
     let (app, dfm_for_fanout) = match config.server.mode {
         ServerMode::InMemory => {
@@ -385,6 +394,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             limiter,
             sovd_server::rate_limit::middleware,
         ))
+    } else {
+        app
+    };
+
+    let app = if config.logging.otel.enabled {
+        app.layer(TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().level(tracing::Level::INFO)))
     } else {
         app
     };
@@ -445,6 +460,7 @@ mod tests {
                 path_prefix: "sovd/v1".to_owned(),
             }],
             mqtt: None,
+            logging: defaults.logging,
             rate_limit: defaults.rate_limit,
         };
 
@@ -508,6 +524,7 @@ mod tests {
                 path_prefix: "sovd/v1".to_owned(),
             }],
             mqtt: None,
+            logging: defaults.logging,
             rate_limit: defaults.rate_limit,
         };
 

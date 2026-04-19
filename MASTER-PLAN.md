@@ -624,13 +624,23 @@ execution_breakdown:
           config parse and the `429 Too Many Requests` behavior for repeated requests
           from the same client IP.
       - id: P6-PREP-05
-        status: pending
+        status: done
         work_mode: repo_only
         depends_on: []
         goal: wire one-binary OpenTelemetry export in local SIL
         done_when:
           - one request emits visible OTLP spans into Jaeger or Tempo
           - the enablement steps are documented
+        resolution_2026_04_19: |
+          `opensovd-core/sovd-main/` now parses `[logging.otel]`, initializes an
+          OTLP gRPC exporter, and layers request tracing onto the local SIL HTTP
+          surface so one `GET /sovd/v1/components` request exports a span to Jaeger.
+          `opensovd-core/docs/local-sil-otel.md` records the exact local verifier
+          flow, including the temporary `jaegertracing/all-in-one` container, the
+          `sovd-main` startup config, the browser/UI check, the Jaeger API query,
+          and cleanup. Verified live on 2026-04-19 with `docker run ... jaeger-verify`,
+          `curl.exe http://127.0.0.1:20002/sovd/v1/components`, and
+          `curl.exe "http://127.0.0.1:16686/api/traces?service=sovd-main&limit=20"`.
       - id: P6-PREP-06
         status: pending
         work_mode: repo_only

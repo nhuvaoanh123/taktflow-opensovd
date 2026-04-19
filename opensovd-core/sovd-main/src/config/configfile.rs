@@ -52,6 +52,40 @@ fn default_mqtt_bench_id() -> String {
     "sovd-hil".to_owned()
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+pub struct LoggingConfig {
+    #[serde(default)]
+    pub otel: OtelConfig,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct OtelConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_otel_endpoint")]
+    pub endpoint: String,
+    #[serde(default = "default_otel_service_name")]
+    pub service_name: String,
+}
+
+fn default_otel_endpoint() -> String {
+    "http://127.0.0.1:4317".to_owned()
+}
+
+fn default_otel_service_name() -> String {
+    "sovd-main".to_owned()
+}
+
+impl Default for OtelConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: default_otel_endpoint(),
+            service_name: default_otel_service_name(),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Configuration {
     pub server: ServerConfig,
@@ -82,6 +116,10 @@ pub struct Configuration {
     /// registered as a fault-sink alongside the DFM.
     #[serde(default)]
     pub mqtt: Option<MqttConfig>,
+    /// Shared logging and tracing configuration for the local SIL runtime.
+    /// `[logging.otel]` stays disabled by default until Phase 6 enables it.
+    #[serde(default)]
+    pub logging: LoggingConfig,
     /// Optional per-client-IP request limiting for the local HTTP surface.
     /// Disabled by default; Phase 6 enables it via TOML for SIL hardening.
     #[serde(default)]
@@ -147,6 +185,7 @@ impl Default for Configuration {
             local_demo_components: default_local_demo_components(),
             cda_forwards: Vec::new(),
             mqtt: None,
+            logging: LoggingConfig::default(),
             rate_limit: RateLimitConfig::default(),
         }
     }

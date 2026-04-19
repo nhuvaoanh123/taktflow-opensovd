@@ -75,6 +75,9 @@ mod tests {
         );
         assert_eq!(config.dfm_component_id.as_deref(), Some("dfm"));
         assert!(config.cda_forwards.is_empty());
+        assert!(!config.logging.otel.enabled);
+        assert_eq!(config.logging.otel.endpoint, "http://127.0.0.1:4317");
+        assert_eq!(config.logging.otel.service_name, "sovd-main");
         assert!(!config.rate_limit.enabled);
         assert_eq!(config.rate_limit.requests_per_second, 20);
         assert_eq!(config.rate_limit.window_seconds, 1);
@@ -138,6 +141,23 @@ window_seconds = 2
         assert!(config.rate_limit.enabled);
         assert_eq!(config.rate_limit.requests_per_second, 7);
         assert_eq!(config.rate_limit.window_seconds, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn toml_parses_otel_overrides() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[logging.otel]
+enabled = true
+endpoint = "http://127.0.0.1:4317"
+service_name = "sovd-main-local"
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        assert!(config.logging.otel.enabled);
+        assert_eq!(config.logging.otel.endpoint, "http://127.0.0.1:4317");
+        assert_eq!(config.logging.otel.service_name, "sovd-main-local");
         Ok(())
     }
 

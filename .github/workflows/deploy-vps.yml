@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: Apache-2.0
+# Auto-deploy engineering spec HTML and observer dashboard to the public VPS
+# (sovd.taktflow-systems.com / 87.106.147.203) on every push to main.
+#
+# Required repository secrets:
+#   VPS_DEPLOY_KEY   — private SSH key whose public half is in the VPS
+#                      root@87.106.147.203:/root/.ssh/authorized_keys
+#   VPS_HOST_KEY     — output of `ssh-keyscan 87.106.147.203` (prevents MITM)
+#
+# The VPS serves:
+#   /opt/taktflow-systems/taktflow-systems/spec-root/      — engineering spec
+#   /opt/taktflow-systems/taktflow-systems/dashboard-root/ — observer dashboard
+
+name: Deploy VPS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ENGINEERING-SPECIFICATION.html'
+      - 'dashboard/**'
+      - '.github/workflows/deploy-vps.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect what changed
+        id: changes
+        run: |
+          set -e
+          base="${{ github.event.before }}"
+          head="${{ github.sha }}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            changed_all=true
+          else
+            changed_all=false
+          fi
+          if [ "$changed_all" = "true" ]; then
+            spec=true
+            dash=true
+          else
+            spec=false
+            dash=false
+            git diff --name-only "$base" "$head" | while read -r f; do
+              case "$f" in
+                ENGINEERING-SPECIFICATION.html) echo "spec=true" >> "$GITHUB_OUTPUT" ;;
+                dashboard/*)                    echo "dash=true" >> "$GITHUB_OUTPUT" ;;
+                .github/workflows/deploy-vps.yml) echo "spec=true" >> "$GITHUB_OUTPUT"; echo "dash=true" >> "$GITHUB_OUTPUT" ;;
+              esac
+            done
+            # Ensure at least one output key exists
+            echo "spec=${spec}" >> "$GITHUB_OUTPUT"
+            echo "dash=${dash}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.changes.outputs.dash == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up pnpm
+        if: steps.changes.outputs.dash == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Build dashboard for VPS topology
+        if: steps.changes.outputs.dash == 'true'
+        working-directory: dashboard
+        env:
+          VITE_SOVD_BASE: ''
+          SOVD_BASE_PATH: /dashboard
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          test -d build
+          grep -L 'localhost:21002' build/_app/immutable/entry/*.js || true
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_HOST_KEY }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy engineering spec
+        if: steps.changes.outputs.spec == 'true'
+        run: |
+          scp -i ~/.ssh/id_ed25519 ENGINEERING-SPECIFICATION.html \
+            root@87.106.147.203:/opt/taktflow-systems/taktflow-systems/spec-root/index.html
+
+      - name: Deploy dashboard
+        if: steps.changes.outputs.dash == 'true'
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/id_ed25519" \
+            dashboard/build/ \
+            root@87.106.147.203:/opt/taktflow-systems/taktflow-systems/dashboard-root/
+
+      - name: Smoke check
+        run: |
+          set -e
+          curl -fsS -o /dev/null https://sovd.taktflow-systems.com/sovd/
+          curl -fsS -o /dev/null https://sovd.taktflow-systems.com/dashboard/
+          curl -fsS https://sovd.taktflow-systems.com/sovd/v1/health | grep -q '"status":"ok"'

@@ -646,13 +646,35 @@ execution_breakdown:
           - concurrent tester scenario passes without deadlock or stale-state corruption
           - large fault list scenario proves pagination or list handling on seeded data
       - id: P5-HIL-08
-        status: pending
+        status: blocked
         work_mode: repo_only
         depends_on: []
         goal: complete the `doip-codec` PARTIAL migration in the proxy repo slice
         done_when:
           - the selected fork pins match the intended CDA-compatible revisions
           - proxy tests prove the migrated frame and message handling paths
+        blocker_2026_04_19: |
+          The PARTIAL migration described in `work/doip-codec-evaluation.md`
+          (2026-04-15, author: Claude autonomous spike) replaces
+          `proxy-doip/src/frame.rs` + `proxy-doip/src/message_types.rs` with the
+          theswiftfox fork of `doip-codec` (rev `0dba319`) and
+          `doip-definitions` (rev `bdeab8c`), keeping `proxy-doip/src/server.rs`.
+          Preflight on 2026-04-19 confirms there is NO `proxy-doip` crate in
+          this repo (taktflow-opensovd): searched `H:/taktflow-opensovd/**` and
+          `H:/eclipse-opensovd/**`; only references live in docs/ADRs and the
+          eval doc itself. The only Cargo.lock entries for `doip-codec` are
+          inside `classic-diagnostic-adapter/target/…` build artifacts, not a
+          first-party proxy crate source.
+          Two blockers:
+          1. `proxy-doip` source crate is not present on this workstation (the
+             eval doc refers to a repo slice that needs to be either created
+             here or cross-referenced to its canonical home before migration).
+          2. Session guardrails: "cross-repo edits STOP". If the canonical
+             `proxy-doip` lives in another repo (e.g., a HIL-bench repo not on
+             this host), the migration cannot be executed from this session
+             without user direction.
+          Unit paused pending: user confirmation of the authoritative
+          `proxy-doip` source location + permission to edit it.
       - id: P5-HIL-09
         status: pending
         work_mode: repo_only

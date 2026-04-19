@@ -684,16 +684,16 @@ execution_breakdown:
           - one Rust binary emits DLT frames with a reproducible startup path
           - follow-on rollout risks are documented
         blocker_2026_04_19: |
-          The repo-side DLT crates are real (`tracing-dlt`, `dlt-rs`, `dlt-sys`), but
-          this Windows workstation is not DLT-ready: `where.exe dlt.dll`, `where.exe
-          libdlt.dll`, and `where.exe dlt.lib` return nothing, `pkg-config --libs
-          --cflags automotive-dlt` returns nothing, no `DLT_INCLUDE_DIR` /
-          `DLT_USER_INCLUDE_DIR` / `DLT_LIB_DIR` environment variables are set, and a
-          targeted scan under `C:\tools\msys64` finds no DLT package. That means the
-          required `libdlt` library and headers are unavailable here, so the unit
-          cannot prove that one Rust binary emits DLT frames with a reproducible
-          startup path until the DLT toolchain is installed or the unit is rerun on a
-          DLT-capable host.
+          `P6-PREP-06` belongs on the laptop (the intended development host), not on
+          the Windows control PC. The laptop at `an-dao@192.168.0.158` is reachable
+          and has `cargo 1.95.0` + `rustc 1.95.0`, and `libdlt.so.2` is present via
+          the installed `libdlt2` runtime package. But the laptop is still not
+          DLT-build-ready: `/usr/include/dlt` is absent (`NO_DLT_HEADERS`), no
+          `libdlt-dev` package is installed, and the development headers required by
+          `dlt-sys` are unavailable. That means the unit cannot yet prove that one
+          Rust binary emits DLT frames with a reproducible startup path until the DLT
+          development package and headers are installed on the laptop or the unit is
+          rerun on another DLT-capable development host.
       - id: P6-PREP-07
         status: done
         work_mode: decision_doc

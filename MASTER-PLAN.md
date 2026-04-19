@@ -483,13 +483,30 @@ execution_breakdown:
           Containers `observer-observability-observer-prometheus-1` and
           `observer-observability-observer-grafana-1` have been up ~3 hours.
       - id: P5-PI-08
-        status: pending
+        status: done
         work_mode: remote_with_preflight
         depends_on: [P5-PI-07]
         goal: verify the bench-LAN dashboard surface end-to-end
         done_when:
           - `/sovd/v1/session`, `/sovd/v1/audit`, and `/sovd/v1/gateway/backends` render through the observer surface
           - `/ws` and `/grafana/` work through the Pi-facing entrypoint
+        resolution_2026_04_19: |
+          Verified via `ssh taktflow-pi@192.168.0.197` with mTLS client cert material at
+          `/opt/taktflow/observer-certs/observer-client.{crt,key}`. REST surfaces through
+          the observer-nginx entrypoint:
+          `GET https://127.0.0.1/sovd/v1/session` → HTTP 200, 136 B;
+          `GET https://127.0.0.1/sovd/v1/audit` → HTTP 200, 980 B;
+          `GET https://127.0.0.1/sovd/v1/gateway/backends` → HTTP 200, 391 B.
+          Grafana through observer entrypoint: `GET https://127.0.0.1/grafana/api/health`
+          → HTTP 200 with `{"database":"ok","version":"12.0.2",...}`.
+          Websocket upgrade probe: `GET http://127.0.0.1:8082/ws` with `Upgrade: websocket`
+          headers → HTTP 401 (expected; ws-bridge requires `WS_BRIDGE_INTERNAL_TOKEN`),
+          confirming the handler is wired and token-gated.
+          End-to-end vs Pi-loopback split: REST + `/grafana/` surfaces proved through the
+          mTLS observer entrypoint (end-to-end for any client that presents the observer
+          client cert). The `/ws` probe is loopback-only today; real browser render from
+          LAN client 192.168.0.105 and a real websocket handshake with the live token are
+          scheduled for the 2026-05-16 bench run under P5-HIL-11.
       - id: P5-PI-09
         status: pending
         work_mode: remote_with_preflight

@@ -160,6 +160,8 @@ current_state:
     - Phase 4 complete — 2026-10-15 (M4)
     - Phase 5 in progress — target 2026-11-30 (M5 ships end of Phase 6)
     - Phase 6 not started — target 2026-12-31
+    - Upstream Phase 2 (COVESA + Extended Vehicle + pilot OEM) not started — target 2027-10-31 (M6; months 13–18 per Eclipse OpenSOVD project proposal)
+    - Upstream Phase 3 (Edge AI/ML + ISO/DIS 17978-1.2) not started — target 2028-04-30 (M7; months 19–24 per Eclipse OpenSOVD project proposal)
     - 3 active ECUs on HIL bench (CVC physical CAN, SC TMS570 CAN, BCM virtual DoIP)
     - Upstream-awareness current — monorepo owns opensovd-core, CDA stays vendored verbatim, monthly review cadence
     - Zero MISRA violations, zero clippy pedantic violations on new code
@@ -474,7 +476,67 @@ plan:
       - Phase 6 contribution kickoff recorded in docs/adr/phase-6-contribution-kickoff.md
       - OTA on CVC demonstrable end-to-end — signed image via SOVD bulk-data, flashed to inactive slot, committed after signature pass, boot-OK witness acknowledged at cloud
 
+  upstream_phase_2_covesa_extended_vehicle:
+    window: 2027-05-01 .. 2027-10-31
+    person_days: 90
+    owner: Architect + Rust lead + 2 Rust engineers
+    parallel_to: []
+    entry: Phase 6 complete, M5 shipped, upstream contribution PRs opened per §upstream_contribution_priority
+    deliverables:
+      - COVESA VSS semantic API layer — `opensovd-core/sovd-covesa/` crate mapping VSS signal paths onto SOVD data endpoints; VSS version tracked at `opensovd-core/sovd-covesa/schemas/vss-version.yaml`
+      - Extended Vehicle logging and publish/subscribe support per ISO 20078 — `opensovd-core/sovd-extended-vehicle/` crate exposing `/sovd/v1/extended/vehicle/*` REST endpoints plus MQTT publish/subscribe channels under topic root `sovd/extended-vehicle/`; config at `opensovd-core/sovd-extended-vehicle/config/extended-vehicle.toml`
+      - Semantic Interoperability JSON schema extensions — machine-readable diagnostic schemas at `opensovd-core/sovd-interfaces/schemas/semantic/` (JSON Schema 2020-12 draft) with schema-snapshot gate coverage matching the existing sovd-interfaces pattern
+      - ADR-0026 COVESA semantic API mapping strategy — `docs/adr/ADR-0026-covesa-semantic-api-mapping.md`
+      - ADR-0027 Extended Vehicle data scope and pub/sub contract — `docs/adr/ADR-0027-extended-vehicle-scope.md`
+      - Pilot OEM deployment playbook — `docs/deploy/pilot-oem/README.md` with bring-up steps; SBOM at `docs/deploy/pilot-oem/sbom.spdx.json`
+      - Integration test set — `test/sil/scenarios/sil_covesa_*.yaml` and `test/sil/scenarios/sil_extended_vehicle_*.yaml`
+      - Upstream design ADRs filed in `opensovd/discussions` for COVESA mapping and Extended Vehicle scope review
+    exit:
+      - At least one EV OEM pilot deployment live on a dedicated pilot branch with recorded round-trip of VSS-mapped DTC read plus Extended Vehicle fault-log retrieval
+      - `sovd-covesa` and `sovd-extended-vehicle` crates merged to main with CI green; schema-snapshot tests cover the new endpoints
+      - ADR-0026 and ADR-0027 accepted by architect + Rust lead + safety engineer
+      - Upstream contribution discussions have at least one reviewer-acknowledged response
+
+  upstream_phase_3_edge_ai_ml_iso_dis_17978_1_2:
+    window: 2027-11-01 .. 2028-04-30
+    person_days: 120
+    owner: Architect + Rust lead + 2 Rust engineers + 1 ML engineer
+    parallel_to: []
+    entry: Upstream Phase 2 complete, at least one EV OEM pilot running, reviewer acknowledgment on Phase 2 upstream discussions
+    deliverables:
+      - Edge AI/ML inference harness — `opensovd-core/sovd-ml/` crate embedding an ONNX runtime (`ort` crate) model loader, exposed through SOVD operation `/sovd/v1/components/{id}/operations/ml-inference/`; reference model artifact at `opensovd-core/sovd-ml/models/reference-fault-predictor.onnx` with signature manifest at `opensovd-core/sovd-ml/models/reference-fault-predictor.sig`. Collaboration alignment with Eclipse Edge Native for deployment and lifecycle primitives recorded in ADR-0028.
+      - ADR-0028 Edge ML fault prediction scope and lifecycle — `docs/adr/ADR-0028-edge-ml-fault-prediction.md` covering model lifecycle, memory footprint on STM32 H7 / TMS570 class targets versus Pi, rollback semantics, and the Eclipse Edge Native integration boundary
+      - ADR-0029 ML model signing and rollback — `docs/adr/ADR-0029-ml-model-signing-rollback.md`
+      - ISO/DIS 17978-1.2 compliance gap analysis — `docs/compliance/iso-17978-1-2-gap-analysis.md` with per-clause delta from the ISO 17978-3 baseline
+      - ISO/DIS 17978-1.2 compliance patch set landed in `opensovd-core/sovd-server/`, `opensovd-core/sovd-interfaces/`, and `opensovd-core/sovd-gateway/`; new crate `opensovd-core/sovd-compliance-17978-1-2/` only if the gap analysis concludes a shared helper is warranted
+      - Integration tests — `test/sil/scenarios/sil_ml_inference_*.yaml` and `test/sil/scenarios/sil_iso17978_1_2_*.yaml`
+      - Observer dashboard ML widget — `dashboard/src/lib/widgets/MLInference.svelte` surfacing the inference operation end-to-end
+    exit:
+      - `sovd-ml` crate runs the signed reference model end-to-end in SIL (VPS) and HIL (Pi) with signature-verify-before-load enforced
+      - ISO/DIS 17978-1.2 gap analysis signed off by architect; patch set merged; compliance gate wired into `tools/ci/pipeline_gates.py` (or equivalent) and green
+      - At least one edge ML inference operation exercisable from the observer dashboard and through SOVD REST
+      - Upstream contribution PR opened for the ML inference harness with an accompanying design ADR in `opensovd/discussions`
+
 reference:
+  eclipse_project_description:
+    summary: |
+      Eclipse OpenSOVD provides an open source implementation of the
+      Service-Oriented Vehicle Diagnostics (SOVD) standard, as defined in
+      ISO 17978. The project delivers a modular, standards-compliant
+      software stack that enables secure and efficient access to vehicle
+      diagnostics over service-oriented architectures. It complements
+      and integrates Eclipse S-CORE by providing an open SOVD protocol
+      implementation usable for diagnostics and service orchestration in
+      SDV architectures.
+    key_components:
+      - SOVD Gateway — REST/HTTP API endpoints for diagnostics, logging, and software updates
+      - Protocol Adapters — bridging modern HPCs (AUTOSAR Adaptive) and legacy ECUs (UDS-based)
+      - Diagnostic Manager — service orchestration for fault reset, parameter adjustments, and bulk data transfers
+    future_proofing:
+      - Semantic Interoperability — JSON schema extensions for machine-readable diagnostics, enabling AI-driven analysis and cross-domain workflows (addressed in upstream Phase 2 deliverable `opensovd-core/sovd-interfaces/schemas/semantic/`)
+      - Edge AI/ML Readiness — modular design supporting lightweight ML models (predictive fault detection) via collaboration with Eclipse Edge Native (addressed in upstream Phase 3 deliverable `opensovd-core/sovd-ml/` plus ADR-0028)
+      - Extended Vehicle logging and publish/subscribe mechanisms (addressed in upstream Phase 2 deliverable `opensovd-core/sovd-extended-vehicle/`)
+
   what_opensovd_is:
     - SOVD = Service-Oriented Vehicle Diagnostics, ISO 17978 (ASAM)
     - Modern replacement for UDS (ISO 14229); REST/HTTP+JSON instead of CAN+binary byte frames
@@ -550,6 +612,8 @@ reference:
     M3_dfm_prototype_serving_dtcs: 2026-08-15 — fault inject → DFM ingest → SOVD GET <100 ms
     M4_sovd_server_mvp_in_docker: 2026-10-15 — 5 MVP use cases pass in Docker Compose
     M5_hardened_hil_green_contribution_ready: 2026-12-31 — physical HIL passes; public SIL on VPS live; demo recorded; code in review shape
+    M6_covesa_extended_vehicle_pilot_live: 2027-10-31 — COVESA VSS mapping + Extended Vehicle logging live in at least one EV OEM pilot deployment (Eclipse OpenSOVD proposal upstream Phase 2, months 13–18)
+    M7_edge_ml_and_iso_17978_1_2_compliant: 2028-04-30 — Edge AI/ML inference harness plus ISO/DIS 17978-1.2 gap closure merged (Eclipse OpenSOVD proposal upstream Phase 3, months 19–24)
 
   success_criteria:
     technical:

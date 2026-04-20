@@ -104,17 +104,26 @@ def encode_doip(payload_type: int, payload: bytes, version: int = DOIP_VERSION) 
     return DOIP_HEADER.pack(version, version ^ 0xFF, payload_type, len(payload)) + payload
 
 
+def uds_expects_response(request: bytes) -> bool:
+    if len(request) >= 2 and request[0] == 0x3E and request[1] & 0x80:
+        return False
+    return True
+
+
 def uds_roundtrip(
     can_interface: str,
     route: Route,
     request: bytes,
     timeout_seconds: float,
-) -> bytes:
+    expect_response: bool,
+) -> bytes | None:
     sock = socket.socket(socket.AF_CAN, socket.SOCK_DGRAM, socket.CAN_ISOTP)
     try:
         sock.settimeout(timeout_seconds)
         sock.bind((can_interface, route.can_response_id, route.can_request_id))
         sock.send(request)
+        if not expect_response:
+            return None
         return sock.recv(4095)
     finally:
         sock.close()
@@ -226,6 +235,7 @@ async def handle_client(
                 target_address,
                 uds_request.hex().upper(),
             )
+            expect_response = uds_expects_response(uds_request)
 
             try:
                 uds_response = await asyncio.to_thread(
@@ -234,6 +244,7 @@ async def handle_client(
                     route,
                     uds_request,
                     uds_timeout_seconds,
+                    expect_response,
                 )
             except (OSError, TimeoutError) as exc:
                 nack = (
@@ -247,6 +258,14 @@ async def handle_client(
                     route.name,
                     target_address,
                     exc,
+                )
+                continue
+
+            if uds_response is None:
+                LOG.info(
+                    "diagnostic request ecu=%s target=0x%04X completed with no UDS response expected",
+                    route.name,
+                    target_address,
                 )
                 continue
 

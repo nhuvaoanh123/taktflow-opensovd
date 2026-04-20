@@ -1,5 +1,12 @@
 # Safety Concept
 
+> **Scope qualifier (2026-04-20).** This document describes the *target*
+> safety lifecycle that the OpenSOVD stack is designed to fit into, and the
+> architectural boundaries that would enforce it in a qualified deployment.
+> The firmware used on the Taktflow bench is a portfolio prototype and is
+> not ASIL-qualified. ASIL allocations stated below apply to the *intended*
+> integration context, not to this repo's working fixture.
+
 This document defines the safety architecture for taktflow-opensovd: what is
 safety-relevant, what is not, and how the boundary is enforced.
 

@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: ws_bridge
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - taktflow_ws_bridge:8082
+
+  - job_name: sovd_blackbox
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - https://sovd.taktflow-systems.com/sovd/v1/health
+          - https://sovd.taktflow-systems.com/sovd/v1/components/flxc1000
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: taktflow_blackbox:9115
+
+  - job_name: blackbox
+    static_configs:
+      - targets:
+          - taktflow_blackbox:9115

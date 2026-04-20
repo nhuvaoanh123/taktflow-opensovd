@@ -1114,8 +1114,8 @@ Exit gates:
 | Step ID | Status | Mode | Goal | Deliverables | Acceptance | Gate / DoD |
 |---|---|---|---|---|---|---|
 | P5-VPS-01 | done | remote_with_preflight | Public SOVD host serves spec + base API on VPS | `sovd.taktflow-systems.com/sovd/` responds; `sovd/v1/components` responds | Both return 200 | Exit: live at M4+ |
-| P5-VPS-02 | partial | remote_with_preflight | Deploy full SIL docker-compose on VPS | VPS compose shows 7 containers healthy | Stack survives restart | Split P5-VPS-02b |
-| P5-VPS-02b | pending | remote_with_preflight | Add ecu-sim + CDA + Mosquitto + ws-bridge to VPS | Full 7-container stack healthy | Public surfaces exercised by full stack | `docker compose ps` healthy |
+| P5-VPS-02 | done | remote_with_preflight | Deploy full SIL docker-compose on VPS | VPS compose shows 7 containers healthy | Stack survives restart | Closed via P5-VPS-02b |
+| P5-VPS-02b | done | remote_with_preflight | Add ecu-sim + CDA + Mosquitto + ws-bridge to VPS | Full 7-container stack healthy | Public surfaces exercised by full stack | Verified |
 | P5-VPS-03 | done | remote_with_preflight | Expose Grafana at `/sovd/grafana/` | Reverse proxy path live | `GET /sovd/grafana/` → 200 | Verified |
 | P5-VPS-04 | done | repo_only | Flip portfolio tile to real live URL | `apps/web` Project 4 card | Multi-network reachability proof | Verified |
 | P5-VPS-05 | done | decision_doc | Archive one-time deploy notes | Transient notes gitignored | Active runbook clean | Verified |
@@ -1573,7 +1573,6 @@ pulled in.
 
 ### 13.3 Active Blockers (snapshot)
 
-- Public SIL on VPS — full 7-container stack pending (P5-VPS-02b).
 - aarch64 cross-compile partial — missing `aarch64-linux-gnu-gcc`
   on Windows dev host; laptop has the toolchain native and should
   become the primary cross-compile host.

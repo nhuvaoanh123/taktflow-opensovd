@@ -23,5 +23,6 @@ WORKDIR /app
 COPY --chmod=755 docker/ipcli.sh /app/ipcli.sh
 COPY --chmod=755 docker/entrypoint.sh /app/entrypoint.sh
 COPY --from=builder /build/build/libs/ecu-sim-all.jar /app/ecu-sim-all.jar
+RUN sed -i 's/\r$//' /app/ipcli.sh /app/entrypoint.sh
 
 ENTRYPOINT ["/app/entrypoint.sh"]

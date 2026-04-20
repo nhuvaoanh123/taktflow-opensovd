@@ -151,10 +151,9 @@ plus the four future-proofing extensions the project description names.
 
 | Feature ID | Feature | Detailed in |
 |---|---|---|
-| ECO-1 | Eclipse S-CORE compatibility layer (SOVD backends pluggable behind S-CORE runtime) | §5.4.1 |
-| ECO-2 | COVESA VSS semantic mapping (internal alignment, no upstream PR) | §5.4.2 |
-| ECO-3 | Eclipse SDV Working Group alignment (internal, spec-level) | §5.4.3 |
-| ECO-4 | Eclipse Edge Native integration surface for ML deployment | §5.4.4 |
+| ECO-1 | S-CORE-compatible pluggable backend interface | §5.4.1 |
+| ECO-2 | COVESA VSS semantic mapping (internal) | §5.4.2 |
+| ECO-3 | ML artifact delivery + observability boundary | §5.4.3 |
 
 #### 1.2.5 Future-Proofing Extensions
 
@@ -216,12 +215,14 @@ See Appendix C (§C) for the full glossary. A minimal lexicon is below.
 
 ### 1.5 Relationship To Eclipse OpenSOVD
 
-Taktflow OpenSOVD implements the **same capability scope** as Eclipse
-OpenSOVD as documented in the Eclipse project description, but is not an
-Eclipse contribution. Design decisions, semantic layouts, ADR numbering,
-and the `opensovd-core/` crate names are chosen to stay structurally
-consistent with the Eclipse project so that a future reconvergence would
-not require renaming. Reconvergence itself is explicitly not planned.
+The Eclipse OpenSOVD project description is used as a **capability
+catalog** — a useful reference for naming the bundle of features a
+SOVD-complete diagnostic stack should include. Taktflow OpenSOVD
+implements that same capability scope as an internal deliverable.
+There is no contribution workflow, no shared governance, no
+board-of-record alignment, and no requirement that Taktflow decisions
+track Eclipse decisions. Naming conventions (`opensovd-core/`, ADR
+numbering) are a convenience; they carry no commitment.
 
 ---
 
@@ -247,7 +248,7 @@ appear is §13 Historical Status, for facts that already happened.
 | P7 | Semantic Interoperability + Extended Vehicle | P6 complete | VSS read + XV pub/sub wired into server; conformance gate green |
 | P8 | Edge AI/ML Integration | P7 complete, ML model signed | Predictive fault inference green on Pi HIL; hot-swap + rollback proven |
 | P9 | Cybersecurity & Certificate Lifecycle | P6 complete, ADR-0032 (cybersecurity profile) accepted | ISO 21434 TARA + CAL approved; cert lifecycle automated |
-| P10 | Ecosystem Alignment (S-CORE compat, COVESA spec, SDV alignment) | P7 complete | S-CORE backend interface covered; COVESA spec drift tracked |
+| P10 | Ecosystem Integration (pluggable backend, COVESA spec drift, ML artifact boundary) | P7 complete | Pluggable backend interface covered; COVESA spec drift tracked internally |
 | P11 | Conformance & Documentation Maturity | P8 + P9 + P10 complete | ISO 17978 + ISO 20078 + ISO 21434 conformance suites green; full doc set published |
 
 ### 2.3 Milestone Catalog
@@ -262,7 +263,7 @@ appear is §13 Historical Status, for facts that already happened.
 | M6 | Semantic + Extended Vehicle capabilities operational end-to-end (P7 exit) |
 | M7 | Edge AI/ML predictive-fault use case operational (P8 exit) |
 | M8 | ISO 21434 cybersecurity case approved (P9 exit) |
-| M9 | S-CORE backend compatibility demonstrated; COVESA spec alignment recorded (P10 exit) |
+| M9 | Pluggable backend interface demonstrated; COVESA spec drift recorded internally (P10 exit) |
 | M10 | All conformance suites green; documentation set published (P11 exit) |
 
 ### 2.4 Gate Catalog (Reference)
@@ -781,20 +782,22 @@ Covered in §9. Executive summary:
 
 ### 5.4 Bucket D — Ecosystem Integration
 
-#### 5.4.1 ECO-1 Eclipse S-CORE Compatibility
+#### 5.4.1 ECO-1 Pluggable Backend Interface
 
-**Role.** Expose SOVD backends behind the S-CORE backend interface so the
-stack can plug into an S-CORE runtime.
+**Role.** Keep the backend trait pluggable so a Taktflow SOVD backend can
+be consumed by any runtime — including, but not limited to, an S-CORE
+runtime. This is a technical abstraction choice, not a collaboration
+commitment.
 
 **Design approach.**
-- [ADR-0016](docs/adr/0016-pluggable-score-backends.md) already defines
-  the pluggable-backend shape.
-- Planned **ADR-0034** — S-CORE backend compatibility interface — will
+- [ADR-0016](docs/adr/0016-pluggable-score-backends.md) defines the
+  pluggable-backend shape.
+- Planned **ADR-0034** — backend compatibility interface — will
   formalize the exact trait, lifecycle, and data model mapping.
 
-**Constraint.** No upstream engagement with the Eclipse S-CORE project.
-Compatibility is one-way: our backends can be consumed by S-CORE
-callers, not the other way round.
+**Constraint.** No external engagement implied. Compatibility is
+one-way: our backends can be consumed by external callers, we do not
+consume theirs.
 
 **Planned in.** §7.P10.
 
@@ -816,29 +819,21 @@ mapping rows in the first slice.
 **Gaps to close (P7).** Route handler in `sovd-server`, integration
 tests against live data, actuator-write path.
 
-#### 5.4.3 ECO-3 Eclipse SDV Working Group Alignment
+#### 5.4.3 ECO-3 ML Artifact Delivery Boundary
 
-**Role.** Track the Eclipse SDV WG spec output (SOVD v1.1, future
-versions) and keep the Taktflow tree structurally compatible.
-
-**Deliverable.** Periodic spec-drift review recorded at
-`docs/ecosystem/sdv-wg-drift-<N>.md`.
-
-**Cadence.** Once per phase after P6.
-
-#### 5.4.4 ECO-4 Eclipse Edge Native Integration Surface
-
-**Role.** Data boundary for ML model deployment and observability, not
-a runtime dependency.
+**Role.** Technical data boundary for ML model artifact delivery and
+observability. Not a runtime dependency. Nothing in this feature implies
+tracking any external working group's opinion.
 
 **ADR.** [ADR-0028](docs/adr/ADR-0028-edge-ml-fault-prediction.md).
 
 **Boundaries.**
-- Deployment: Edge Native artifact push → local model slot.
-- Observability: Edge Native telemetry sink consumes ML
-  inference-failure metrics.
-- Lifecycle states (load, hot-swap, rollback, unload) are owned by
-  Taktflow.
+- Deployment: signed ML artifact pushed to the local model slot on Pi
+  (filesystem path per ADR-0028).
+- Observability: ML inference-failure metrics emitted via the existing
+  OTLP / DLT / Prometheus surfaces.
+- Lifecycle states (load, hot-swap, rollback, unload) owned entirely by
+  Taktflow per ADR-0028 and ADR-0029.
 
 ### 5.5 SEM — Semantic Interoperability
 
@@ -1250,21 +1245,21 @@ lifecycle automated; security gate G-CS green.
 | P9-CS-11 | pending | repo_only | OAuth2/OIDC bearer validator replaces scaffold | Invalid JWT → 401; valid JWT → 200 |
 | P9-CS-12 | pending | repo_only | Hybrid auth profile end-to-end test | Missing mTLS → 400; missing bearer → 401; both present → 200 |
 
-### 7.11 P10 — Ecosystem Alignment
+### 7.11 P10 — Ecosystem Integration
 
 Entry: P7 complete.
 
-Exit: M9 — S-CORE backend compatibility demonstrated; COVESA spec
-drift tracked; SDV WG alignment recorded.
+Exit: M9 — pluggable backend interface demonstrated end-to-end; COVESA
+VSS spec-drift tracked internally; ML artifact delivery boundary
+documented.
 
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
-| P10-ECO-01 | pending | decision_doc | Author ADR-0034 S-CORE backend compatibility interface | Trait + lifecycle + data-model mapping defined |
-| P10-ECO-02 | pending | repo_only | Implement `score-backend-adapter` crate | Crate lands; wraps `sovd-gateway` behind S-CORE trait |
-| P10-ECO-03 | pending | repo_only | Compatibility test (S-CORE caller → SOVD backend) | Synthetic S-CORE caller round-trips through the adapter |
-| P10-ECO-04 | pending | decision_doc | First SDV WG drift review | `docs/ecosystem/sdv-wg-drift-1.md` lands with delta summary |
-| P10-ECO-05 | pending | decision_doc | COVESA VSS spec-drift review | `docs/ecosystem/covesa-vss-drift-1.md` lands |
-| P10-ECO-06 | pending | decision_doc | Eclipse Edge Native boundary verification doc | Boundary matches ADR-0028 |
+| P10-ECO-01 | pending | decision_doc | Author ADR-0034 pluggable backend compatibility interface | Trait + lifecycle + data-model mapping defined |
+| P10-ECO-02 | pending | repo_only | Implement `backend-adapter` crate | Crate lands; wraps `sovd-gateway` behind the compatibility trait |
+| P10-ECO-03 | pending | repo_only | Compatibility test (synthetic external caller → SOVD backend) | Synthetic caller round-trips through the adapter |
+| P10-ECO-04 | pending | decision_doc | COVESA VSS spec-drift review | `docs/ecosystem/covesa-vss-drift-1.md` lands |
+| P10-ECO-05 | pending | decision_doc | ML artifact delivery boundary verification doc | Boundary matches ADR-0028 |
 
 ### 7.12 P11 — Conformance & Documentation Maturity
 
@@ -1314,7 +1309,7 @@ declared path.
 | G-SEM | Semantic + XV wired and scenarios green | Architect | P7 exit bundle green |
 | G-ML | Edge AI/ML inference demonstrated on HIL | Rust lead | P8 exit bundle green |
 | G-CS | ISO 21434 cybersecurity case approved | Security lead | P9 exit bundle green |
-| G-ECO | S-CORE compatibility + COVESA drift + SDV alignment recorded | Architect | P10 exit bundle green |
+| G-ECO | Pluggable backend + COVESA drift + ML artifact boundary recorded | Architect | P10 exit bundle green |
 | G-CONF | All three conformance suites green | Test lead | P11 exit bundle green |
 
 ### 8.2 Safety Gates

@@ -200,19 +200,42 @@
   /* --- Responsive --- */
   @media (max-width: 980px) {
     body { display: block; padding: 1rem; }
-    nav.toc {
+    details.toc {
       position: static;
       max-height: none;
-      margin: 1.5rem 0 2rem;
+      overflow: visible;
+      margin: 1rem 0 1.5rem;
+      padding: 0.7rem 1rem;
+    }
+    details.toc > summary {
+      cursor: pointer;
+      margin: 0;
+      padding: 0.1rem 0;
+    }
+    details.toc > summary::after {
+      content: " \25BE";
+      font-size: 0.85rem;
+      color: var(--grey-700);
+      margin-left: 0.4rem;
+    }
+    details.toc:not([open]) > summary::after { content: " \25B8"; }
+    details.toc[open] > ol {
+      max-height: 55vh;
+      overflow-y: auto;
+      margin-top: 0.5rem;
+      padding-right: 0.5rem;
     }
   }
 
   @media (max-width: 768px) {
-    table { font-size: 0.82rem; }
+    /* horizontally scroll wide tables instead of overflowing the viewport */
+    main table { display: block; overflow-x: auto; white-space: nowrap; font-size: 0.82rem; }
+    main table th, main table td { white-space: normal; }
+    .mermaid svg { max-width: 100%; height: auto; }
   }
 
   /* --- TOC --- */
-  nav.toc {
+  details.toc {
     grid-column: 1;
     position: sticky;
     top: 2rem;
@@ -225,14 +248,20 @@
     padding: 1rem 1.5rem;
     margin: 0;
   }
-  nav.toc h2 {
+  details.toc > summary {
     font-size: 1rem;
-    margin: 0 0 0.6rem;
-    border: none;
+    font-weight: 600;
     color: var(--grey-900);
+    margin: 0 0 0.6rem;
+    list-style: none;
   }
-  nav.toc ol { padding-left: 1.2rem; margin: 0; }
-  nav.toc li { margin-bottom: 0.2rem; font-size: 0.92rem; }
+  details.toc > summary::-webkit-details-marker { display: none; }
+  details.toc ol { padding-left: 1.2rem; margin: 0; }
+  details.toc li { margin-bottom: 0.2rem; font-size: 0.92rem; }
+  /* Desktop: summary acts as a heading, not a toggle */
+  @media (min-width: 981px) {
+    details.toc > summary { pointer-events: none; }
+  }
 </style>
 </head>
 <body>
@@ -263,8 +292,8 @@ was dropped from scope on 2026-04-20; see <a href="MASTER-PLAN.md">MASTER-PLAN.m
   <a href="https://sovd.taktflow-systems.com/grafana/" target="_blank" rel="noopener">Grafana</a>
 </nav>
 
-<nav class="toc">
-<h2>Contents</h2>
+<details class="toc" open>
+<summary>Contents</summary>
 <ol>
   <li><a href="#s1">Executive Summary</a></li>
   <li><a href="#s2">System Architecture</a></li>
@@ -283,7 +312,7 @@ was dropped from scope on 2026-04-20; see <a href="MASTER-PLAN.md">MASTER-PLAN.m
   <li><a href="#s15">Related Documents</a></li>
   <li><a href="#s16">Revision History</a></li>
 </ol>
-</nav>
+</details>
 
 <main class="document-content">
 
@@ -1546,6 +1575,12 @@ maturity story explicit.</p>
     flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
     sequence: { useMaxWidth: true, showSequenceNumbers: false },
   });
+
+  // Collapse the TOC on narrow viewports so it doesn't dominate the mobile scroll.
+  if (window.matchMedia('(max-width: 980px)').matches) {
+    var tocEl = document.querySelector('details.toc');
+    if (tocEl) tocEl.removeAttribute('open');
+  }
 </script>
 </main>
 </body>

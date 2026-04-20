@@ -32,6 +32,9 @@
     margin: 0 auto;
     padding: 2rem 2.5rem;
     background: #fff;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    -webkit-text-size-adjust: 100%;
   }
 
   .document-content { min-width: 0; }
@@ -220,11 +223,33 @@
   details.toc li { margin-bottom: 0.2rem; font-size: 0.92rem; }
 
   /* --- Responsive --- */
-  @media (max-width: 768px) {
-    body { padding: 1rem; }
-    main table { display: block; overflow-x: auto; white-space: nowrap; font-size: 0.82rem; }
-    main table th, main table td { white-space: normal; }
+  @media (max-width: 900px) {
+    body { padding: 1.25rem 1rem; }
+    h1 { font-size: 1.65rem; }
+    h2 { font-size: 1.25rem; margin-top: 2rem; }
+    h3 { font-size: 1.05rem; }
+    .meta { font-size: 0.88rem; }
+    .meta span { display: block; margin: 0 0 0.2rem; }
+    .link-buttons a { font-size: 0.9rem; padding: 0.5rem 0.9rem; }
+    blockquote { padding: 0.7rem 1rem; font-size: 0.95rem; }
+    main table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; font-size: 0.85rem; }
+    main table th, main table td { padding: 0.4rem 0.55rem; }
+    .mermaid { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .mermaid svg { max-width: 100%; height: auto; }
+    code { overflow-wrap: anywhere; word-break: break-word; }
+    pre { overflow-x: auto; font-size: 0.85rem; }
+  }
+
+  @media (max-width: 480px) {
+    body { padding: 1rem 0.75rem; line-height: 1.55; }
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.15rem; }
+    .link-buttons { gap: 0.4rem; }
+    .link-buttons a { font-size: 0.85rem; padding: 0.45rem 0.75rem; }
+    .link-buttons a::before { margin-right: 0.3rem; }
+    details.toc { padding: 0.6rem 0.9rem; }
+    details.toc[open] > ol { max-height: 50vh; }
+    details.toc li { font-size: 0.88rem; }
   }
 </style>
 </head>

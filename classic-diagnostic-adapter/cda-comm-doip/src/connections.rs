@@ -42,6 +42,7 @@ struct ConnectionSettings {
     connect_timeout: Duration,
     max_retry_attempts: u32,
     send_timeout: Duration,
+    enable_alive_check: bool,
 }
 
 #[derive(Error, Debug, Clone)]
@@ -158,6 +159,7 @@ where
             connect_timeout: connection_timeout,
             max_retry_attempts: connection_retry_attempts,
             send_timeout,
+            enable_alive_check: connection_config.enable_alive_check,
         },
     )
     .await
@@ -306,6 +308,7 @@ async fn connection_handler(
         inrx,
         Arc::<EcuConnectionTarget>::clone(&gateway_conn),
         connection_settings.send_timeout,
+        connection_settings.enable_alive_check,
         conn_reset_tx.clone(),
         send_pending_tx.clone(),
     );
@@ -415,6 +418,7 @@ fn spawn_gateway_sender_task(
     mut inrx: mpsc::Receiver<DoipPayload>,
     gateway_conn: Arc<EcuConnectionTarget>,
     send_timeout: Duration,
+    enable_alive_check: bool,
     reset_tx: mpsc::Sender<ConnectionResetReason>,
     send_pending_tx: watch::Sender<bool>,
 ) {
@@ -478,6 +482,9 @@ fn spawn_gateway_sender_task(
                     drop(lock);
                 },
                 () = tokio::time::sleep(SLEEP_INTERVAL) => {
+                    if !enable_alive_check {
+                        continue;
+                    }
                     let lock = send_mtx.lock().await;
                     if send_pending_status(&send_pending_tx, true).is_err() {
                         break;

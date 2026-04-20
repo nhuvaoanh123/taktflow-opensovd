@@ -1236,9 +1236,9 @@ Exit gates:
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
 | P5-HIL-01 | done | live_bench | Inject at least one clearable fault per bench component | Pi `__bench/components/{id}/faults` override proved non-empty→empty transitions for CVC, SC, BCM via normal `DELETE /sovd/v1/components/{id}/faults`; operator method documented in `opensovd-core/deploy/pi/README-phase5.md` |
-| P5-HIL-02 | pending | live_bench | Flash physical CVC; prove CAN VIN smoke | `cargo xtask flash-cvc` succeeds; UDS 22F190 returns VIN from `cvc_identity.toml` |
-| P5-HIL-03 | pending | live_bench | Flash physical SC via XDS110; prove proxy routing | TMS570 image flashed; one routed SC diag smoke step succeeds |
-| P5-HIL-04 | pending | live_bench | Run read-only HIL cases (`hil_sovd_01`, `hil_sovd_05`) | Inventory + metadata scenarios pass live |
+| P5-HIL-02 | done | live_bench | Flash physical CVC; prove CAN VIN smoke | CVC ST-LINK serial `001A00363235510B37333439` flashed from the Windows host with `H:\taktflow-embedded-production\build\cvc-arm\cvc_firmware.bin` (`cvc_firmware.elf` sha256 `8076768B0A3FC983685DF6E9B1FB420AD9787F73E5445729FBA02636601D21C4`); Pi `can0` regained `0x010` heartbeat and direct UDS `0x22 F190` on `0x7E0/0x7E8` reassembled to VIN `TAKTFLWCVC0000001` |
+| P5-HIL-03 | blocked | live_bench | Flash physical SC via XDS110; prove proxy routing | XDS110/DSLite flash of `H:\taktflow-embedded-production\build\tms570\sc.elf` succeeded and COM11 UART proves the TMS570 app is alive, but the routed SC diagnostic smoke is still blocked: direct `0x7E3/0x644` TesterPresent got no reply, CDA `PUT /vehicle/v15/components/sc00000` emitted no visible SC-specific UDS traffic on Pi `can0`, and raw `/sovd/v1/components/sc/faults` still degrades to `503 backend.degraded` after override reset |
+| P5-HIL-04 | done | live_bench | Run read-only HIL cases (`hil_sovd_01`, `hil_sovd_05`) | `cargo test -p integration-tests --test phase5_hil_sovd_01_read_faults_all -- --nocapture` and `cargo test -p integration-tests --test phase5_hil_sovd_05_components_metadata -- --nocapture` both passed live against Pi `192.168.0.197:21002`; D6 scenario now matches the live BCM discovery name `Body Control Module` |
 | P5-HIL-05 | pending | live_bench | Run clear-fault + operation scenarios (`02`, `03`) | Non-empty→empty transition proven; operation start/complete behavior matches contract |
 | P5-HIL-06 | pending | live_bench | Run fault-injection + error-handling (`04`, `08`) | Injected fault visible via SOVD; error behavior matches contract |
 | P5-HIL-07 | pending | live_bench | Run concurrency + scale (`06`, `07`) | Concurrent test passes without deadlock; large-fault-list handled |
@@ -1691,6 +1691,28 @@ pulled in.
   `192.168.0.197:21002` showed CVC, SC, and BCM each going
   non-empty â†’ `DELETE /sovd/v1/components/{id}/faults` â†’ empty.
 
+- 2026-04-20 P5-HIL-02 closed â€” physical CVC reflashed on ST-LINK
+  serial `001A00363235510B37333439` with the last known-good
+  `build/cvc-arm/cvc_firmware.bin` artifact (elf sha256
+  `8076768B0A3FC983685DF6E9B1FB420AD9787F73E5445729FBA02636601D21C4`);
+  Pi `can0` again showed `0x010` heartbeat and direct UDS `0x22 F190`
+  on `0x7E0/0x7E8` reassembled to VIN `TAKTFLWCVC0000001`.
+
+- 2026-04-20 P5-HIL-03 attempted -> rebuilt the TMS570 SC image with
+  `HIL=1` from embedded HEAD `7c18f0dc`, flashed
+  `H:\taktflow-embedded-production\build\tms570\sc.elf` over XDS110 via
+  `DSLite.exe`, and confirmed post-flash life on `COM11` with runtime
+  lines such as `[5s] SC: CVC=OK FZC=OK RZC=OK relay=ON`. The bench is
+  still up afterward (`/sovd/v1/components` still shows `bcm`, `cvc`,
+  `sc`, and Pi `can0` still shows CVC heartbeat `0x010`), but the
+  routed SC diagnostic proof remains blocked: direct `TesterPresent` on
+  `0x7E3/0x644` got no reply, the board emits no `0x015` TCU heartbeat,
+  CDA `PUT /vehicle/v15/components/sc00000` returns `201` without any
+  visible `0x7E3` traffic on Pi `can0`, and raw
+  `/sovd/v1/components/sc/faults` still degrades to
+  `503 backend.degraded` after
+  `DELETE /__bench/components/sc/faults/override`.
+
 ### 13.3 Active Blockers (snapshot)
 
 - Raw CVC/SC CDA passthrough remains unstable after the bench override is
@@ -1705,11 +1727,30 @@ pulled in.
 - aarch64 cross-compile partial — missing `aarch64-linux-gnu-gcc`
   on Windows dev host; laptop has the toolchain native and should
   become the primary cross-compile host.
+- Current dirty-tree CVC STM32 image under
+  `H:\taktflow-embedded-production\build\stm32\cvc` is bench-regressing:
+  after flash it booted on `COM3` but stayed `rx=0` / `h11=0` / `h12=0`
+  on the UART status line, Pi `can0` lost `0x010` heartbeat, and direct
+  `0x22 F190` requests on `0x7E0` got no `0x7E8` response. Bench
+  service was restored by reflashing the older proven
+  `build/cvc-arm/cvc_firmware.bin` artifact instead of the new
+  dirty-tree `build/stm32/cvc/cvc.bin`.
 - Laptop CDA state, synced to actual bench work: `phase5-cda` is up with
   the patched `cda-comm-doip` runtime and both Phase 5 MDD aliases
   loaded, component inventory still answers, but current raw `cvc`/`sc`
   fault reads time out downstream. This is the laptop-side nuance behind
   the Pi raw-passthrough blocker above.
+- TMS570 XDS110 routing gap: the physical board now runs the flashed
+  `sc.elf` image and is alive on `COM11`, but the Phase 5 diagnostic
+  alias still behaves like a stale TCU-style diagnostic path
+  (`0x7E3` request, `0x644` response, expected heartbeat `0x015`).
+  The embedded hardware map has now been normalized so the XDS110 board
+  is tracked as `sc`, which matches the active 3-ECU bench contract.
+  The remaining blocker is narrower: the live SC board emitted no
+  `0x015` heartbeat, did not answer the direct `0x7E3/0x644`
+  `TesterPresent` probe, and CDA `PUT sc00000` still produced no
+  visible routed SC UDS traffic on Pi `can0`, so `P5-HIL-03` is now
+  blocked by routed-diagnostic behavior rather than ECU identity.
 - Historical note: the next D3 blocker bullet is stale pre-override
   wording from before `P5-HIL-01` was closed.
 - Archived pre-override note (stale): D3 SOVD clear-faults HIL precondition still unmet — all 3 bench ECUs
@@ -1721,6 +1762,11 @@ pulled in.
   no per-component clearable fault path exists yet.
 - Observer nginx overlay not yet live-verified on the Pi.
 - Auth model runtime wiring pending (P6-01, gated by G-AUTH-DECISION).
+- Historical note: the next hardware-execution bullet is stale. Physical
+  bench work is active now -- `P5-HIL-02` closed with a real ST-LINK
+  CVC flash plus live CAN VIN smoke, and `P5-HIL-03` reached a
+  successful XDS110 TMS570 flash with live UART bring-up. The remaining
+  gap is routed SC diagnostics, not lack of bench execution.
 - Physical hardware execution has not started — zero STM32 ARM builds,
   zero ST-LINK runs, zero TMS570 flashing, zero real-CAN smoke.
 - ODX schema licensing (R3) undecided — community XSD fallback in

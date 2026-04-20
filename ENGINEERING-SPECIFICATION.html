@@ -205,16 +205,19 @@
 
 <div class="meta">
   <span><strong>Document ID:</strong> TAKTFLOW-SOVD-ENG-SPEC</span>
-  <span><strong>Revision:</strong> 1.4</span>
+  <span><strong>Revision:</strong> 3.0</span>
   <span><strong>Status:</strong> Draft</span>
-  <span><strong>Date:</strong> 2026-04-19</span>
+  <span><strong>Date:</strong> 2026-04-20</span>
   <span><strong>Owner:</strong> Taktflow SOVD workstream</span>
 </div>
 
 <blockquote>
 Single-document browser reference covering product context, use-case flow,
 requirements, architecture, safety, security, verification, and delivery
-story for the Taktflow Eclipse OpenSOVD diagnostic stack.
+story for the Taktflow OpenSOVD diagnostic stack &mdash; an internal
+zonal diagnostic stack implementing the Eclipse OpenSOVD capability scope
+as an internal engineering deliverable. Upstream contribution to Eclipse
+was dropped from scope on 2026-04-20; see <a href="MASTER-PLAN.md">MASTER-PLAN.md</a> &sect;1.5 for the alignment model.
 </blockquote>
 
 <nav class="toc">
@@ -275,7 +278,7 @@ Software path green end-to-end in Docker SIL; observer dashboard serving live
 LAN. Physical STM32 flashing and TMS570 integration remain (see hardening
 gates in <a href="MASTER-PLAN.md">MASTER-PLAN.md</a>).</p>
 
-<h3>1.1 Progress Snapshot (2026-04-19)</h3>
+<h3>1.1 Progress Snapshot (2026-04-20)</h3>
 
 <table>
 <thead><tr><th>Area</th><th>State</th><th>Evidence</th></tr></thead>
@@ -293,24 +296,30 @@ gates in <a href="MASTER-PLAN.md">MASTER-PLAN.md</a>).</p>
 <tr><td>Phase 5 &mdash; doip-codec fork migration (P5-HIL-08)</td><td><span class="badge badge-done">Done</span></td><td>PARTIAL migration landed in <code>taktflow-embedded-production</code> laptop commit <code>4a7457b5</code>: <code>proxy-doip/</code> now pins theswiftfox <code>doip-codec</code> rev <code>0dba319</code> + <code>doip-definitions</code> rev <code>bdeab8c</code> (same pins as Eclipse CDA). Thin shims preserve <code>server.rs</code> public API (DoipHandler + AliveCheck + DiagnosticAck dispatch untouched); 17 tests pass on laptop</td></tr>
 <tr><td>Phase 5 &mdash; MDD FlatBuffers emitter (P5-HIL-09)</td><td><span class="badge badge-scaffold">Partial</span></td><td>Minimal <code>--emit=mdd</code> added to <code>tools/odx-gen</code> (laptop commit <code>b5a804aa</code> in <code>taktflow-embedded-production</code>) covering root <code>EcuData</code> fields <code>version/ecu_name/revision/metadata/dtcs</code> with 6 byte-level round-trip tests (20 pass total). Remainder split into sub-unit <code>P5-HIL-09b</code>: 80-table schema with 10 unions and cyclic DOP/Param refs needs <code>flatc</code>-generated bindings, beyond the 45-min slice budget</td></tr>
 <tr><td>Phase 5 &mdash; Physical STM32 + TMS570 flash</td><td><span class="badge badge-stub">Not started</span></td><td>Hardening gate due 2026-07-31 for first ARM smoke</td></tr>
-<tr><td>Phase 6 pre-work (available now)</td><td><span class="badge badge-done">Done</span></td><td>All 8 P6-PREP units closed: 01 auth profile ADR, 02 integrator-guide skeleton, 03 safety-delta inventory, 04 SIL rate-limit slice, 05 local OTLP tracing spike (visible span proved via Jaeger), 06 local SIL DLT emission spike (feature-gated, <code>[logging.dlt]</code> config surface, verifier doc), 07 ADR-0025 CVC OTA scope lock, 08 contribution-readiness + PR sequence pack</td></tr>
-<tr><td>Phase 6 &mdash; TLS everywhere, OTA, safety case delta</td><td><span class="badge badge-stub">Blocked on P5 HIL green</span></td><td>6 post-entry units (P6-01..06) in MASTER-PLAN; 10 dated hardening gates track exit</td></tr>
-<tr><td>Upstream Phase 2 (COVESA + Extended Vehicle)</td><td><span class="badge badge-scaffold">Scaffolded</span></td><td>4 of 8 units closed: UP2-01 <a href="docs/adr/ADR-0026-covesa-semantic-api-mapping.md">ADR-0026 COVESA/VSS mapping</a> (7-row example mapping table), UP2-02 <a href="docs/adr/ADR-0027-extended-vehicle-scope.md">ADR-0027 Extended Vehicle scope</a> (9 REST endpoints + 6 MQTT topics), UP2-06 <a href="docs/deploy/pilot-oem/README.md">pilot OEM playbook</a>, UP2-08 <a href="docs/upstream/phase-2-discussion-pack.md">upstream discussion pack</a> (9 open questions isolated from settled decisions). Remaining: UP2-03/04/05/07 (crate scaffolds + scenario tests). Target 2027-10-31 per Eclipse project proposal months 13&ndash;18</td></tr>
-<tr><td>Upstream Phase 3 (Edge AI/ML + ISO/DIS 17978-1.2)</td><td><span class="badge badge-scaffold">Scaffolded</span></td><td>3 of 7 units closed: UP3-01 <a href="docs/adr/ADR-0028-edge-ml-fault-prediction.md">ADR-0028 Edge ML scope</a> (memory envelopes per tier, shadow-slot lifecycle), UP3-02 <a href="docs/adr/ADR-0029-ml-model-signing-rollback.md">ADR-0029 model signing + rollback</a> (CMS/X.509 reusing ADR-0025 PKI with distinct EKU), UP3-03 <a href="docs/compliance/iso-17978-1-2-gap-analysis.md">ISO/DIS 17978-1.2 gap-analysis skeleton</a> (clause-by-clause headings for Parts 1 + 2). Remaining: UP3-04/05/06/07 (sovd-ml crate scaffold, signed-verify SIL, observer ML widget, scenario tests). Target 2028-04-30 per Eclipse project proposal months 19&ndash;24</td></tr>
+<tr><td>Phase 6 pre-work (available now)</td><td><span class="badge badge-done">Done</span></td><td>All 7 P6-PREP units closed: 01 auth profile ADR, 02 integrator-guide skeleton, 03 safety-delta inventory, 04 SIL rate-limit slice, 05 local OTLP tracing spike (visible span proved via Jaeger), 06 local SIL DLT emission spike (feature-gated, <code>[logging.dlt]</code> config surface, verifier doc), 07 ADR-0025 CVC OTA scope lock. Former P6-PREP-08 (contribution-readiness + PR sequence pack) archived on 2026-04-20 with the upstream-contribution drop; see <a href="docs/contribution/archive/">docs/contribution/archive/</a>.</td></tr>
+<tr><td>Phase 6 &mdash; TLS everywhere, OTA, safety case delta, integrator guide</td><td><span class="badge badge-stub">Blocked on P5 HIL green</span></td><td>6 post-entry units (P6-01..06) in MASTER-PLAN; hardening gates track exit. Capabilities: TLS everywhere, DLT rollout, OTel rollout, HARA/FMEA approval, CVC OTA end-to-end, integrator guide finalization.</td></tr>
+<tr><td>Phase 7 &mdash; Semantic Interoperability + Extended Vehicle</td><td><span class="badge badge-scaffold">Scaffolded</span></td><td>ADRs landed: <a href="docs/adr/ADR-0026-covesa-semantic-api-mapping.md">ADR-0026 COVESA/VSS mapping</a> (7-row example table), <a href="docs/adr/ADR-0027-extended-vehicle-scope.md">ADR-0027 Extended Vehicle scope</a> (9 REST endpoints + 6 MQTT topics). Crates scaffolded: <code>sovd-covesa</code>, <code>sovd-extended-vehicle</code>; semantic schema harness at <code>sovd-interfaces/schemas/semantic/</code>; SIL scenario skeletons for VSS DTC list and EV fault log. Pending: HTTP-route mounting in <code>sovd-server</code>, actuator-write whitelist, full semantic schema set, MQTT publisher wiring.</td></tr>
+<tr><td>Phase 8 &mdash; Edge AI/ML Integration</td><td><span class="badge badge-scaffold">Scaffolded</span></td><td>ADRs landed: <a href="docs/adr/ADR-0028-edge-ml-fault-prediction.md">ADR-0028 Edge ML scope + lifecycle</a>, <a href="docs/adr/ADR-0029-ml-model-signing-rollback.md">ADR-0029 model signing + rollback</a> (CMS/X.509 reusing ADR-0025 PKI with distinct EKU). Crate scaffolded: <code>sovd-ml</code> with signed-model verify-before-load harness; dashboard widget <code>UC21MlInference.svelte</code>; disabled SIL scenario skeleton for ML inference. Pending: ML inference operation wired into <code>sovd-server</code>, hot-swap + rollback proven on Pi HIL, Edge Native deployment boundary.</td></tr>
+<tr><td>Phase 9 &mdash; Cybersecurity (ISO 21434) + Cert Lifecycle</td><td><span class="badge badge-stub">Planned</span></td><td>New phase introduced with the v3.0 master plan rewrite. Planned ADR-0032 (cybersecurity profile), ADR-0033 (cert lifecycle). TARA artifacts planned per surface (bench, SOVD server, CDA+DoIP, OTA); CAL assignment matrix; internal CA with offline root + online intermediate; automated rotation <code>expiry &minus; 30d</code>; CRL + OCSP stapling; OAuth2/OIDC bearer validator replacing scaffold; hybrid auth profile end-to-end.</td></tr>
+<tr><td>Phase 10 &mdash; Ecosystem Alignment (S-CORE compat, COVESA, SDV WG)</td><td><span class="badge badge-stub">Planned</span></td><td>New phase. Planned ADR-0034 (S-CORE backend compatibility interface). Taktflow backends pluggable behind an S-CORE-compatible trait surface; periodic spec-drift reviews for COVESA VSS and Eclipse SDV WG; Eclipse Edge Native boundary verification. No upstream PRs &mdash; compatibility one-way.</td></tr>
+<tr><td>Phase 11 &mdash; Conformance + Documentation Maturity</td><td><span class="badge badge-stub">Planned</span></td><td>New phase. Planned ADR-0035 (ISO 17978 conformance subset). Conformance suites for ISO 17978, ISO 20078 (Extended Vehicle subset), and edge-case/interop. Integrator guide, OEM playbook, repair-shop workflow guide, example walkthroughs (OTA, predictive maintenance, repair-shop session), traceability matrix.</td></tr>
+<tr><td>Upstream contribution to Eclipse OpenSOVD</td><td><span class="badge badge-stub">Dropped from scope (2026-04-20)</span></td><td>Internal decision D-01 of the v3.0 master plan. Prior contribution plans archived under <a href="docs/contribution/archive/">docs/contribution/archive/</a>, <a href="docs/upstream/archive/">docs/upstream/archive/</a>, and <a href="docs/adr/archive/">docs/adr/archive/</a>. The capability scope (all four Eclipse OpenSOVD in-scope buckets plus future-proofing extensions) is retained as an internal deliverable.</td></tr>
 </tbody>
 </table>
 
-<h3>1.2 Repository structure &mdash; owned, not forked (as of 2026-04-19)</h3>
+<h3>1.2 Repository structure &mdash; internal monorepo (as of 2026-04-20)</h3>
 
 <p><code>opensovd-core/</code> is Taktflow-owned &mdash; a normal monorepo
 subdirectory under <code>taktflow-opensovd</code>, no nested <code>.git/</code>.
-Upstream <a href="https://github.com/eclipse-opensovd/opensovd-core">eclipse-opensovd/opensovd-core</a>
-is an empty stub, so the DFM, Gateway, Server, fault-sink, ws-bridge, observer
-API, and dashboard here are all originals. <code>classic-diagnostic-adapter/</code>
-stays vendored verbatim from upstream as the SOVD&rarr;UDS/DoIP bridge for
-legacy ECUs. When the team decides to contribute upstream, individual crates
-split out via <code>git subtree split --prefix=opensovd-core/&lt;crate&gt;</code>
-into a throwaway branch &mdash; no persistent fork required.</p>
+The DFM, Gateway, Server, fault-sink, ws-bridge, observer API, and dashboard
+here are all originals. <code>classic-diagnostic-adapter/</code> stays
+vendored verbatim from Eclipse <a href="https://github.com/eclipse-opensovd/classic-diagnostic-adapter">classic-diagnostic-adapter</a> as a
+read-only SOVD&rarr;UDS/DoIP bridge for legacy ECUs and is never edited
+inline. Any CDA fixes required for Taktflow behaviour land in separate
+crates or external patches, keeping CDA's byte-for-byte pins intact for
+reproducibility. Upstream contribution to Eclipse OpenSOVD was dropped
+from project scope on 2026-04-20 (decision D-01 of the v3.0 master plan);
+the tree stays internal.</p>
 
 <h3>1.3 Conformance scope</h3>
 <ul>
@@ -610,7 +619,7 @@ graph LR
 <tr><td>NFR-4.1</td><td>SIL/HIL/prod parity</td><td>Same binary, config-only diff</td><td>CI matrix</td></tr>
 <tr><td>NFR-4.2</td><td>Host OS portability</td><td>Linux x86_64/aarch64 + Windows</td><td>CI matrix</td></tr>
 <tr><td>NFR-5.1</td><td>7-ECU MVP</td><td>Full topology concurrently</td><td>HIL 01</td></tr>
-<tr><td>NFR-6.1</td><td>Upstream style parity</td><td>Indistinguishable from CDA</td><td>Phase 4 audit</td></tr>
+<tr><td>NFR-6.1</td><td>CDA style parity</td><td>Code idioms match the vendored CDA surface</td><td>Phase 4 audit</td></tr>
 </tbody>
 </table>
 
@@ -1092,8 +1101,8 @@ graph TB
   <li><strong>Rust-first.</strong> Async (Tokio), memory-safe, <code>#![forbid(unsafe_code)]</code> where possible. Clippy pedantic + deny enforced in CI.</li>
   <li><strong>Trait boundaries, not frameworks.</strong> <code>sovd-interfaces</code> defines all contracts with zero I/O. Implementations are swappable.</li>
 <li><strong>Spec-locked API surface.</strong> OpenAPI schema snapshot-tested against ASAM SOVD v1.1 OpenAPI (ISO&nbsp;17978-3).</li>
-  <li><strong>Build first, contribute later.</strong> No upstream PRs during early phases.</li>
-  <li><strong>Owned core, vendored bridge.</strong> <code>opensovd-core/</code> is Taktflow-owned (upstream is an empty stub); <code>classic-diagnostic-adapter/</code> stays vendored verbatim from upstream and is never edited inline &mdash; CDA modifications land in separate Taktflow crates or external patches.</li>
+  <li><strong>Internal engineering deliverable.</strong> Taktflow OpenSOVD is not contributed upstream; the tree is internal. Prior upstream-contribution plans archived under <a href="docs/contribution/archive/">docs/contribution/archive/</a> per decision D-01 (2026-04-20). See <a href="docs/adr/archive/0007-build-first-contribute-later.md">ADR-0007 (archived)</a> for historical context.</li>
+  <li><strong>Owned core, vendored bridge.</strong> <code>opensovd-core/</code> is Taktflow-owned; <code>classic-diagnostic-adapter/</code> stays vendored verbatim from Eclipse and is never edited inline &mdash; CDA modifications land in separate Taktflow crates or external patches.</li>
   <li><strong>Isolation over integration on the safety axis.</strong> Fault Library is the ONLY boundary between QM and ASIL-D.</li>
 </ol>
 
@@ -1163,8 +1172,9 @@ as a collection of services:</p>
 
 <p>So the real problem is not "invent an API." The actual product obligation is
 to keep legacy UDS and existing firmware behavior intact, add a modern REST
-diagnostic surface, and preserve safety boundaries plus upstream contribution
-discipline.</p>
+diagnostic surface, and preserve safety boundaries plus internal engineering
+discipline (ADR hygiene, ASPICE traceability, ISO 21434 cybersecurity case,
+conformance testing).</p>
 
 <h3>14.3 Development Flow</h3>
 
@@ -1324,7 +1334,7 @@ the full chain rather than reading each document in isolation.</p>
   <li>it verifies the system at unit, integration, SIL, and HIL levels</li>
   <li>it uses phase exits and milestones instead of declaring everything done at once</li>
   <li>it preserves the safety boundary instead of treating diagnostics as a free-for-all</li>
-  <li>it keeps an upstream contribution path open by design</li>
+  <li>it keeps internal quality bars (ADR hygiene, ASPICE traceability, conformance suites) aligned with the same engineering-spec discipline an upstream contribution would have required</li>
 </ul>
 
 <p><strong>Bottom line:</strong> use cases define the meaningful stories,
@@ -1352,7 +1362,7 @@ maturity story explicit.</p>
 <tr><td>DEPLOYMENT-GUIDE.md</td><td>SIL/HIL/production deployment</td></tr>
 <tr><td>DEVELOPER-GUIDE.md</td><td>Build, run, and test instructions</td></tr>
 <tr><td>GLOSSARY.md</td><td>Domain terminology</td></tr>
-<tr><td>docs/adr/</td><td>25 Architecture Decision Records (ADR-0001 &hellip; ADR-0025)</td></tr>
+<tr><td>docs/adr/</td><td>31 accepted Architecture Decision Records (ADR-0001 &hellip; ADR-0031), 4 planned (ADR-0032 cybersecurity profile, ADR-0033 cert lifecycle, ADR-0034 S-CORE compat, ADR-0035 ISO 17978 conformance subset), 1 archived (<a href="docs/adr/archive/0007-build-first-contribute-later.md">ADR-0007</a>)</td></tr>
 </tbody>
 </table>
 
@@ -1375,6 +1385,7 @@ maturity story explicit.</p>
 <tr><td>1.8</td><td>2026-04-19</td><td>SOVD workstream</td><td>Progress snapshot: Phase 6 pre-work now complete (all 8 P6-PREP units done, including 06 local SIL DLT spike with feature-gated <code>[logging.dlt]</code> surface). P5-HIL-08 doip-codec fork migration closed in cross-repo <code>taktflow-embedded-production</code> (laptop commit <code>4a7457b5</code>); <code>proxy-doip</code> now pins the same theswiftfox revisions Eclipse CDA uses, with thin shims preserving <code>server.rs</code>. Added explicit closed row for each repo-only Phase 5 milestone.</td></tr>
 <tr><td>1.9</td><td>2026-04-19</td><td>SOVD workstream</td><td>Progress snapshot: P5-HIL-09 MDD FlatBuffers emitter landed as partial in <code>taktflow-embedded-production</code> laptop commit <code>b5a804aa</code>. Minimal emitter covers root <code>EcuData</code> fields with 6 byte-level round-trip tests; remainder split into <code>P5-HIL-09b</code> (80-table CDA schema with 10 unions and cyclic DOP/Param refs requires <code>flatc</code>-generated bindings beyond the 45-min slice budget).</td></tr>
 <tr><td>2.0</td><td>2026-04-19</td><td>SOVD workstream</td><td>Upstream Phase 2 + Phase 3 scaffolded. Four ADRs landed (ADR-0026 COVESA/VSS mapping, ADR-0027 Extended Vehicle scope + pub/sub, ADR-0028 Edge ML scope + lifecycle, ADR-0029 ML model signing + rollback), pilot OEM playbook skeleton, Phase 2 upstream discussion pack with 9 isolated open questions, and ISO/DIS 17978-1.2 compliance gap-analysis skeleton. 7 of 15 combined UP2+UP3 units closed; remaining 8 are crate scaffolds and scenario tests that unblock after Phase 6 complete.</td></tr>
+<tr><td>3.0</td><td>2026-04-20</td><td>SOVD workstream</td><td>Scope realignment release. Decision D-01 drops upstream contribution to Eclipse OpenSOVD; prior plans archived under <code>docs/contribution/archive/</code>, <code>docs/upstream/archive/</code>, <code>docs/adr/archive/</code> (ADR-0007 archived). Master plan rewritten (v3.0) in Vector-Informatik manual style with reference-time planning (phase- and milestone-relative anchors only, absolute dates preserved for past facts), all four Eclipse OpenSOVD in-scope capability buckets (Core SOVD, Security &amp; Compliance, Documentation &amp; Testing, Ecosystem Integration) and four future-proofing extensions (Semantic Interoperability, Edge AI/ML, Extended Vehicle, ISO 21434 + cert lifecycle) expanded into per-feature specifications. Introduced six new phases P6 through P11 with bounded execution units. New ADRs flagged as planned: ADR-0032 cybersecurity profile, ADR-0033 cert lifecycle, ADR-0034 S-CORE backend compatibility, ADR-0035 ISO 17978 conformance subset. This spec updated to match: progress-snapshot table rewritten to list phases P6/P7/P8/P9/P10/P11 explicitly, upstream-contribution row marked Dropped, design-principle wording updated, NFR-6.1 relabelled "CDA style parity", 1.2 repository-structure note rewritten.</td></tr>
 </tbody>
 </table>
 

@@ -40,7 +40,7 @@ All paths are relative to the repository root
 | ADR-0004 | CAN-to-DoIP proxy on Raspberry Pi for physical ECUs | Accepted | `adr/0004-can-to-doip-proxy-on-raspberry-pi.md` |
 | ADR-0005 | Virtual ECUs speak DoIP directly (no proxy for POSIX builds) | Accepted | `adr/0005-virtual-ecus-speak-doip-directly.md` |
 | ADR-0006 | Fork + track upstream + extras-on-top model | Accepted | `adr/0006-fork-track-upstream-extras-on-top.md` |
-| ADR-0007 | Build-first contribute-later (no upstream PRs Phases 0-3) | Accepted | `adr/0007-build-first-contribute-later.md` |
+| ADR-0007 | Build-first contribute-later (archived 2026-04-20 — upstream contribution dropped from scope) | Archived | `adr/archive/0007-build-first-contribute-later.md` |
 | ADR-0008 | Community-written ODX XSD as default, ASAM as pluggable drop-in | Accepted | `adr/0008-odx-community-xsd-default.md` |
 | ADR-0009 | Authentication — both OAuth2/OIDC and mTLS client certificates | Accepted | `adr/0009-auth-both-oauth2-and-cert.md` |
 | ADR-0010 | DoIP discovery — both broadcast and static configuration | Accepted | `adr/0010-doip-discovery-both-broadcast-and-static.md` |

@@ -26,7 +26,7 @@ achievement:
   - Phase 1 embedded UDS + DoIP POSIX complete — Dcm 0x19/0x14/0x31 handlers pass HIL, DoIP listener on 13400
   - Phase 2 CDA integration complete — CAN-to-DoIP proxy reaches physical CVC, SIL + HIL smoke green
   - Phase 3 Fault Lib + DFM complete — embedded Fault Shim → DFM SQLite → SOVD GET round-trip <100 ms in Docker
-  - Phase 4 SOVD Server + Gateway complete — 5 MVP use cases pass in Docker Compose, every crate is contribution-ready
+  - Phase 4 SOVD Server + Gateway complete — 5 MVP use cases pass in Docker Compose, every crate is in internal-review shape
   - Phase 5 Stage 1 in progress — fault-sink-mqtt + ws-bridge + observer dashboard + observability wiring merged to main; Mosquitto kit still isolated on feat/mqtt-broker-deploy
   - doip-codec evaluation spike complete — partial migration plan documented (docs/doip-codec-evaluation.md), CDA fork pins captured
   - ADR-0023 trimmed physical bench to 3 ECUs (CVC, SC, BCM); FZC/RZC retired
@@ -41,13 +41,9 @@ achievement:
   - 2026-04-19 **public SOVD SIL live at `https://sovd.taktflow-systems.com/`** — sovd-main binary cross-built on the laptop, deployed to Docker on the second VPS (87.106.147.203) as `taktflow_sovd_main` container, dockerized nginx:alpine sidecar `taktflow_sovd_docs` serves the spec HTML, dockerized Caddy (`taktflow_caddy`) terminates TLS with Let's Encrypt and reverse-proxies `/sovd/v1/*` → sovd-main:20002 and `/sovd/*` → sovd-docs; `GET https://sovd.taktflow-systems.com/sovd/v1/components` returns 4 components (bcm, cvc, sc, dfm) with pre-seeded faults on cvc (P0A1F, P0562) and sc (U0100); UC1 read faults, UC3 clear faults, UC5 list operations, UC6 start operation, UC8 components metadata, UC9 DID data, UC14 component topology, UC15 session, UC16 audit log, UC18 gateway backends all exercisable publicly. Old VPS (152.53.245.209) retained for foxBMS + taktflow-embedded-production only; legacy `/sovd/*` URLs 301-redirect to the new host.
 
 decisions_with_rationale:
-  - decision: Mature the implementation before upstream contribution
-    rationale: Upstream contributions land better when the component is end-to-end working with tests and documentation. Pushing half-built code triggers repeated review cycles that slow both sides.
-    how_to_apply: Contributions upstream are opened only after the component has passing integration tests, an ADR, and architect review. Timing is decision-driven, not calendar-driven (see §upstream_contribution_priority).
-
-  - decision: Taktflow-maintained opensovd-core tree; CDA vendored from upstream (repo-structure update 2026-04-19)
-    rationale: Upstream `eclipse-opensovd/opensovd-core` was at the stub stage when this work started. The implementation (DFM, Gateway, Server, fault-sink-mqtt, ws-bridge, observer API, dashboard) was written in this tree. CDA is stable upstream code used unmodified as the SOVD→UDS/DoIP bridge.
-    how_to_apply: opensovd-core/ is a regular monorepo subdirectory. When components mature enough for contribution, a throwaway branch is produced via `git subtree split --prefix=opensovd-core/<crate>` and submitted via a fresh fork of eclipse-opensovd/opensovd-core per the Eclipse contribution workflow. CDA (`classic-diagnostic-adapter/`) stays mirrored verbatim; any CDA modifications land in separate crates or external patches, never inline edits. Upstream-awareness is a monthly review of upstream commits and discussions.
+  - decision: Drop upstream contribution to Eclipse OpenSOVD (2026-04-20)
+    rationale: Taktflow OpenSOVD is scoped as an internal zonal diagnostic stack, not an Eclipse deliverable. Prior plans for upstream contribution are archived under `docs/contribution/archive/`, `docs/upstream/archive/`, and `docs/adr/archive/`.
+    how_to_apply: No upstream PR workflow. The `opensovd-core/` tree stays an internal monorepo subdirectory. CDA (`classic-diagnostic-adapter/`) remains vendored verbatim from upstream as a dependency only; any local CDA changes land in separate crates, never inline edits.
 
   - decision: Three-tier deployment — VPS serves public SIL, Pi serves HIL, laptop is the development host (architectural split finalized 2026-04-19)
     rationale: SIL runs entirely in software (DoIP over loopback, virtual ECUs) and has no hardware dependency, so it belongs on a publicly reachable host. The Pi is the only host with a USB-CAN adapter attached to physical ECUs, so HIL must stay on the Pi. Mixing the two tiers on the same host ties public availability to bench state and makes the Pi's 4 GB RAM a single point of failure for demos.
@@ -69,8 +65,8 @@ decisions_with_rationale:
     rationale: $0 recurring cost, authority stays on-bench, defers AWS fleet-uplink complexity to Stage 2 without blocking Phase 5 exit
     how_to_apply: Reuse taktflow-embedded-production cloud_connector+ws_bridge; Prometheus+Grafana replaces Timestream; SvelteKit static served by nginx with client-cert auth
 
-  - decision: Upstream house style before custom patterns — adopt CDA conventions by default
-    rationale: Minimizes diff when we eventually upstream; avoids reinventing solved problems
+  - decision: Adopt CDA conventions by default before custom patterns
+    rationale: CDA is a vendored dependency we rely on; matching its idioms avoids reinventing solved problems and keeps the integration surface predictable
     how_to_apply: Generics over dynamic dispatch (only security plugin is dyn Trait); tokio::io::split on DoIP streams; mbedtls fallback when OpenSSL hits walls; tokio-console for deadlock debugging; deviations documented per-ADR
 
   - decision: doip-codec PARTIAL migration in Phase 5 Line B
@@ -161,13 +157,10 @@ current_state:
     - Phase 4 complete — 2026-10-15 (M4)
     - Phase 5 in progress — target 2026-11-30 (M5 ships end of Phase 6)
     - Phase 6 not started — target 2026-12-31
-    - Upstream Phase 2 (COVESA + Extended Vehicle + pilot OEM) not started — target 2027-10-31 (M6; months 13–18 per Eclipse OpenSOVD project proposal)
-    - Upstream Phase 3 (Edge AI/ML + ISO/DIS 17978-1.2) not started — target 2028-04-30 (M7; months 19–24 per Eclipse OpenSOVD project proposal)
+    - Upstream contribution to Eclipse OpenSOVD dropped from scope 2026-04-20; archived plans under `docs/contribution/archive/`
     - 3 active ECUs on HIL bench (CVC physical CAN, SC TMS570 CAN, BCM virtual DoIP)
-    - Upstream-awareness current — monorepo owns opensovd-core, CDA stays vendored verbatim, monthly review cadence
     - Zero MISRA violations, zero clippy pedantic violations on new code
     - AWS IoT Core uplink live (ADR-0024 Stage 2 delivered)
-    - No upstream PRs opened — first PR scheduled after Phase 5 physical HIL green
 
 blockers:
   active_technical:
@@ -181,12 +174,10 @@ blockers:
     - Physical hardware execution has not started — zero STM32 ARM builds, zero ST-LINK flash runs, zero TMS570 flashing, zero real-CAN smoke as of 2026-04-19; plan budgets Phase 5 HIL for 2026-10-16..11-30 but first ARM cross-compile must land by 2026-07-31 to preserve debug surface before M5
     - OTA scope/time mismatch — ADR-0025 estimates 4–6 weeks of CVC OTA work squeezed into a 4-week Phase 6 window (2026-12-01..12-31); either scope down (drop boot-OK witness, defer N=5 rollback metrics), steal 2 weeks from late Phase 5, or slip M5 into Q1 2027
     - 30-day consecutive HIL-green success criterion requires Phase 5 HIL exit by 2026-12-01 (not 2026-11-30) to count the 30 days before year-end; zero calendar slack
-    - Upstream contribution timing — first PRs planned after Phase 5; if they land in late December they hit the Eclipse holiday freeze. Sequencing rehearsal (CLA/ECA verification + design discussion in `opensovd/discussions`) needed by 2026-11-15 to avoid Q1 2027 slip.
     - Safety case delta claimed "ongoing" but no HARA-update work products evidenced in `docs/safety/` for new UDS routines (0x31 motor_self_test / brake_check); safety engineer veto (§governance.decision_authority) can block Phase 6 exit if work concentrates in Dec — pull HARA work forward to finish by 2026-09-30
 
   standing:
     - TMS570 Ethernet still absent — not a current blocker (CAN-to-DoIP proxy path handles it) but blocks any future native-DoIP-on-TMS570 ambition
-    - R9 — If upstream begins parallel work on opensovd-core, coordination is required: either adopt their scaffolding or align designs via the architecture board. Handled through regular upstream-awareness review and early contribution of sovd-interfaces as a coordination surface.
     - R11 — 14-person peak allocation depends on Taktflow not pulling workstream members to other priorities; plan rates High/High with no concrete buffer; architect reserves a 10% schedule buffer per phase starting Phase 5 and escalates to program lead if any phase trends >5% over plan-days
     - ODX schema licensing (R3) — ASAM official vs community XSD still undecided for odx-converter; we ship the community subset under Apache-2.0 as fallback; decision owner = embedded lead, due 2026-05-15
 
@@ -244,12 +235,6 @@ hardening_gates:
     owner: Architect + Embedded lead
     evidence: ADR-0025 amended to lock CVC-only scope, explicit in/out list for N=5 rollback metrics + boot-OK witness + MQTT uplink; revised effort estimate fits Phase 6 window or steals named Phase 5 days
     blocks_if_missed: Phase 6 OTA overruns Dec-31 and M5 slips
-
-  - gate: upstream PR sequencing rehearsal
-    due: 2026-11-15
-    owner: Architect + upstream liaison
-    evidence: ECA signatures verified for every contributor in `CONTRIBUTORS`; design-intent discussion thread opened in `opensovd/discussions` to coordinate sequencing with maintainers; PR order per §upstream_contribution_priority confirmed
-    blocks_if_missed: first PRs land into Eclipse holiday freeze in late December; contribution slips Q1 2027
 
   - gate: performance targets measured on physical bench
     due: 2026-11-20
@@ -312,10 +297,9 @@ historical_next_steps:
     - DLT tracing wired via dlt-tracing-lib; correlation IDs propagate Gateway → Server → CDA → ECU
     - OpenTelemetry spans exported to OTLP collector (Jaeger or Tempo)
     - Rate limiting via tower::limit middleware (per-client-IP)
-    - Integrator guide in docs/integration/, shaped as upstream-ready PR
+    - Integrator guide in docs/integration/
     - Safety case delta — HARA for new UDS services, DoIP + Fault Shim failure modes
     - CVC OTA end-to-end per ADR-0025 — dual-bank A/B, CMS/X.509, N=5 rollback, boot-OK witness
-    - Contribution review — architect + Rust lead + safety engineer confirm readiness per §contribution_readiness; open PRs in §upstream_contribution_priority order
 
 execution_model:
   purpose: |
@@ -338,7 +322,7 @@ execution_breakdown:
     - The `historical_next_steps` block above is kept only as a dated snapshot of the old coarse plan.
     - Phases 0-4 remain recorded at the strategic layer only because they are complete.
     - Phase 5 is split into bounded units so remote and bench work cannot hide inside one long command.
-    - Phase 6 and upstream work are split into repo-sized units so they can be advanced before the full phase window opens where that is safe.
+    - Phase 6 work is split into repo-sized units so it can be advanced before the full phase window opens where that is safe.
 
   phase_5_public_sil_tier_vps:
     status: partially_complete
@@ -898,19 +882,6 @@ execution_breakdown:
           explicit CVC-only in-scope and out-of-scope bullet lists and an explicit
           "deferred SC and BCM work" section documenting what is intentionally
           excluded from Phase 6 and why.
-      - id: P6-PREP-08
-        status: done
-        work_mode: decision_doc
-        depends_on: []
-        goal: create the contribution-readiness checklist and PR sequence pack
-        done_when:
-          - every planned upstream crate has an order, gate, and owner
-          - the contribution kickoff ADR has a ready outline
-        resolution_2026_04_19: |
-          `docs/contribution/phase-6-contribution-readiness-and-sequence.md`
-          defines the crate-by-crate upstream order, the gate to open each PR,
-          and the responsible owner role. The same pack also includes the ready
-          outline that `P6-06` should turn into the Phase 6 contribution kickoff ADR.
 
   phase_6_after_entry:
     status: blocked_on_phase_5_hil_green
@@ -955,318 +926,6 @@ execution_breakdown:
         done_when:
           - signed image download, verify, commit, and rollback paths are demonstrated
           - boot-OK witness behavior is recorded
-      - id: P6-06
-        status: pending
-        work_mode: decision_doc
-        depends_on: [P6-PREP-08]
-        goal: record the Phase 6 contribution kickoff and open the first upstream PR batch
-        done_when:
-          - kickoff ADR exists
-          - the first PRs follow the committed sequence
-
-  upstream_phase_2_breakdown:
-    status: blocked_on_phase_6_complete
-    units:
-      - id: UP2-01
-        status: done
-        work_mode: decision_doc
-        depends_on: []
-        goal: draft ADR-0026 for the VSS / semantic mapping strategy
-        done_when:
-          - the mapping boundary and rejected alternatives are documented
-          - the draft includes at least one example mapping table
-        resolution_2026_04_19: |
-          Drafted `docs/adr/ADR-0026-covesa-semantic-api-mapping.md`. The
-          ADR pins the `sovd-covesa` crate as a thin adapter over the
-          existing SOVD REST surface, exposes a diagnostic-oriented VSS
-          subtree only, and delegates pub/sub to ADR-0027. Mapping
-          boundary is explicit (three op shapes: read, whitelisted
-          actuator write, catalog list); rejected alternatives include
-          full VSS exposure, VSS-as-wire-format, and hosting VSS in
-          `sovd-server` directly. Mapping table with seven concrete rows
-          is included (first slice covers `Vehicle.OBD.DTCList`,
-          `Vehicle.OBD.DTC`, SoC, SoH, `Vehicle.VersionVSS`,
-          `Vehicle.Service.ClearDTCs`, and a whitelisted routine-start
-          actuator). VSS version pinning lives at
-          `opensovd-core/sovd-covesa/schemas/vss-version.yaml`.
-      - id: UP2-02
-        status: done
-        work_mode: decision_doc
-        depends_on: []
-        goal: draft ADR-0027 for Extended Vehicle data scope and pub/sub contract
-        done_when:
-          - endpoint and topic shapes are defined
-          - scope boundaries and exclusions are explicit
-        resolution_2026_04_19: |
-          Drafted `docs/adr/ADR-0027-extended-vehicle-scope.md`. Pins
-          `sovd-extended-vehicle` as a thin REST + MQTT adapter over the
-          core SOVD surface. REST endpoint table lists nine concrete
-          paths under `/sovd/v1/extended/vehicle/*` (catalog, vehicle-info,
-          state, fault-log + drill-in, energy, subscription CRUD). MQTT
-          topic table lists six concrete topics under the
-          `sovd/extended-vehicle/` root (state, fault-log/new, energy,
-          subscription health, control ack + subscribe). Scope boundaries
-          are explicit with six "exposed" items and six "not exposed"
-          items (raw UDS frames, calibration, freeze-frame, actuation,
-          infotainment, fleet aggregation). Rejected alternatives
-          include REST-only, full ISO 20078 feature set, second MQTT
-          broker, pub/sub-only, exposing raw UDS, and folding pub/sub
-          into the COVESA adapter.
-      - id: UP2-03
-        status: done
-        work_mode: repo_only
-        depends_on: [UP2-01]
-        goal: scaffold the semantic schema directory and validation harness
-        done_when:
-          - one schema validates under automated tests
-          - the schema layout is ready for additional domain files
-        resolution_2026_04_19: |
-          Added the first semantic schema contract at
-          `opensovd-core/sovd-interfaces/schemas/semantic/vss-map.schema.yaml`
-          and an automated loader/validation harness at
-          `opensovd-core/sovd-interfaces/tests/semantic_schema_harness.rs`.
-          The harness scans every `*.schema.yaml` file under
-          `opensovd-core/sovd-interfaces/schemas/semantic/`, so future
-          domain schema files can be added without changing the test shape.
-      - id: UP2-04
-        status: done
-        work_mode: repo_only
-        depends_on: [UP2-01]
-        goal: scaffold the `sovd-covesa` crate and the first VSS mapping slice
-        done_when:
-          - crate structure exists with one mapped example
-          - version tracking for VSS is pinned in the intended file
-        resolution_2026_04_19: |
-          Added the new crate scaffold at `opensovd-core/sovd-covesa/`
-          with YAML contract loaders in `src/lib.rs`, the pinned VSS
-          release file `schemas/vss-version.yaml`, the first mapping slice
-          `schemas/vss-map.yaml`, and tests in
-          `tests/contract_loading.rs`. The first mapping row is
-          `Vehicle.OBD.DTCList` -> `GET /sovd/v1/components/{id}/faults`,
-          and the crate pins `v5.0` in the intended version file.
-      - id: UP2-05
-        status: done
-        work_mode: repo_only
-        depends_on: [UP2-02]
-        goal: scaffold the `sovd-extended-vehicle` crate and one REST plus pub/sub flow
-        done_when:
-          - one endpoint and one topic flow are exercised in tests
-          - config structure exists for later expansion
-        resolution_2026_04_19: |
-          Added the new crate scaffold at
-          `opensovd-core/sovd-extended-vehicle/` with ADR-0027-aligned
-          config loading in `src/lib.rs`, the config file
-          `config/extended-vehicle.toml`, and tests in
-          `tests/contract_flow.rs`. The first exercised REST slice is
-          `GET /sovd/v1/extended/vehicle/fault-log`, and the first
-          exercised MQTT publish slice is
-          `sovd/extended-vehicle/fault-log/new`.
-      - id: UP2-06
-        status: done
-        work_mode: decision_doc
-        depends_on: []
-        goal: write the pilot OEM deployment playbook skeleton and SBOM placeholder path
-        done_when:
-          - bring-up steps, assumptions, and evidence slots are defined
-          - the SBOM output location is fixed
-        resolution_2026_04_19: |
-          Created `docs/deploy/pilot-oem/README.md`. Playbook skeleton
-          covers six ordered sections: prerequisites (hardware,
-          identities + keys, upstream artifacts), install (fetch,
-          layout, bring-up), config (identity, auth, transport, COVESA
-          VSS per ADR-0026, Extended Vehicle per ADR-0027, observer per
-          ADR-0024), verify (core surface, VSS, Extended Vehicle, auth,
-          observer), evidence (SBOM, verify logs, round-trip trace, OTA
-          witnesses), teardown. SBOM output location fixed at
-          `docs/deploy/pilot-oem/sbom.spdx.json` (§5.1). Skeleton uses
-          "OEM-supplied value" for deferred strings rather than A1
-          placeholder tokens; every section lists concrete deliverable
-          paths.
-      - id: UP2-07
-        status: done
-        work_mode: repo_only
-        depends_on: [UP2-04, UP2-05]
-        goal: add scenario skeletons for SIL semantic and Extended Vehicle tests
-        done_when:
-          - test filenames and scenario contracts exist
-          - at least one happy-path skeleton runs in CI
-        resolution_2026_04_20: |
-          Added the Phase 2 SIL scenario contracts
-          `opensovd-core/test/sil/scenarios/sil_covesa_dtc_list.yaml` and
-          `opensovd-core/test/sil/scenarios/sil_extended_vehicle_fault_log.yaml`
-          matching the filename convention promised in the strategic exit
-          criteria. Added the validation harness
-          `opensovd-core/sovd-interfaces/tests/phase2_scenario_skeletons.rs`,
-          which loads both YAML files, pins the COVESA `Vehicle.OBD.DTCList`
-          and Extended Vehicle fault-log contracts, and asserts that at least
-          one scenario is explicitly marked `scenario_class: happy_path`.
-          `.github/workflows/upstream-phase-2-scenarios.yml` runs that harness
-          in CI with `cargo test --locked -p sovd-interfaces --test
-          phase2_scenario_skeletons`.
-      - id: UP2-08
-        status: done
-        work_mode: decision_doc
-        depends_on: [UP2-01, UP2-02]
-        goal: prepare the upstream discussion pack for maintainer review
-        done_when:
-          - discussion-ready summaries exist for both mapping and scope
-          - open questions are isolated from settled design decisions
-        resolution_2026_04_19: |
-          Created `docs/upstream/phase-2-discussion-pack.md`. Pack is
-          split into two parallel halves: §1 COVESA mapping (summary,
-          settled decisions, open questions) citing ADR-0026 by path,
-          §2 Extended Vehicle (summary, settled decisions, open
-          questions) citing ADR-0027 by path, and §3 cross-ADR concerns
-          (why pub/sub lives only in ADR-0027, shared broker coupling,
-          error envelope reuse). Open questions are isolated from
-          settled decisions in dedicated subsections (§1.3 / §2.3); nine
-          numbered open questions (OQ-PP2.1..OQ-PP2.9) are listed.
-          Review targets for upstream OpenSOVD, COVESA, and ISO 20078
-          are called out in §4.
-
-  upstream_phase_3_breakdown:
-    status: blocked_on_upstream_phase_2_complete
-    units:
-      - id: UP3-01
-        status: done
-        work_mode: decision_doc
-        depends_on: []
-        goal: draft ADR-0028 for edge ML scope and lifecycle
-        done_when:
-          - model lifecycle, memory budget, and deployment boundary are explicit
-          - rollback expectations are written down
-        resolution_2026_04_19: |
-          Drafted `docs/adr/ADR-0028-edge-ml-fault-prediction.md`.
-          `sovd-ml` embeds ONNX runtime on the Pi class; MCU tiers
-          (STM32 H7, TMS570) consume a pre-converted artifact — memory
-          envelopes expressed in relative language (~1/4 of on-chip
-          flash, ~1/4 of on-chip SRAM on the STM32 H7 class, < 256 MiB
-          RAM on Pi) cited against ST and TI public product docs.
-          Lifecycle states (load, hot-swap, rollback, unload) owned by
-          Taktflow; Eclipse Edge Native integration is a data boundary
-          for deployment + observability only, not a runtime
-          dependency. ML output is tagged `advisory_only: true` and
-          never surfaces as a confirmed DTC. Rollback via shadow-slot
-          hot-swap; trigger policy delegated to ADR-0029 (UP3-02).
-          Rejected alternatives include ML-as-DTC, Edge-Native-owned
-          lifecycle, parallel `/sovd/v1/ml/*` tree, reflash-only
-          rollback.
-      - id: UP3-02
-        status: done
-        work_mode: decision_doc
-        depends_on: []
-        goal: draft ADR-0029 for ML model signing and rollback
-        done_when:
-          - signing, trust-root, and rollback triggers are defined
-          - rejected alternatives are documented
-        resolution_2026_04_19: |
-          Drafted `docs/adr/ADR-0029-ml-model-signing-rollback.md`.
-          Signing scheme: CMS (RFC 5652) detached envelope over model +
-          manifest; fingerprint is SHA-256 of `bytes || canonical
-          manifest`. Trust root reuses the ADR-0025 X.509 root CA
-          (third certificate purpose under one root — mTLS, OTA
-          firmware, ML model — with disjoint EKUs). Three rollback
-          triggers defined with bounds: (A) inference-failure threshold
-          N = 5 within an operation-cycle window, default confidence
-          floor 0.1; (B) periodic 24-hour signature re-verification
-          failure; (C) operator-initiated rollback authorised per
-          ADR-0030. Time-based rollback explicitly rejected. Post-
-          rollback retention + forensic-marker clearance path is
-          documented. Rejected alternatives include separate PKI root,
-          Ed25519 bare-key manifests, load-time-only verification,
-          operator-only rollback, per-inference rollback, and folding
-          signing into ADR-0028.
-      - id: UP3-03
-        status: done
-        work_mode: decision_doc
-        depends_on: []
-        goal: create the ISO/DIS 17978-1.2 gap-analysis skeleton
-        done_when:
-          - clause-by-clause headings exist
-          - the delta-from-current-baseline method is written down
-        resolution_2026_04_19: |
-          Created `docs/compliance/iso-17978-1-2-gap-analysis.md`.
-          Document pins the delta-from-17978-3-baseline method in §1
-          (four-pass per clause: read, baseline mapping, delta
-          classification into four buckets, evidence pin) and the row
-          shape for the filled-in ledger. Clause-by-clause heading
-          structure is present for Part 1 (§2, eleven headings — front
-          matter through annexes and bibliography) and Part 2 (§3,
-          fifteen headings including interim AUTOSAR R24-11 mapping
-          targets for fault management, routines, data, session /
-          security, gateway / routing, and bulk-data / software-update
-          use-case clauses). Clause content deliberately empty with
-          "basis pending: Parts 1/2 acquisition" notes per STRICT MODE
-          and A1 guardrails — no placeholder tokens. Evidence ledger
-          (§4) and deferral log (§5) structures are defined; an
-          acquisition plan (§6) names what is needed and where to drop
-          it.
-      - id: UP3-04
-        status: done
-        work_mode: repo_only
-        depends_on: [UP3-01]
-        goal: scaffold the `sovd-ml` crate and reference model layout
-        done_when:
-          - crate structure exists
-          - model and signature file locations are pinned
-        resolution_2026_04_19: |
-          Added the new crate scaffold at `opensovd-core/sovd-ml/` with
-          path constants in `src/lib.rs`, the reserved model-layout note
-          in `models/README.md`, and tests in `tests/model_layout.rs`.
-          The pinned artifact locations are
-          `opensovd-core/sovd-ml/models/reference-fault-predictor.onnx`
-          and
-          `opensovd-core/sovd-ml/models/reference-fault-predictor.sig`,
-          as required by ADR-0028.
-      - id: UP3-05
-        status: done
-        work_mode: repo_only
-        depends_on: [UP3-02, UP3-04]
-        goal: prove signed-model verify-before-load in SIL
-        done_when:
-          - the unsigned model path is rejected
-          - the signed model path loads in the intended harness
-        resolution_2026_04_19: |
-          Extended `opensovd-core/sovd-ml/` with a repo-only
-          verify-before-load harness in `src/lib.rs` that reads model +
-          manifest, rejects a missing detached signature, and verifies a
-          CMS detached signature via `openssl cms -verify`. The test file
-          `tests/model_loading.rs` proves both required outcomes in SIL:
-          unsigned model rejected and signed model accepted in the
-          intended harness.
-      - id: UP3-06
-        status: done
-        work_mode: repo_only
-        depends_on: [UP3-04]
-        goal: scaffold the observer ML widget and one end-to-end inference flow
-        done_when:
-          - the widget renders a real or stubbed inference result
-          - the request path is wired through SOVD
-        resolution_2026_04_19: |
-          Added the observer widget
-          `dashboard/src/lib/widgets/UC21MlInference.svelte`, typed
-          result contracts in `dashboard/src/lib/types/sovd.ts`, and the
-          SOVD client path in `dashboard/src/lib/api/sovdClient.ts`.
-          The widget renders a live or fallback result and calls the
-          SOVD request path
-          `POST /sovd/v1/components/{component}/operations/ml-inference/executions`.
-      - id: UP3-07
-        status: done
-        work_mode: repo_only
-        depends_on: [UP3-03, UP3-05]
-        goal: add the first ML and ISO compliance scenario skeletons
-        done_when:
-          - test files exist for ML inference and ISO 17978-1.2 compliance slices
-          - the compliance gate insertion point is identified in CI
-        resolution_2026_04_19: |
-          Added disabled SIL scenario skeletons at
-          `opensovd-core/test/sil/scenarios/sil_sovd_ml_inference.yaml`
-          and
-          `opensovd-core/test/sil/scenarios/sil_sovd_iso_17978_1_2_compliance.yaml`.
-          The future CI insertion point is identified concretely in
-          `.github/workflows/upstream-phase-3-scenarios.yml`, which
-          watches those files and documents where the Phase 3 scenario
-          gate should live.
 
   open_questions_to_resolve:
     - Fault IPC: Unix socket vs shared memory? — Rust lead, Phase 0 week 2 (decided: Unix socket, in prod)
@@ -1290,7 +949,6 @@ plan:
       - Git branch strategy — feature/sovd-* branches, PRs gated by SIL+HIL
       - opensovd-core workspace skeleton with empty crates + CI
       - CI matrix — cargo test --workspace + clippy pedantic + nightly fmt
-      - First SOVD architecture document PR to upstream opensovd repo
     exit: Hello-world Rust binary in opensovd-core/sovd-server returns 200 OK on /health
 
   phase_1_embedded_uds_doip_posix:
@@ -1327,7 +985,7 @@ plan:
       - CDA smoke test green in SIL nightly
       - Proxy ≥80% line coverage
       - HIL scenario passes against physical CVC
-      - CDA bugs captured as local fix branches, prepared for upstream submission when each patch is reviewed and tested
+      - CDA bugs captured as local fix branches, reviewed and tested against the vendored CDA pin
       - Taktflow ODX example staged locally under odx-converter/examples/
 
   phase_3_fault_lib_dfm_prototype:
@@ -1343,7 +1001,7 @@ plan:
       - DFM prototype opensovd-core/sovd-dfm/ — in-memory table, sqlx+SQLite persistence, axum stub endpoint
       - Wiring test — synthetic fault in CVC Docker → SOVD GET within 100 ms
       - SQLite schema opensovd-core/sovd-db/migrations/ — dtcs, fault_events, operation_cycles, catalog_version
-      - Internal DFM ADR in docs/adr/ (contribution-ready shape per §upstream_contribution_priority)
+      - Internal DFM ADR in docs/adr/
     exit:
       - End-to-end fault report → SOVD visibility works in Docker
       - DFM integration tests cover ingestion, query, clear, operation cycle
@@ -1361,13 +1019,13 @@ plan:
       - OpenAPI spec sovd-server/openapi.yaml; types via utoipa
       - SOVD Gateway — DFM + CDA + future-native-SOVD backends; opensovd-gateway.toml route map; DTC de-dup by code
       - Authentication middleware scaffold — bearer token accepted, validation deferred to Phase 6
-      - Docker Compose demo topology — services + tester script for 5 MVP use cases; candidate for upstreaming to opensovd/examples/ when mature
-      - Contribution-ready polish — every crate shaped for review, tests and ADRs in place
+      - Docker Compose demo topology — services + tester script for 5 MVP use cases
+      - Every crate shaped for internal review — tests and ADRs in place
     exit:
       - Docker Compose demo runs 5 MVP use cases end-to-end
       - SOVD Server ≥70% line coverage
       - Integration tests cover full SOVD → Gateway → CDA → ECU chain
-      - Each crate is in review shape — tests, ADR, docstrings — ready to submit in §upstream_contribution_priority order
+      - Each crate is in internal-review shape — tests, ADR, docstrings
 
   phase_5_e2e_demo_hil_physical:
     window: 2026-10-16 .. 2026-11-30
@@ -1417,57 +1075,14 @@ plan:
       - DLT tracing — all Rust binaries emit DLT; daemon on Pi forwards to laptop/cloud; correlation IDs propagate
       - OpenTelemetry spans — OTLP export to Jaeger or Tempo
       - Rate limiting — tower::limit per-client-IP
-      - Integrator guide in docs/integration/ — upstream-ready format
+      - Integrator guide in docs/integration/
       - Safety case delta — HARA for new UDS services, new DoIP + Fault Shim failure modes
-      - Contribution review — §contribution_readiness checklist applied; open PRs in §upstream_contribution_priority order
       - OTA on CVC (ADR-0025) — STM32G474RE dual-bank A/B, CMS/X.509 sharing device mTLS PKI root, N=5 rollback threshold, signed boot-OK witness over MQTT; SOVD bulk-data + UDS 0x34/0x36/0x37; flash state machine Idle → Downloading → Verifying → Committed ↔ Rollback; FR-8.1..8.6 + SR-6.1..6.5 (ASPICE-append); UC21 initiate / UC22 progress / UC23 abort+rollback; ~4–6 weeks CVC-only
     exit:
       - All prior exit criteria still hold
       - Safety case delta approved
-      - Integrator guide complete and ready for upstream submission
-      - Phase 6 contribution kickoff recorded in docs/adr/phase-6-contribution-kickoff.md
+      - Integrator guide complete
       - OTA on CVC demonstrable end-to-end — signed image via SOVD bulk-data, flashed to inactive slot, committed after signature pass, boot-OK witness acknowledged at cloud
-
-  upstream_phase_2_covesa_extended_vehicle:
-    window: 2027-05-01 .. 2027-10-31
-    person_days: 90
-    owner: Architect + Rust lead + 2 Rust engineers
-    parallel_to: []
-    entry: Phase 6 complete, M5 shipped, upstream contribution PRs opened per §upstream_contribution_priority
-    deliverables:
-      - COVESA VSS semantic API layer — `opensovd-core/sovd-covesa/` crate mapping VSS signal paths onto SOVD data endpoints; VSS version tracked at `opensovd-core/sovd-covesa/schemas/vss-version.yaml`
-      - Extended Vehicle logging and publish/subscribe support per ISO 20078 — `opensovd-core/sovd-extended-vehicle/` crate exposing `/sovd/v1/extended/vehicle/*` REST endpoints plus MQTT publish/subscribe channels under topic root `sovd/extended-vehicle/`; config at `opensovd-core/sovd-extended-vehicle/config/extended-vehicle.toml`
-      - Semantic Interoperability JSON schema extensions — machine-readable diagnostic schemas at `opensovd-core/sovd-interfaces/schemas/semantic/` (JSON Schema 2020-12 draft) with schema-snapshot gate coverage matching the existing sovd-interfaces pattern
-      - ADR-0026 COVESA semantic API mapping strategy — `docs/adr/ADR-0026-covesa-semantic-api-mapping.md`
-      - ADR-0027 Extended Vehicle data scope and pub/sub contract — `docs/adr/ADR-0027-extended-vehicle-scope.md`
-      - Pilot OEM deployment playbook — `docs/deploy/pilot-oem/README.md` with bring-up steps; SBOM at `docs/deploy/pilot-oem/sbom.spdx.json`
-      - Integration test set — `test/sil/scenarios/sil_covesa_*.yaml` and `test/sil/scenarios/sil_extended_vehicle_*.yaml`
-      - Upstream design ADRs filed in `opensovd/discussions` for COVESA mapping and Extended Vehicle scope review
-    exit:
-      - At least one EV OEM pilot deployment live on a dedicated pilot branch with recorded round-trip of VSS-mapped DTC read plus Extended Vehicle fault-log retrieval
-      - `sovd-covesa` and `sovd-extended-vehicle` crates merged to main with CI green; schema-snapshot tests cover the new endpoints
-      - ADR-0026 and ADR-0027 accepted by architect + Rust lead + safety engineer
-      - Upstream contribution discussions have at least one reviewer-acknowledged response
-
-  upstream_phase_3_edge_ai_ml_iso_dis_17978_1_2:
-    window: 2027-11-01 .. 2028-04-30
-    person_days: 120
-    owner: Architect + Rust lead + 2 Rust engineers + 1 ML engineer
-    parallel_to: []
-    entry: Upstream Phase 2 complete, at least one EV OEM pilot running, reviewer acknowledgment on Phase 2 upstream discussions
-    deliverables:
-      - Edge AI/ML inference harness — `opensovd-core/sovd-ml/` crate embedding an ONNX runtime (`ort` crate) model loader, exposed through SOVD operation `/sovd/v1/components/{id}/operations/ml-inference/`; reference model artifact at `opensovd-core/sovd-ml/models/reference-fault-predictor.onnx` with signature manifest at `opensovd-core/sovd-ml/models/reference-fault-predictor.sig`. Collaboration alignment with Eclipse Edge Native for deployment and lifecycle primitives recorded in ADR-0028.
-      - ADR-0028 Edge ML fault prediction scope and lifecycle — `docs/adr/ADR-0028-edge-ml-fault-prediction.md` covering model lifecycle, memory footprint on STM32 H7 / TMS570 class targets versus Pi, rollback semantics, and the Eclipse Edge Native integration boundary
-      - ADR-0029 ML model signing and rollback — `docs/adr/ADR-0029-ml-model-signing-rollback.md`
-      - ISO/DIS 17978-1.2 compliance gap analysis — `docs/compliance/iso-17978-1-2-gap-analysis.md` with per-clause delta from the ISO 17978-3 baseline
-      - ISO/DIS 17978-1.2 compliance patch set landed in `opensovd-core/sovd-server/`, `opensovd-core/sovd-interfaces/`, and `opensovd-core/sovd-gateway/`; new crate `opensovd-core/sovd-compliance-17978-1-2/` only if the gap analysis concludes a shared helper is warranted
-      - Integration tests — `test/sil/scenarios/sil_ml_inference_*.yaml` and `test/sil/scenarios/sil_iso17978_1_2_*.yaml`
-      - Observer dashboard ML widget — `dashboard/src/lib/widgets/MLInference.svelte` surfacing the inference operation end-to-end
-    exit:
-      - `sovd-ml` crate runs the signed reference model end-to-end in SIL (VPS) and HIL (Pi) with signature-verify-before-load enforced
-      - ISO/DIS 17978-1.2 gap analysis signed off by architect; patch set merged; compliance gate wired into `tools/ci/pipeline_gates.py` (or equivalent) and green
-      - At least one edge ML inference operation exercisable from the observer dashboard and through SOVD REST
-      - Upstream contribution PR opened for the ML inference harness with an accompanying design ADR in `opensovd/discussions`
 
 reference:
   eclipse_project_description:
@@ -1484,10 +1099,10 @@ reference:
       - SOVD Gateway — REST/HTTP API endpoints for diagnostics, logging, and software updates
       - Protocol Adapters — bridging modern HPCs (AUTOSAR Adaptive) and legacy ECUs (UDS-based)
       - Diagnostic Manager — service orchestration for fault reset, parameter adjustments, and bulk data transfers
-    future_proofing:
-      - Semantic Interoperability — JSON schema extensions for machine-readable diagnostics, enabling AI-driven analysis and cross-domain workflows (addressed in upstream Phase 2 deliverable `opensovd-core/sovd-interfaces/schemas/semantic/`)
-      - Edge AI/ML Readiness — modular design supporting lightweight ML models (predictive fault detection) via collaboration with Eclipse Edge Native (addressed in upstream Phase 3 deliverable `opensovd-core/sovd-ml/` plus ADR-0028)
-      - Extended Vehicle logging and publish/subscribe mechanisms (addressed in upstream Phase 2 deliverable `opensovd-core/sovd-extended-vehicle/`)
+    internal_semantic_extensions:
+      - Semantic Interoperability — JSON schema extensions at `opensovd-core/sovd-interfaces/schemas/semantic/` for machine-readable diagnostics
+      - Edge AI/ML — lightweight ML models at `opensovd-core/sovd-ml/` per ADR-0028 (internal use only)
+      - Extended Vehicle logging and publish/subscribe at `opensovd-core/sovd-extended-vehicle/` per ADR-0027
 
   what_opensovd_is:
     - SOVD = Service-Oriented Vehicle Diagnostics, ISO 17978 (ASAM)
@@ -1498,15 +1113,13 @@ reference:
 
   motivation:
     - Provide a working ASAM SOVD v1.1 / ISO 17978-3 implementation covering Server, Gateway, DFM, and Diagnostic DB on top of CDA
-    - Align the implementation with Eclipse S-CORE v1.0 targets (end of 2026)
     - Use the Taktflow zonal bench (CVC / SC / BCM) as an early real deployment to validate the implementation against physical ECUs
-    - Contribute mature components upstream in the priority order documented below
 
   deployment_topology:
     public_sil_on_vps:
       host: Netcup VPS (sil.taktflow-systems.com)
       purpose: Public SIL demo — engineering spec HTML, live Grafana, full Docker Compose SIL stack
-      reached_by: Eclipse SDV Architecture Board, upstream maintainers, anyone with the URL
+      reached_by: anyone with the URL
       exposes: /sovd/ (spec), /sovd/dashboard/ (Grafana anonymous view)
     hil_on_pi:
       host: Raspberry Pi 4 (Ubuntu 24.04 aarch64, bench LAN)
@@ -1522,15 +1135,13 @@ reference:
       purpose: Fleet telemetry sink, live since 2026-04-19
       topics: vehicle/dtc/new, taktflow/cloud/status
 
-  current_upstream_state:
-    classic-diagnostic-adapter: Active, ~MVP-ready — reusable as-is for SOVD→UDS bridge
-    odx-converter: Active — reusable for ECU description conversion
-    fault-lib: Alpha — reference for Fault API shape; we port to C
-    dlt-tracing-lib: Active — reusable for observability
-    uds2sovd-proxy: Early — optional, only if legacy tester compat needed
-    cpp-bindings: Stub — we grow this for C/C++ integration
-    opensovd-core: Empty stub — this tree fills it
-    opensovd: Active docs — contribution channel for architecture decisions
+  vendored_external_components:
+    classic-diagnostic-adapter: Vendored verbatim from upstream; SOVD→UDS bridge
+    odx-converter: Vendored; ECU description conversion
+    fault-lib: Reference for Fault API shape; ported to C in-tree
+    dlt-tracing-lib: Vendored; used for observability
+    uds2sovd-proxy: Optional; only if legacy tester compat needed
+    cpp-bindings: Used for C/C++ integration
 
   mvp_use_cases:
     UC1_read_faults: Tester GET /faults → Server → DFM → SQLite + CDA (UDS 0x19 over DoIP) → unified JSON ListOfFaults
@@ -1539,33 +1150,12 @@ reference:
     UC4_reach_uds_ecu_via_cda: Tester GET /faults → Server → Gateway → CDA (not DFM) → MDD → UDS 0x19
     UC5_trigger_diagnostic_service: Tester POST /operations/{op_id}/executions → CDA → UDS 0x31 StartRoutine → Swc handler
 
-  upstream_contribution_priority:
-    1: sovd-interfaces trait contracts — opensovd-core (smallest, reviewable first, establishes shared API surface)
-    2: sovd-dfm with design ADR — opensovd-core (addresses a current gap)
-    3: sovd-server MVP — opensovd-core (implementation of the SOVD REST surface)
-    4: sovd-gateway — opensovd-core (multi-backend routing)
-    5: ODX examples — odx-converter/examples/ (demonstrates real-world use)
-    6: CDA fixes found during integration — classic-diagnostic-adapter (isolated patches, submitted per-fix)
-    7: Docker Compose demo topology — opensovd/examples/
-    8: Integrator guide — opensovd/docs/integration/
-
-  not_upstreamed_for_integrator_specific_reasons:
-    - Taktflow-specific DBC files and codegen pipelines (proprietary vehicle signal definitions)
-    - Embedded Dcm modifications in taktflow-embedded-production firmware (ASIL-D safety-case scoped)
-    - ASPICE + ISO 26262 process artifacts (integrator-specific compliance evidence)
-    - Raspberry Pi deployment Ansible playbooks and systemd units (site-specific deployment)
-    - VPS / nginx / DNS configuration and deploy scripts (site-specific deployment; see gitignored docs/plans/vps-sovd-deploy.md)
-    - Safety case deltas, HARA updates, FMEA tables
-    - Internal ADRs and knowledge-base notes under docs/sovd/notes-*
-
   milestones:
     M1_embedded_uds_complete: 2026-05-31 — Dcm 0x19/0x14/0x31 pass HIL; DoIP POSIX accepts diag messages
     M2_cda_integration_green: 2026-06-30 — SOVD GET via CDA round-trips to Docker ECU; Pi proxy reaches physical CVC
     M3_dfm_prototype_serving_dtcs: 2026-08-15 — fault inject → DFM ingest → SOVD GET <100 ms
     M4_sovd_server_mvp_in_docker: 2026-10-15 — 5 MVP use cases pass in Docker Compose
-    M5_hardened_hil_green_contribution_ready: 2026-12-31 — physical HIL passes; public SIL on VPS live; demo recorded; code in review shape
-    M6_covesa_extended_vehicle_pilot_live: 2027-10-31 — COVESA VSS mapping + Extended Vehicle logging live in at least one EV OEM pilot deployment (Eclipse OpenSOVD proposal upstream Phase 2, months 13–18)
-    M7_edge_ml_and_iso_17978_1_2_compliant: 2028-04-30 — Edge AI/ML inference harness plus ISO/DIS 17978-1.2 gap closure merged (Eclipse OpenSOVD proposal upstream Phase 3, months 19–24)
+    M5_hardened_hil_green: 2026-12-31 — physical HIL passes; public SIL on VPS live; demo recorded; code in internal-review shape
 
   success_criteria:
     technical:
@@ -1576,11 +1166,10 @@ reference:
       - Zero clippy pedantic violations on new Rust code
       - Safety case delta approved by safety engineer
       - Nightly SIL + HIL green 30 consecutive days
-    contribution_readiness:
-      - Code style consistent with upstream CDA conventions
-      - sovd-interfaces reviewable as a standalone PR
+    internal_quality:
+      - Code style consistent with CDA conventions
+      - sovd-interfaces reviewable as a standalone unit
       - Design ADRs in place for every major component
-      - No technical blocker for submitting PRs in the priority order documented above
     process:
       - All new work products traceable in ASPICE
       - All 5 MVP use cases have requirements → design → test traceability
@@ -1588,7 +1177,7 @@ reference:
       - Zero safety regressions on existing HIL suite
 
   team_allocation_peak_phase_4:
-    architect_upstream_liaison: 1
+    architect: 1
     embedded_lead: 1
     embedded_engineers: 2
     rust_lead: 1
@@ -1606,17 +1195,14 @@ reference:
       architectural: Architect, documented as ADRs, weekly review by Rust lead + Embedded lead
       scope: Architect, escalation to program lead if timeline at risk
       safety: Safety engineer, veto on anything touching ASIL paths
-      upstream_alignment: Architect, with upstream maintainer consent via design ADRs
     cadence:
       daily_standup: 15 min, workstream only
       weekly_sync: 45 min, SOVD workstream + architect
-      monthly_upstream_review: 30 min, architect reviews discussions + commits + PRs
       phase_gate_review: end of each phase, all leads, go/no-go
     documentation:
-      - Every ADR in opensovd/docs/design/adr/ (upstream) or docs/adr/ (Taktflow internal)
+      - Every ADR in docs/adr/
       - Every phase produces retro in docs/retro/phase-<n>.md
       - Every HIL scenario YAML has one-paragraph intent comment
-      - Every ADR written in contribution-ready shape
 
   related_plans:
     - docs/plans/vps-sovd-deploy.md — VPS deploy playbook (gitignored; contains infra specifics); 11 steps S-VPS-01..11; closes the "VPS public SIL spec upload" hardening gate due 2026-04-20 and follow-up "VPS SIL Docker Compose live" gate due 2026-05-16

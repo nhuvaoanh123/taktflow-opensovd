@@ -65,6 +65,17 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// Regenerate Phase 5 MDD + ODX from the authoritative YAML sources under
+    /// `opensovd-core/deploy/pi/cda-mdd/src/` using the vendored diag-converter
+    /// at `<monolith-root>/diag-converter/`. This is the preferred pipeline;
+    /// `phase5-cda-mdds` (Rust EcuDataBuilder) stays around only as a legacy
+    /// bench-compat escape hatch.
+    Phase5YamlToMdd {
+        /// Check that the committed .mdd / .odx match regeneration instead
+        /// of rewriting them. Used in CI staleness gates.
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 fn main() -> std::process::ExitCode {
@@ -81,6 +92,13 @@ fn main() -> std::process::ExitCode {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("xtask phase5-cda-mdds failed: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        },
+        Command::Phase5YamlToMdd { check } => match phase5_yaml_to_mdd(check) {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("xtask phase5-yaml-to-mdd failed: {e}");
                 std::process::ExitCode::FAILURE
             }
         },
@@ -907,4 +925,120 @@ fn phase5_template_mdd_license_path() -> PathBuf {
 
 fn phase5_output_dir() -> PathBuf {
     workspace_root().join("deploy").join("pi").join("cda-mdd")
+}
+
+fn phase5_yaml_dir() -> PathBuf {
+    phase5_output_dir().join("src")
+}
+
+fn diag_converter_manifest() -> PathBuf {
+    workspace_root()
+        .parent()
+        .expect("outer workspace root")
+        .join("diag-converter")
+        .join("Cargo.toml")
+}
+
+/// Phase 5 ECUs whose MDD / ODX are regenerated from YAML. Kept in sync
+/// with `PHASE5_MDD_SPECS` above (the legacy Rust builder). When the
+/// YAML pipeline takes over fully, `PHASE5_MDD_SPECS` can retire.
+const PHASE5_YAML_ECUS: &[&str] = &["CVC00000", "SC00000"];
+
+fn phase5_yaml_to_mdd(check: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let manifest = diag_converter_manifest();
+    if !manifest.exists() {
+        return Err(format!(
+            "vendored diag-converter not found at {}; see diag-converter/UPSTREAM.md",
+            manifest.display()
+        )
+        .into());
+    }
+
+    let yaml_dir = phase5_yaml_dir();
+    let output_dir = phase5_output_dir();
+
+    if !check {
+        fs::create_dir_all(&output_dir)?;
+    }
+
+    for ecu in PHASE5_YAML_ECUS {
+        let yaml = yaml_dir.join(format!("{ecu}.yml"));
+        if !yaml.exists() {
+            return Err(format!("YAML source missing: {}", yaml.display()).into());
+        }
+        let committed_mdd = output_dir.join(format!("{ecu}.mdd"));
+        let committed_odx = output_dir.join(format!("{ecu}.odx"));
+
+        if check {
+            let tmp_mdd = tempfile::Builder::new()
+                .prefix(ecu)
+                .suffix(".mdd")
+                .tempfile()?;
+            let tmp_odx = tempfile::Builder::new()
+                .prefix(ecu)
+                .suffix(".odx")
+                .tempfile()?;
+
+            run_diag_converter(&manifest, &yaml, tmp_mdd.path())?;
+            run_diag_converter(&manifest, &yaml, tmp_odx.path())?;
+
+            let generated_mdd = fs::read(tmp_mdd.path())?;
+            let committed_mdd_bytes = fs::read(&committed_mdd)?;
+            if generated_mdd != committed_mdd_bytes {
+                return Err(format!(
+                    "{} is stale; rerun `cargo run -p xtask -- phase5-yaml-to-mdd`",
+                    committed_mdd.display()
+                )
+                .into());
+            }
+
+            let generated_odx = fs::read(tmp_odx.path())?;
+            let committed_odx_bytes = fs::read(&committed_odx)?;
+            if generated_odx != committed_odx_bytes {
+                return Err(format!(
+                    "{} is stale; rerun `cargo run -p xtask -- phase5-yaml-to-mdd`",
+                    committed_odx.display()
+                )
+                .into());
+            }
+        } else {
+            run_diag_converter(&manifest, &yaml, &committed_mdd)?;
+            run_diag_converter(&manifest, &yaml, &committed_odx)?;
+            eprintln!("wrote {}", committed_mdd.display());
+            eprintln!("wrote {}", committed_odx.display());
+        }
+    }
+
+    Ok(())
+}
+
+fn run_diag_converter(
+    manifest: &Path,
+    input: &Path,
+    output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let status = std::process::Command::new("cargo")
+        .arg("run")
+        .arg("--manifest-path")
+        .arg(manifest)
+        .arg("--release")
+        .arg("--quiet")
+        .arg("-p")
+        .arg("diag-converter")
+        .arg("--")
+        .arg("convert")
+        .arg(input)
+        .arg("-o")
+        .arg(output)
+        .status()?;
+    if !status.success() {
+        return Err(format!(
+            "diag-converter exited with status {} converting {} -> {}",
+            status,
+            input.display(),
+            output.display()
+        )
+        .into());
+    }
+    Ok(())
 }

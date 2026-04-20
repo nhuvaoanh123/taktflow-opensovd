@@ -1,0 +1,197 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Taktflow (Phase 5 bench authoring)
+#
+# SC00000 - Safety Controller, Phase 5 bench ECU
+# ===============================================
+# Authoritative source-of-truth YAML for the SC00000 CDA database.
+# TMS570LS1224-based safety controller on Pi bench at DoIP logical 0x0004.
+# No motor self-test (safety domain does not own motor); otherwise shares
+# the Phase 5 DTC taxonomy with CVC00000.
+
+schema: "opensovd.cda.diagdesc/v1"
+
+meta:
+  author: "Taktflow bench"
+  domain: "Phase5"
+  created: "2026-04-20"
+  revision: "1.0.0"
+  description: "SC (Safety Controller) — TMS570LS1224 bench ECU, DoIP logical 0x0004"
+  tags: [taktflow, phase5, sc, tms570, bench, safety]
+
+ecu:
+  id: "SC00000"
+  name: "SC00000"
+  protocols:
+    doip:
+      protocol_short_name: "UDSonDoIP"
+      is_default: true
+  default_addressing_mode: physical
+  addressing:
+    doip:
+      ip: "192.168.0.197"
+      port: 13400
+      logical_address: 0x0004         # SC per Phase 5 topology
+      functional_address: 0xFFFF
+
+comparams:
+  CP_DoIPLogicalGatewayAddress:
+    param_class: COM
+    usage: ECU_COMM
+    dop: { base_type: u32, min: 0, max: 65535 }
+    values:
+      UDS_Ethernet_DoIP: "4"
+      UDS_Ethernet_DoIP_DOBT: "4"
+
+  CP_DoIPLogicalFunctionalAddress:
+    param_class: COM
+    usage: ECU_COMM
+    dop: { base_type: u32, min: 0, max: 65535 }
+    values:
+      UDS_Ethernet_DoIP: "65535"
+      UDS_Ethernet_DoIP_DOBT: "65535"
+
+  CP_UniqueRespIdTable:
+    cptype: complex
+    param_class: UNIQUE_ID
+    usage: ECU_COMM
+    children:
+      - name: CP_DoIPLogicalEcuAddress
+        param_class: UNIQUE_ID
+        dop: { base_type: u32, min: 0, max: 65535 }
+      - name: CP_DoIPSecondaryLogicalECUResponseAddress
+        param_class: UNIQUE_ID
+        dop: { base_type: u32, min: 0, max: 65535 }
+      - name: CP_ECULayerShortName
+        param_class: UNIQUE_ID
+        dop: { base_type: string }
+    values:
+      UDS_Ethernet_DoIP:       ["4", "0", "SC00000"]
+      UDS_Ethernet_DoIP_DOBT:  ["4", "0", "SC00000"]
+
+sessions:
+  default:
+    id: 0x01
+  programming:
+    id: 0x02
+  extended:
+    id: 0x03
+
+access_patterns:
+  public:
+    sessions: any
+    security: none
+    authentication: none
+
+types:
+  u8_identical:
+    base: u8
+  u16_identical:
+    base: u16
+  u32_identical:
+    base: u32
+  vin_17byte:
+    base: ascii
+    length: 17
+    encoding: "US-ASCII"
+  session_type:
+    base: u8
+
+dids:
+  0xF190:
+    name: "VINDataIdentifier"
+    param_name: "VIN"
+    description: "Vehicle Identification Number (safety-side read-only mirror)"
+    type: vin_17byte
+    access: public_read
+    readable: true
+    writable: false
+  0xF186:
+    name: "ActiveDiagnosticSessionDataIdentifier"
+    param_name: "EcuSessionType"
+    description: "Currently active diagnostic session"
+    type: session_type
+    access: public_read
+    readable: true
+    writable: false
+
+functional_classes:
+  - Session
+  - EcuReset
+  - Ident
+  - StandardDataTransfer
+  - DtcSetting
+  - FaultMem
+  - Safety
+
+services:
+  diagnosticSessionControl:
+    enabled: true
+    subfunctions:
+      default: 0x01
+      programming: 0x02
+      extended: 0x03
+    state_effects:
+      on_success:
+        session: from_request
+
+  ecuReset:
+    enabled: true
+    subfunctions:
+      hardReset: 0x01
+      softReset: 0x03
+    state_effects:
+      hardReset: { session: default, security: none }
+      softReset: { session: default, security: none }
+
+  readDataByIdentifier:
+    enabled: true
+    addressing_mode: physical
+
+  testerPresent:
+    enabled: true
+
+  clearDiagnosticInformation:
+    enabled: true
+
+  readDTCInformation:
+    enabled: true
+    subfunctions:
+      reportDTCByStatusMask: 0x02
+      reportDTCSnapshotRecordByDtcNumber: 0x04
+      reportDTCExtDataRecordByDtcNumber: 0x06
+
+  controlDTCSetting:
+    enabled: true
+    subfunctions:
+      on: 0x01
+      off: 0x02
+
+# Safety Controller does NOT host RoutineControl; motor self-test is CVC-only.
+
+# -----------------------------------------------------------------------------
+# DTCs — shared Phase 5 bench taxonomy, same 23 codes as CVC00000.
+# -----------------------------------------------------------------------------
+dtcs:
+  0xC00100: { name: C00100, description: "Pedal Sensor Plausibility Failure", severity: 2 }
+  0xC00200: { name: C00200, description: "Pedal Sensor 1 Communication Loss", severity: 2 }
+  0xC00300: { name: C00300, description: "Pedal Sensor 2 Communication Loss", severity: 2 }
+  0xC00400: { name: C00400, description: "Both Pedal Sensors Failed", severity: 2 }
+  0xC10100: { name: C10100, description: "CAN Rx Timeout (FZC Lost CVC)", severity: 2 }
+  0xC10200: { name: C10200, description: "CAN Rx Timeout (RZC Lost CVC)", severity: 2 }
+  0xC10300: { name: C10300, description: "Can Bus Off", severity: 2 }
+  0xC10400: { name: C10400, description: "E2E CRC Error On Safety Message", severity: 2 }
+  0xC10500: { name: C10500, description: "E2E Alive Counter Error", severity: 2 }
+  0xC20100: { name: C20100, description: "Motor Overcurrent", severity: 2 }
+  0xC20200: { name: C20200, description: "Motor Overtemperature", severity: 2 }
+  0xC20300: { name: C20300, description: "Motor Overtemperature Warning", severity: 1 }
+  0xC20001: { name: C20001, description: "Motor Overcurrent", severity: 2 }
+  0xC20002: { name: C20002, description: "Motor Overtemperature", severity: 2 }
+  0xC20004: { name: C20004, description: "Battery Low", severity: 1 }
+  0xC30001: { name: C30001, description: "Lidar Blocked", severity: 1 }
+  0xC30002: { name: C30002, description: "Steering Lost", severity: 2 }
+  0xC30100: { name: C30100, description: "Steering Angle Sensor Failure", severity: 2 }
+  0xC30200: { name: C30200, description: "Steering Servo Jammed", severity: 2 }
+  0xC30300: { name: C30300, description: "Lidar Sensor Failure", severity: 1 }
+  0xC40100: { name: C40100, description: "E-Stop Activated", severity: 2 }
+  0xC50100: { name: C50100, description: "WdgM Supervision Expired", severity: 2 }
+  0xC50200: { name: C50200, description: "BswM Mode Transition Failure", severity: 2 }

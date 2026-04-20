@@ -5,7 +5,7 @@ service.
 
 ## Test Setup
 
-- Host: `taktflow-pi@192.168.0.197`
+- Host: `<pi-user>@<pi-bench-ip>`
 - Runtime: `sovd-main.service`
 - CPU architecture: `aarch64`
 - Service PID during run: `99132`

@@ -69,6 +69,48 @@ replace any of it.
 - Do not skip hooks (`--no-verify`) without explicit user approval.
 - Never amend published commits.
 
+## Never commit private data (hard rule)
+
+This repo is published on a public GitHub mirror. **Nothing private
+may be committed, staged, or echoed into plan text, ADRs, READMEs,
+HTML specs, handoffs, commit messages, or PR descriptions.**
+
+Private means any of:
+
+- **IP addresses on private networks** — `192.168.x.x`, `10.x.x.x`,
+  `172.16-31.x.x`. Use placeholders: `<pi-bench-ip>`, `<laptop-ip>`,
+  `<control-pc-ip>`, or env-style `${PI_BENCH_IP}` for deploy configs.
+- **Public IPs of user-controlled hosts** — VPS IPs, home IPs. If
+  already published as a hostname (e.g. `sovd.taktflow-systems.com`),
+  use the hostname.
+- **Personal names** — colleagues, bench operators, anyone. Even
+  first names or shortcut usernames like `an-dao`, `taktflow-pi`.
+  Use `<laptop-user>`, `<pi-user>`, or role nouns.
+- **Email addresses** — including the user's own.
+- **Hardware serials** — ST-LINK, XDS110, MAC addresses, Pi serials,
+  DoIP EIDs that encode real hardware. Use `<cvc-stlink-serial>` etc.
+- **Firmware hashes that identify a specific private build** —
+  SHA256 of `cvc_firmware.elf` etc. Use `<cvc-firmware-sha256>`.
+- **Absolute paths revealing drive layout or personal directories** —
+  `H:\taktflow-embedded-production\...`, `C:\Users\<name>\...`.
+  Use repo-relative or `<taktflow-embedded>/...`.
+- **OEM names** — already covered above (Mercedes etc.); use "OEM".
+
+**Before every `git add`**: grep the about-to-stage files for
+`192.168.`, `10.`, `@gmail`, `@mercedes`, `@bmw`, and any first names
+you've seen in this project. If anything hits, pause and redact.
+
+**When the user pastes bench output** containing private data into a
+file they author: do NOT silently strip. Show the proposed redaction
+and wait for approval.
+
+**Vendored directories under `external/` and the eight collapsed
+upstream dirs** (`opensovd/`, `opensovd-core/`, `classic-diagnostic-adapter/`,
+`odx-converter/`, `fault-lib/`, `uds2sovd-proxy/`, `cpp-bindings/`,
+`dlt-tracing-lib/`) retain their upstream author names, emails, and
+SPDX headers. Do not strip those — they are the upstream license
+record. The rule applies to files we author.
+
 ## Things this plan explicitly excludes
 
 - Upstream contribution to Eclipse OpenSOVD (dropped 2026-04-20 — see

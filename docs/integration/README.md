@@ -159,8 +159,8 @@ topology assumption first.
 ### Pi service logs
 
 ```powershell
-ssh taktflow-pi@192.168.0.197 "sudo systemctl status sovd-main"
-ssh taktflow-pi@192.168.0.197 "journalctl -u sovd-main -n 100 --no-pager"
+ssh <pi-user>@<pi-bench-ip> "sudo systemctl status sovd-main"
+ssh <pi-user>@<pi-bench-ip> "journalctl -u sovd-main -n 100 --no-pager"
 ```
 
 ### CDA path checks

@@ -37,7 +37,7 @@ ecu:
   default_addressing_mode: physical
   addressing:
     doip:
-      ip: "192.168.0.197"            # Pi bench (bench proxy IP)
+      ip: "PI_BENCH_IP_HERE"          # Pi bench proxy IP — see CLAUDE.md §"Never commit private data"; substitute locally before generation
       port: 13400
       logical_address: 0x0001         # CVC per Phase 5 topology
       functional_address: 0xFFFF

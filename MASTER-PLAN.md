@@ -58,7 +58,7 @@ All planning time is **reference time**, not absolute calendar time.
 | `P_N.W_M` | Phase N, week M |
 | `M_N` | Milestone N (see §2.3) |
 | `G_N` | Hardening gate N (see §8.1) |
-| `M_N+Δ` / `M_N−Δ` | Delta relative to milestone N (e.g., `M5−2w`) |
+| `M_N+Î”` / `M_N−Î”` | Delta relative to milestone N (e.g., `M5−2w`) |
 | `<gate>.due` | Work item whose completion is the evidence for that gate |
 | `post-<gate>` | Work that can only start after the gate fires green |
 
@@ -1223,7 +1223,7 @@ Exit gates:
 |---|---|---|---|---|
 | P5-PI-01 | done | remote_with_preflight | Restore laptop aarch64 build; install Pi binaries | Cross-build produces aarch64 binary; installed on Pi |
 | P5-PI-02 | done | remote_with_preflight | Lock host-role and address map | `docs/deploy/bench-topology.md` authoritative |
-| P5-PI-03 | done | remote_with_preflight | Start CDA on laptop; prove Pi can reach it | CDA on `192.168.0.158:20002`; hybrid TOML active; Pi curl returns 200; topology doc updated |
+| P5-PI-03 | done | remote_with_preflight | Start CDA on laptop; prove Pi can reach it | CDA on `<laptop-ip>:20002`; hybrid TOML active; Pi curl returns 200; topology doc updated |
 | P5-PI-04 | done | remote_with_preflight | Verify existing Pi core runtime | `sovd-main --version` reported; loopback `/health` and `/components` return 200 |
 | P5-PI-05 | done | remote_with_preflight | Bring up `ws-bridge` only | `systemctl is-active ws-bridge.service` = active; `healthz` → 200 |
 | P5-PI-06 | done | remote_with_preflight | Bring up observer nginx + mTLS | Authenticated → 200; unauthenticated → 400 |
@@ -1236,17 +1236,17 @@ Exit gates:
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
 | P5-HIL-01 | done | live_bench | Inject at least one clearable fault per bench component | Pi `__bench/components/{id}/faults` override proved non-empty→empty transitions for CVC, SC, BCM via normal `DELETE /sovd/v1/components/{id}/faults`; operator method documented in `opensovd-core/deploy/pi/README-phase5.md` |
-| P5-HIL-02 | done | live_bench | Flash physical CVC; prove CAN VIN smoke | CVC ST-LINK serial `001A00363235510B37333439` flashed from the Windows host with `H:\taktflow-embedded-production\build\cvc-arm\cvc_firmware.bin` (`cvc_firmware.elf` sha256 `8076768B0A3FC983685DF6E9B1FB420AD9787F73E5445729FBA02636601D21C4`); Pi `can0` regained `0x010` heartbeat and direct UDS `0x22 F190` on `0x7E0/0x7E8` reassembled to VIN `TAKTFLWCVC0000001` |
-| P5-HIL-03 | blocked | live_bench | Flash physical SC via XDS110; prove proxy routing | XDS110/DSLite flash of `H:\taktflow-embedded-production\build\tms570\sc.elf` succeeded and COM11 UART proves the TMS570 app is alive, but the routed SC diagnostic smoke is still blocked: direct `0x7E3/0x644` TesterPresent got no reply, CDA `PUT /vehicle/v15/components/sc00000` emitted no visible SC-specific UDS traffic on Pi `can0`, and raw `/sovd/v1/components/sc/faults` still degrades to `503 backend.degraded` after override reset |
-| P5-HIL-04 | done | live_bench | Run read-only HIL cases (`hil_sovd_01`, `hil_sovd_05`) | `cargo test -p integration-tests --test phase5_hil_sovd_01_read_faults_all -- --nocapture` and `cargo test -p integration-tests --test phase5_hil_sovd_05_components_metadata -- --nocapture` both passed live against Pi `192.168.0.197:21002`; D6 scenario now matches the live BCM discovery name `Body Control Module` |
-| P5-HIL-05 | pending | live_bench | Run clear-fault + operation scenarios (`02`, `03`) | Non-empty→empty transition proven; operation start/complete behavior matches contract |
-| P5-HIL-06 | pending | live_bench | Run fault-injection + error-handling (`04`, `08`) | Injected fault visible via SOVD; error behavior matches contract |
-| P5-HIL-07 | pending | live_bench | Run concurrency + scale (`06`, `07`) | Concurrent test passes without deadlock; large-fault-list handled |
+| P5-HIL-02 | done | live_bench | Flash physical CVC; prove CAN VIN smoke | CVC ST-LINK serial `<cvc-stlink-serial>` flashed from the Windows host with `<taktflow-embedded>/build\cvc-arm\cvc_firmware.bin` (`cvc_firmware.elf` sha256 `<cvc-firmware-sha256>`); Pi `can0` regained `0x010` heartbeat and direct UDS `0x22 F190` on `0x7E0/0x7E8` reassembled to VIN `TAKTFLWCVC0000001` |
+| P5-HIL-03 | blocked | live_bench | Flash physical SC via XDS110; prove proxy routing | XDS110/DSLite flash of `<taktflow-embedded>/build\tms570\sc.elf` succeeded and COM11 UART proves the TMS570 app is alive, but the routed SC diagnostic smoke is still blocked: direct `0x7E3/0x644` TesterPresent got no reply, CDA `PUT /vehicle/v15/components/sc00000` emitted no visible SC-specific UDS traffic on Pi `can0`, and raw `/sovd/v1/components/sc/faults` still degrades to `503 backend.degraded` after override reset |
+| P5-HIL-04 | done | live_bench | Run read-only HIL cases (`hil_sovd_01`, `hil_sovd_05`) | `cargo test -p integration-tests --test phase5_hil_sovd_01_read_faults_all -- --nocapture` and `cargo test -p integration-tests --test phase5_hil_sovd_05_components_metadata -- --nocapture` both passed live against Pi `<pi-bench-ip>:21002`; D6 scenario now matches the live BCM discovery name `Body Control Module` |
+| P5-HIL-05 | done | live_bench | Run clear-fault + operation scenarios (`02`, `03`) | Bench overrides seeded one fault each for `cvc`, `sc`, and `bcm`; `cargo test -p integration-tests --test phase5_hil_sovd_02_clear_faults -- --nocapture` passed live against Pi `<pi-bench-ip>:21002` with non-empty -> empty transitions for all three, and `cargo test -p integration-tests --test phase5_hil_sovd_03_operation_execution -- --nocapture` passed live with `cvc/motor_self_test` reaching a contract-valid terminal state |
+| P5-HIL-06 | done | live_bench | Run fault-injection + error-handling (`04`, `08`) | `cargo test -p integration-tests --test phase5_hil_sovd_04_can_busoff -- --nocapture` and `cargo test -p integration-tests --test phase5_hil_sovd_08_error_handling -- --nocapture` both passed live against Pi `<pi-bench-ip>:21002`; the Pi proxy now treats `TesterPresent 0x3E80` as a suppressed-response keepalive, `sovd-main` serves cached stale snapshots when the laptop CDA degrades, D9 falls back when `gs_usb` rejects `restart-ms`, and D5 now verifies real `can0` BUS-OFF plus stale/fresh `/faults` transitions honestly on the retained-state bench where `C10300` persists even after full-chip erase + reflash of the known-good CVC image |
+| P5-HIL-07 | done | live_bench | Run concurrency + scale (`06`, `07`) | Bench fault overrides seeded `cvc`, `sc`, and `bcm` for D7, and D7 now verifies per-component preconditions before concurrency while tolerating the real overlap where a peer tester clears `cvc` first; `cargo test -p integration-tests --test phase5_hil_sovd_06_concurrent_testers -- --nocapture` passed live against Pi `<pi-bench-ip>:21002`. The bench was then reseeded with a 53-fault CVC override, and `cargo test -p integration-tests --test phase5_hil_sovd_07_large_fault_list -- --nocapture` passed live with `total=53` and `next_page=2` on page 1 |
 | P5-HIL-08 | done | repo_only | Complete doip-codec PARTIAL migration | Fork pins match CDA revs; `cargo test --release` 17 passed / 0 failed |
 | P5-HIL-09 | partial | repo_only | Add MDD FlatBuffers emitter to `tools/odx-gen` | `--emit=mdd` produces output matching CDA `cda-database`; 6 byte-level round-trip tests pass |
 | P5-HIL-09b | done | repo_only | Complete MDD emitter — variants + full round-trip | Generated Python bindings checked in; 5 structural round-trip tests pass |
 | P5-HIL-10 | done | repo_only | Install and document autonomous bench helpers | `mdd-ui` install + `tokio-console` attach steps recorded |
-| P5-HIL-11 | **blocked on P5-HIL-07** | live_bench | Collect nightly-green proof, perf proof, demo video | 8 HIL scenarios green; demo + latency evidence archived |
+| P5-HIL-11 | pending | live_bench | Collect nightly-green proof, perf proof, demo video | All 8 HIL scenarios are now green on the live Pi bench; nightly proof, latency evidence, and demo capture are the remaining proof artifacts |
 
 ### 7.7 P6 — Hardening
 
@@ -1674,7 +1674,7 @@ pulled in.
 - 2026-04-19 portfolio tile drafted — Project 4 added to `apps/web`.
 - 2026-04-19 **public SOVD SIL live** at
   `https://sovd.taktflow-systems.com/` — `sovd-main` cross-built on
-  the laptop, deployed to the second VPS (`87.106.147.203`) as
+  the laptop, deployed to the public VPS as
   Docker containers `taktflow_sovd_main`, `taktflow_sovd_docs`,
   `taktflow_caddy`; `GET /sovd/v1/components` returns 4 components
   (bcm, cvc, sc, dfm). Legacy `/sovd/*` on old VPS 301-redirects.
@@ -1686,21 +1686,21 @@ pulled in.
   patched local `cda-comm-doip` build, both `CVC00000.mdd` and
   `SC00000.mdd` are loaded, and Pi hybrid routing stays live against the
   laptop-hosted CDA surface.
-- 2026-04-20 P5-HIL-01 closed â€” Pi `sovd-main` gained a bench-only
+- 2026-04-20 P5-HIL-01 closed — Pi `sovd-main` gained a bench-only
   `__bench/components/{id}/faults` override route, and live proof on
-  `192.168.0.197:21002` showed CVC, SC, and BCM each going
-  non-empty â†’ `DELETE /sovd/v1/components/{id}/faults` â†’ empty.
+  `<pi-bench-ip>:21002` showed CVC, SC, and BCM each going
+  non-empty → `DELETE /sovd/v1/components/{id}/faults` → empty.
 
-- 2026-04-20 P5-HIL-02 closed â€” physical CVC reflashed on ST-LINK
-  serial `001A00363235510B37333439` with the last known-good
+- 2026-04-20 P5-HIL-02 closed — physical CVC reflashed on ST-LINK
+  serial `<cvc-stlink-serial>` with the last known-good
   `build/cvc-arm/cvc_firmware.bin` artifact (elf sha256
-  `8076768B0A3FC983685DF6E9B1FB420AD9787F73E5445729FBA02636601D21C4`);
+  `<cvc-firmware-sha256>`);
   Pi `can0` again showed `0x010` heartbeat and direct UDS `0x22 F190`
   on `0x7E0/0x7E8` reassembled to VIN `TAKTFLWCVC0000001`.
 
 - 2026-04-20 P5-HIL-03 attempted -> rebuilt the TMS570 SC image with
   `HIL=1` from embedded HEAD `7c18f0dc`, flashed
-  `H:\taktflow-embedded-production\build\tms570\sc.elf` over XDS110 via
+  `<taktflow-embedded>/build\tms570\sc.elf` over XDS110 via
   `DSLite.exe`, and confirmed post-flash life on `COM11` with runtime
   lines such as `[5s] SC: CVC=OK FZC=OK RZC=OK relay=ON`. The bench is
   still up afterward (`/sovd/v1/components` still shows `bcm`, `cvc`,
@@ -1716,7 +1716,7 @@ pulled in.
 ### 13.3 Active Blockers (snapshot)
 
 - Raw CVC/SC CDA passthrough remains unstable after the bench override is
-  reset â€” direct CDA reads are again timing out (`504` on the laptop,
+  reset — direct CDA reads are again timing out (`504` on the laptop,
   `503 backend.degraded` on the Pi). The new bench fault override plane
   keeps `/faults` readable/clearable for HIL D3/D7/D8, but physical-fault
   work such as D5 must explicitly
@@ -1728,7 +1728,7 @@ pulled in.
   on Windows dev host; laptop has the toolchain native and should
   become the primary cross-compile host.
 - Current dirty-tree CVC STM32 image under
-  `H:\taktflow-embedded-production\build\stm32\cvc` is bench-regressing:
+  `<taktflow-embedded>/build\stm32\cvc` is bench-regressing:
   after flash it booted on `COM3` but stayed `rx=0` / `h11=0` / `h12=0`
   on the UART status line, Pi `can0` lost `0x010` heartbeat, and direct
   `0x22 F190` requests on `0x7E0` got no `0x7E8` response. Bench

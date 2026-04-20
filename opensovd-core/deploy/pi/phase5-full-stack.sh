@@ -80,12 +80,18 @@ SOVD_CONFIG_FILE=${SOVD_CONFIG_FILE:-$DEPLOY_DIR/opensovd-pi.toml}
 CARGO_BUILD_BACKEND=${CARGO_BUILD_BACKEND:-auto}
 PHASE5_CDA_BASE_URL=${PHASE5_CDA_BASE_URL:-}
 PHASE5_CDA_PLACEHOLDER=${PHASE5_CDA_PLACEHOLDER:-http://198.51.100.10:20002}
-# Phase 2 Line B proxy binary. The Line B repo lives as a sibling
-# workspace (taktflow-embedded-production) per phase-2-line-b.md;
-# override PROXY_BIN if your layout differs. If the path does not
-# resolve we skip the proxy rsync - it is an optional dependency for
-# D1, NOT a hard prerequisite.
-PROXY_BIN=${PROXY_BIN:-$REPO_ROOT/../../taktflow-embedded-production/posix/build/taktflow-can-doip-proxy}
+# Phase 2 Line B proxy executable. Prefer the repo-side replacement
+# proxy first; fall back to the older Line B sibling workspace artifact
+# only if the local script is absent.
+DEFAULT_PROXY_BIN=$REPO_ROOT/../gateway/can_to_doip_proxy/taktflow-can-doip-proxy
+LEGACY_PROXY_BIN=$REPO_ROOT/../../taktflow-embedded-production/posix/build/taktflow-can-doip-proxy
+if [ -z "${PROXY_BIN:-}" ]; then
+    if [ -x "$DEFAULT_PROXY_BIN" ]; then
+        PROXY_BIN=$DEFAULT_PROXY_BIN
+    else
+        PROXY_BIN=$LEGACY_PROXY_BIN
+    fi
+fi
 OBSERVER_NGINX_ENABLED=${OBSERVER_NGINX_ENABLED:-0}
 OBSERVER_OBSERVABILITY_ENABLED=${OBSERVER_OBSERVABILITY_ENABLED:-0}
 OBSERVER_DASHBOARD_DIR=${OBSERVER_DASHBOARD_DIR:-$REPO_ROOT/../dashboard/build}

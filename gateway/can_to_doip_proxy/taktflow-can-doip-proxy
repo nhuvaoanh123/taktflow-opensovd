@@ -1,0 +1,316 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import logging
+import socket
+import struct
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+
+
+LOG = logging.getLogger("taktflow_can_to_doip_proxy")
+
+DOIP_PORT = 13400
+DOIP_VERSION = 0x02
+DOIP_HEADER = struct.Struct("!BBHI")
+
+PT_ROUTING_ACTIVATION_REQUEST = 0x0005
+PT_ROUTING_ACTIVATION_RESPONSE = 0x0006
+PT_ALIVE_CHECK_REQUEST = 0x0007
+PT_ALIVE_CHECK_RESPONSE = 0x0008
+PT_DIAGNOSTIC_MESSAGE = 0x8001
+PT_DIAGNOSTIC_MESSAGE_ACK = 0x8002
+PT_DIAGNOSTIC_MESSAGE_NACK = 0x8003
+
+ACTIVATION_OK = 0x10
+DIAG_ACK_OK = 0x00
+DIAG_NACK_UNKNOWN_TARGET = 0x03
+DIAG_NACK_TRANSPORT_ERROR = 0x08
+
+DEFAULT_GATEWAY_ADDRESS = 0x0E00
+
+
+@dataclass(frozen=True)
+class Route:
+    name: str
+    logical_address: int
+    can_request_id: int
+    can_response_id: int
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="DoIP <-> CAN ISO-TP proxy")
+    parser.add_argument(
+        "--config-file",
+        default="/etc/opensovd/proxy.toml",
+        help="Path to the TOML config file",
+    )
+    parser.add_argument(
+        "--listen-address",
+        default=None,
+        help="Override listen address from the config (e.g. 0.0.0.0)",
+    )
+    parser.add_argument(
+        "--listen-port",
+        type=int,
+        default=None,
+        help="Override listen TCP port from the config (default 13400)",
+    )
+    parser.add_argument(
+        "--can-interface",
+        default=None,
+        help="Override the CAN interface name (e.g. can0, vcan0)",
+    )
+    parser.add_argument(
+        "--uds-timeout-ms",
+        type=int,
+        default=3000,
+        help="Timeout for one CAN ISO-TP request/response roundtrip",
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help="Python logging level",
+    )
+    return parser.parse_args()
+
+
+def load_config(path: Path) -> tuple[str, int, str, dict[int, Route]]:
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    listen_address = data.get("listen_address", "0.0.0.0")
+    listen_port = int(data.get("listen_port", DOIP_PORT))
+    can_interface = data.get("can_interface", "can0")
+    routes: dict[int, Route] = {}
+    for ecu in data.get("ecu", []):
+        route = Route(
+            name=str(ecu["name"]),
+            logical_address=int(ecu["doip_logical_address"]),
+            can_request_id=int(ecu["can_request_id"]),
+            can_response_id=int(ecu["can_response_id"]),
+        )
+        routes[route.logical_address] = route
+    if not routes:
+        raise ValueError(f"{path} did not define any [[ecu]] routes")
+    return listen_address, listen_port, can_interface, routes
+
+
+def encode_doip(payload_type: int, payload: bytes, version: int = DOIP_VERSION) -> bytes:
+    return DOIP_HEADER.pack(version, version ^ 0xFF, payload_type, len(payload)) + payload
+
+
+def uds_roundtrip(
+    can_interface: str,
+    route: Route,
+    request: bytes,
+    timeout_seconds: float,
+) -> bytes:
+    sock = socket.socket(socket.AF_CAN, socket.SOCK_DGRAM, socket.CAN_ISOTP)
+    try:
+        sock.settimeout(timeout_seconds)
+        sock.bind((can_interface, route.can_response_id, route.can_request_id))
+        sock.send(request)
+        return sock.recv(4095)
+    finally:
+        sock.close()
+
+
+async def send_doip(
+    writer: asyncio.StreamWriter,
+    payload_type: int,
+    payload: bytes,
+    version: int,
+) -> None:
+    writer.write(encode_doip(payload_type, payload, version))
+    await writer.drain()
+
+
+async def handle_client(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    *,
+    can_interface: str,
+    routes: dict[int, Route],
+    uds_timeout_seconds: float,
+    gateway_address: int,
+) -> None:
+    peer = writer.get_extra_info("peername")
+    tester_address = 0
+    LOG.info("doip client connected peer=%s", peer)
+    try:
+        while True:
+            header = await reader.readexactly(DOIP_HEADER.size)
+            version, inverse, payload_type, payload_len = DOIP_HEADER.unpack(header)
+            if inverse != (version ^ 0xFF):
+                LOG.warning("invalid DoIP header inverse from peer=%s", peer)
+                break
+            payload = await reader.readexactly(payload_len)
+
+            if payload_type == PT_ROUTING_ACTIVATION_REQUEST:
+                if len(payload) < 7:
+                    LOG.warning("short routing activation request from peer=%s", peer)
+                    break
+                tester_address = int.from_bytes(payload[0:2], "big")
+                response = (
+                    tester_address.to_bytes(2, "big")
+                    + gateway_address.to_bytes(2, "big")
+                    + bytes([ACTIVATION_OK])
+                    + b"\x00\x00\x00\x00"
+                )
+                await send_doip(writer, PT_ROUTING_ACTIVATION_RESPONSE, response, version)
+                LOG.info(
+                    "routing activation accepted peer=%s source_address=%d",
+                    peer,
+                    tester_address,
+                )
+                continue
+
+            if payload_type == PT_ALIVE_CHECK_REQUEST:
+                await send_doip(
+                    writer,
+                    PT_ALIVE_CHECK_RESPONSE,
+                    tester_address.to_bytes(2, "big"),
+                    version,
+                )
+                continue
+
+            if payload_type == PT_DIAGNOSTIC_MESSAGE_ACK:
+                LOG.debug("client ACK from peer=%s ignored", peer)
+                continue
+
+            if payload_type != PT_DIAGNOSTIC_MESSAGE:
+                LOG.warning(
+                    "unsupported payload_type=0x%04X from peer=%s",
+                    payload_type,
+                    peer,
+                )
+                continue
+
+            if len(payload) < 5:
+                LOG.warning("short diagnostic message from peer=%s", peer)
+                break
+
+            source_address = int.from_bytes(payload[0:2], "big")
+            target_address = int.from_bytes(payload[2:4], "big")
+            uds_request = payload[4:]
+            route = routes.get(target_address)
+            if route is None:
+                nack = (
+                    target_address.to_bytes(2, "big")
+                    + source_address.to_bytes(2, "big")
+                    + bytes([DIAG_NACK_UNKNOWN_TARGET])
+                )
+                await send_doip(writer, PT_DIAGNOSTIC_MESSAGE_NACK, nack, version)
+                LOG.warning(
+                    "unknown target_address=0x%04X peer=%s request=%s",
+                    target_address,
+                    peer,
+                    uds_request.hex().upper(),
+                )
+                continue
+
+            ack = (
+                target_address.to_bytes(2, "big")
+                + source_address.to_bytes(2, "big")
+                + bytes([DIAG_ACK_OK])
+            )
+            await send_doip(writer, PT_DIAGNOSTIC_MESSAGE_ACK, ack, version)
+            LOG.info(
+                "diagnostic request ecu=%s target=0x%04X uds=%s",
+                route.name,
+                target_address,
+                uds_request.hex().upper(),
+            )
+
+            try:
+                uds_response = await asyncio.to_thread(
+                    uds_roundtrip,
+                    can_interface,
+                    route,
+                    uds_request,
+                    uds_timeout_seconds,
+                )
+            except (OSError, TimeoutError) as exc:
+                nack = (
+                    target_address.to_bytes(2, "big")
+                    + source_address.to_bytes(2, "big")
+                    + bytes([DIAG_NACK_TRANSPORT_ERROR])
+                )
+                await send_doip(writer, PT_DIAGNOSTIC_MESSAGE_NACK, nack, version)
+                LOG.warning(
+                    "uds roundtrip failed ecu=%s target=0x%04X err=%r",
+                    route.name,
+                    target_address,
+                    exc,
+                )
+                continue
+
+            response = (
+                target_address.to_bytes(2, "big")
+                + source_address.to_bytes(2, "big")
+                + uds_response
+            )
+            await send_doip(writer, PT_DIAGNOSTIC_MESSAGE, response, version)
+            LOG.info(
+                "diagnostic response ecu=%s target=0x%04X uds=%s",
+                route.name,
+                target_address,
+                uds_response.hex().upper(),
+            )
+    except asyncio.IncompleteReadError:
+        pass
+    finally:
+        writer.close()
+        await writer.wait_closed()
+        LOG.info("doip client session ended peer=%s", peer)
+
+
+async def main() -> None:
+    args = parse_args()
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+    config_file = Path(args.config_file)
+    listen_address, listen_port, can_interface, routes = load_config(config_file)
+    listen_address = args.listen_address or listen_address
+    listen_port = args.listen_port or listen_port
+    can_interface = args.can_interface or can_interface
+    gateway_address = next(iter(routes.values())).logical_address if routes else DEFAULT_GATEWAY_ADDRESS
+    uds_timeout_seconds = max(args.uds_timeout_ms, 1) / 1000.0
+
+    LOG.info(
+        "starting proxy listen=%s:%s can_interface=%s routes=%s",
+        listen_address,
+        listen_port,
+        can_interface,
+        ",".join(f"{route.name}=0x{route.logical_address:04X}" for route in routes.values()),
+    )
+
+    server = await asyncio.start_server(
+        lambda reader, writer: handle_client(
+            reader,
+            writer,
+            can_interface=can_interface,
+            routes=routes,
+            uds_timeout_seconds=uds_timeout_seconds,
+            gateway_address=gateway_address,
+        ),
+        host=listen_address,
+        port=listen_port,
+    )
+    async with server:
+        await server.serve_forever()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

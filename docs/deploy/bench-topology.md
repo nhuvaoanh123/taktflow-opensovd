@@ -60,7 +60,7 @@ curl.exe -fsSI --max-time 5 https://sovd.taktflow-systems.com/sovd/
 Expected output:
 `HTTP/1.1 200 OK`
 
-## Pi Runtime Config (observed 2026-04-19)
+## Pi Runtime Config (observed 2026-04-20)
 
 Observed via:
 
@@ -70,12 +70,11 @@ ssh -o BatchMode=yes -o ConnectTimeout=5 taktflow-pi@192.168.0.197 "cat /opt/tak
 
 Observed `base_url` lines:
 
-- absent
-- absent
-- absent
+- `base_url = "http://192.168.0.158:20002"`
+- `base_url = "http://192.168.0.158:20002"`
 
 Observed note:
-The active on-box file contains `[server]`, `[backend]`, and `[logging.otel]` sections only. No `[cda_forward]` sections and no `base_url = ...` lines are present in the active file.
+The active on-box file now uses the hybrid template with two `[[cda_forward]]` sections: `cvc -> cvc00000` and `sc -> sc00000`, both pointing at the laptop CDA on `192.168.0.158:20002`.
 
-Discrepancy:
-The active Pi on-box TOML is the default demo-only `opensovd-pi.toml` with no `[cda_forward]` section. Hybrid mode is opt-in per `phase5-full-stack.sh` and requires setting `SOVD_CONFIG_FILE=deploy/pi/opensovd-pi-phase5-hybrid.toml` + `PHASE5_CDA_BASE_URL=http://192.168.0.158:20002` (laptop). P5-PI-02 is closed as done with this demo-only state recognised as the intended current mode; the flip to hybrid is the job of `P5-PI-03`, which also requires CDA running on the laptop.
+Verification:
+`P5-PI-03` is now live. The laptop CDA answers `curl http://192.168.0.158:20002/vehicle/v15/components` from the Pi, and the Pi answers `curl http://127.0.0.1:21002/sovd/v1/components` with `bcm`, `cvc`, and `sc`.

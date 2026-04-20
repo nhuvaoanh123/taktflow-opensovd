@@ -1126,7 +1126,7 @@ Exit gates:
 |---|---|---|---|---|
 | P5-PI-01 | done | remote_with_preflight | Restore laptop aarch64 build; install Pi binaries | Cross-build produces aarch64 binary; installed on Pi |
 | P5-PI-02 | done | remote_with_preflight | Lock host-role and address map | `docs/deploy/bench-topology.md` authoritative |
-| P5-PI-03 | **pending** | remote_with_preflight | Start CDA on laptop; prove Pi can reach it | CDA on `192.168.0.158:20002`; hybrid TOML active; Pi curl returns 200; topology doc updated |
+| P5-PI-03 | done | remote_with_preflight | Start CDA on laptop; prove Pi can reach it | CDA on `192.168.0.158:20002`; hybrid TOML active; Pi curl returns 200; topology doc updated |
 | P5-PI-04 | done | remote_with_preflight | Verify existing Pi core runtime | `sovd-main --version` reported; loopback `/health` and `/components` return 200 |
 | P5-PI-05 | done | remote_with_preflight | Bring up `ws-bridge` only | `systemctl is-active ws-bridge.service` = active; `healthz` → 200 |
 | P5-PI-06 | done | remote_with_preflight | Bring up observer nginx + mTLS | Authenticated → 200; unauthenticated → 400 |

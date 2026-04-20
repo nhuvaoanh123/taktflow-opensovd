@@ -28,27 +28,13 @@
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     color: var(--grey-900);
     line-height: 1.65;
-    display: grid;
-    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-    column-gap: 2rem;
-    align-items: start;
-    max-width: 1400px;
+    max-width: 1100px;
     margin: 0 auto;
     padding: 2rem 2.5rem;
     background: #fff;
   }
 
-  body > h1,
-  body > .meta,
-  body > blockquote,
-  body > .link-buttons {
-    grid-column: 1 / -1;
-  }
-
-  .document-content {
-    grid-column: 2;
-    min-width: 0;
-  }
+  .document-content { min-width: 0; }
 
   /* --- Typography --- */
   h1 {
@@ -197,70 +183,48 @@
     .mermaid svg { max-width: 100% !important; }
   }
 
-  /* --- Responsive --- */
-  @media (max-width: 980px) {
-    body { display: block; padding: 1rem; }
-    details.toc {
-      position: static;
-      max-height: none;
-      overflow: visible;
-      margin: 1rem 0 1.5rem;
-      padding: 0.7rem 1rem;
-    }
-    details.toc > summary {
-      cursor: pointer;
-      margin: 0;
-      padding: 0.1rem 0;
-    }
-    details.toc > summary::after {
-      content: " \25BE";
-      font-size: 0.85rem;
-      color: var(--grey-700);
-      margin-left: 0.4rem;
-    }
-    details.toc:not([open]) > summary::after { content: " \25B8"; }
-    details.toc[open] > ol {
-      max-height: 55vh;
-      overflow-y: auto;
-      margin-top: 0.5rem;
-      padding-right: 0.5rem;
-    }
-  }
-
-  @media (max-width: 768px) {
-    /* horizontally scroll wide tables instead of overflowing the viewport */
-    main table { display: block; overflow-x: auto; white-space: nowrap; font-size: 0.82rem; }
-    main table th, main table td { white-space: normal; }
-    .mermaid svg { max-width: 100%; height: auto; }
-  }
-
-  /* --- TOC --- */
+  /* --- TOC (collapsible, single-column, no sticky sidebar) --- */
   details.toc {
-    grid-column: 1;
-    position: sticky;
-    top: 2rem;
-    align-self: start;
-    max-height: calc(100vh - 4rem);
-    overflow: auto;
     background: var(--grey-100);
     border: 1px solid var(--grey-300);
     border-radius: 6px;
-    padding: 1rem 1.5rem;
-    margin: 0;
+    padding: 0.8rem 1.2rem;
+    margin: 0 0 1.5rem;
   }
   details.toc > summary {
     font-size: 1rem;
     font-weight: 600;
     color: var(--grey-900);
-    margin: 0 0 0.6rem;
+    cursor: pointer;
     list-style: none;
+    padding: 0.1rem 0;
+    user-select: none;
   }
   details.toc > summary::-webkit-details-marker { display: none; }
-  details.toc ol { padding-left: 1.2rem; margin: 0; }
+  details.toc > summary::after {
+    content: " \25B8";
+    font-size: 0.85rem;
+    color: var(--grey-700);
+    margin-left: 0.4rem;
+    display: inline-block;
+    transition: transform 0.15s ease-in-out;
+  }
+  details.toc[open] > summary::after { transform: rotate(90deg); }
+  details.toc[open] > ol {
+    margin-top: 0.6rem;
+    max-height: 55vh;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+  }
+  details.toc ol { padding-left: 1.4rem; margin: 0; }
   details.toc li { margin-bottom: 0.2rem; font-size: 0.92rem; }
-  /* Desktop: summary acts as a heading, not a toggle */
-  @media (min-width: 981px) {
-    details.toc > summary { pointer-events: none; }
+
+  /* --- Responsive --- */
+  @media (max-width: 768px) {
+    body { padding: 1rem; }
+    main table { display: block; overflow-x: auto; white-space: nowrap; font-size: 0.82rem; }
+    main table th, main table td { white-space: normal; }
+    .mermaid svg { max-width: 100%; height: auto; }
   }
 </style>
 </head>

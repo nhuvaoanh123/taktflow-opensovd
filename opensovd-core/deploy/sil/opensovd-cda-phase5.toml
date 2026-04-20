@@ -5,9 +5,8 @@
 #
 # This uses generated bench MDD aliases with distinct DoIP logical
 # addresses (3-ECU bench per ADR-0023):
-#   CVC00000 -> 0x0001  (central, active)
-#   SC00000  -> 0x0004  (safety, MDD pending)
-# (FZC00000, RZC00000 retired from the bench — ADR-0023.)
+#   CVC00000 -> 0x0001  (central)
+#   SC00000  -> 0x0004  (safety)
 #
 # Run from opensovd-core with:
 #   CDA_CONFIG=deploy/sil/opensovd-cda-phase5.toml ./deploy/sil/run-cda-local.sh
@@ -18,7 +17,14 @@ path = "deploy/pi/cda-mdd"
 [doip]
 tester_address = "192.0.2.20"
 tester_subnet = "255.255.255.0"
+# Bench fallback when the Pi proxy does not answer VIR/VAM discovery on :13401.
+static_gateway_ip = "192.168.0.197"
+# Bench proxy currently drops/mangles DoIP alive-check keepalives after routing activation.
+enable_alive_check = false
+
+[com_params.doip.logical_tester_address]
+name = "CP_DoIPLogicalTesterAddress"
+default = 65024
 
 [logging.otel]
 enabled = false
-

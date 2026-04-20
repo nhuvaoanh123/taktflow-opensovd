@@ -150,10 +150,10 @@ PHASE5_CDA_BASE_URL=http://<dev-host-lan-ip>:20002 \
 ./deploy/pi/phase5-full-stack.sh
 ```
 
-That template keeps only `tcu` local on the Pi and forwards
-`cvc`, `fzc`, and `rzc` to CDA under `/vehicle/v15`.
+That template keeps only `bcm` local on the Pi and forwards
+`cvc` and `sc` to CDA under `/vehicle/v15`.
 Each forward also pins a `remote_component_id`
-(`cvc00000`/`fzc00000`/`rzc00000`) so OpenSOVD can keep the
+(`cvc00000`/`sc00000`) so OpenSOVD can keep the
 external Taktflow ids while CDA talks to generated bench-MDD aliases
 with unique DoIP logical addresses.
 
@@ -168,8 +168,65 @@ That config points at `deploy/pi/cda-mdd/`, which contains generated
 Phase 5 MDD clones for:
 
 - `cvc00000` -> DoIP logical address `0x0001`
-- `fzc00000` -> DoIP logical address `0x0002`
-- `rzc00000` -> DoIP logical address `0x0003`
+- `sc00000` -> DoIP logical address `0x0004`
+
+The same hybrid template also enables the bench-only fault override
+plane:
+
+```toml
+[bench_fault_injection]
+enabled = true
+```
+
+That unlocks deterministic HIL fault seeding under
+`PUT /__bench/components/{component_id}/faults` on the Pi. The route is
+intentionally outside `/sovd/v1/*` so it does not become part of the
+public SOVD contract.
+
+Live operator flow for D3/D7/D8-style fault seeding:
+
+```bash
+PI_BASE=http://<pi-lan-ip>:21002
+
+curl -fsS -X PUT "$PI_BASE/__bench/components/cvc/faults" \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "items": [
+          {
+            "code": "TFCVC01",
+            "scope": "Default",
+            "display_code": "TFCVC01",
+            "fault_name": "Bench injected CVC fault",
+            "severity": 2,
+            "status": {
+              "aggregatedStatus": "active",
+              "confirmedDTC": "1"
+            }
+          }
+        ]
+      }'
+
+curl -fsS "$PI_BASE/sovd/v1/components/cvc/faults"
+curl -fsS -X DELETE "$PI_BASE/sovd/v1/components/cvc/faults"
+curl -fsS "$PI_BASE/sovd/v1/components/cvc/faults"
+```
+
+To keep `/faults` readable after the proof while the raw CVC/SC CDA path
+is unstable, replace the override with an empty list:
+
+```bash
+curl -fsS -X PUT "$PI_BASE/__bench/components/cvc/faults" \
+  -H 'Content-Type: application/json' \
+  -d '{"items":[]}'
+```
+
+To return a component to the underlying live backend (needed before
+raw-fault exercises such as the real CAN bus-off path), reset the
+override explicitly:
+
+```bash
+curl -fsS -X DELETE "$PI_BASE/__bench/components/cvc/faults/override"
+```
 
 If the upstream FLXC template ever changes, regenerate those files with:
 

@@ -134,17 +134,12 @@ const PHASE5_MDD_SPECS: &[Phase5MddSpec] = &[
     Phase5MddSpec {
         remote_component_id_upper: "CVC00000",
         logical_address_decimal: "0001",
-        include_motor_self_test: false,
-    },
-    Phase5MddSpec {
-        remote_component_id_upper: "FZC00000",
-        logical_address_decimal: "0002",
-        include_motor_self_test: false,
-    },
-    Phase5MddSpec {
-        remote_component_id_upper: "RZC00000",
-        logical_address_decimal: "0003",
         include_motor_self_test: true,
+    },
+    Phase5MddSpec {
+        remote_component_id_upper: "SC00000",
+        logical_address_decimal: "0004",
+        include_motor_self_test: false,
     },
 ];
 

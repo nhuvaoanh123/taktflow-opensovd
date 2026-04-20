@@ -75,6 +75,7 @@ mod tests {
         );
         assert_eq!(config.dfm_component_id.as_deref(), Some("dfm"));
         assert!(config.cda_forwards.is_empty());
+        assert!(!config.bench_fault_injection.enabled);
         assert!(!config.logging.otel.enabled);
         assert_eq!(config.logging.otel.endpoint, "http://127.0.0.1:4317");
         assert_eq!(config.logging.otel.service_name, "sovd-main");
@@ -110,6 +111,9 @@ port = 20004
 dfm_component_id = ""
 local_demo_components = ["bcm"]
 
+[bench_fault_injection]
+enabled = true
+
 [[cda_forward]]
 component_id = "cvc"
 remote_component_id = "cvc00000"
@@ -121,6 +125,7 @@ path_prefix = "vehicle/v15"
         let config: Configuration = figment.extract()?;
         assert_eq!(config.dfm_component_id.as_deref(), Some(""));
         assert_eq!(config.local_demo_components, vec!["bcm".to_owned()]);
+        assert!(config.bench_fault_injection.enabled);
         assert_eq!(config.cda_forwards.len(), 1);
         let first = config
             .cda_forwards
@@ -201,6 +206,7 @@ app_description = "OpenSOVD core DLT smoke"
         assert_eq!(config.dfm_component_id.as_deref(), Some(""));
         // 3-ECU bench per ADR-0023: BCM local, CVC+SC forwarded to CDA.
         assert_eq!(config.local_demo_components, vec!["bcm".to_owned()]);
+        assert!(config.bench_fault_injection.enabled);
         assert_eq!(config.cda_forwards.len(), 2);
         assert_eq!(
             config

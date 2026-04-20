@@ -239,9 +239,10 @@ async fn build_in_memory_server(
     config: &Configuration,
 ) -> Result<AssembledServer, Box<dyn std::error::Error>> {
     validate_component_topology(config)?;
-    let server = Arc::new(InMemoryServer::new_with_demo_components(
-        &config.local_demo_components,
-    )?);
+    let server = Arc::new(
+        InMemoryServer::new_with_demo_components(&config.local_demo_components)?
+            .with_bench_fault_injection_enabled(config.bench_fault_injection.enabled),
+    );
 
     let mut dfm_arc: Option<Arc<Dfm>> = None;
     if let Some(component_id) = configured_dfm_component_id(config) {
@@ -361,6 +362,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 local_demo_components = ?config.local_demo_components,
                 dfm_component_id = ?configured_dfm_component_id(&config),
                 cda_forward_count = config.cda_forwards.len(),
+                bench_fault_injection = config.bench_fault_injection.enabled,
                 "Booting InMemoryServer with configured local demo surface and forwards"
             );
             let assembled = build_in_memory_server(&config).await?;
@@ -470,6 +472,7 @@ mod tests {
                 base_url: base_url.to_string(),
                 path_prefix: "sovd/v1".to_owned(),
             }],
+            bench_fault_injection: defaults.bench_fault_injection,
             mqtt: None,
             logging: defaults.logging,
             rate_limit: defaults.rate_limit,
@@ -515,6 +518,7 @@ mod tests {
             .await
             .expect("local bcm faults");
         assert!(bcm_faults.items.is_empty());
+        assert!(!server.bench_fault_injection_enabled());
 
         handle.abort();
     }
@@ -534,6 +538,7 @@ mod tests {
                 base_url: base_url.to_string(),
                 path_prefix: "sovd/v1".to_owned(),
             }],
+            bench_fault_injection: defaults.bench_fault_injection,
             mqtt: None,
             logging: defaults.logging,
             rate_limit: defaults.rate_limit,

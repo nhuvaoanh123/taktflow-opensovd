@@ -34,7 +34,7 @@ use std::sync::Arc;
 use axum::{
     Router,
     middleware::from_fn_with_state,
-    routing::{get, post},
+    routing::{delete, get, post, put},
 };
 
 use crate::{InMemoryServer, auth::AuthConfig, correlation};
@@ -44,6 +44,7 @@ pub mod data;
 pub mod error;
 pub mod faults;
 pub mod health;
+pub mod bench;
 pub mod observer;
 pub mod operations;
 
@@ -96,6 +97,14 @@ fn base_router() -> Router<Arc<InMemoryServer>> {
         .route(
             "/sovd/v1/components/{component_id}/operations/{operation_id}/executions/{execution_id}",
             get(operations::execution_status),
+        )
+        .route(
+            "/__bench/components/{component_id}/faults",
+            put(bench::seed_faults),
+        )
+        .route(
+            "/__bench/components/{component_id}/faults/override",
+            delete(bench::reset_faults),
         );
 
     #[cfg(debug_assertions)]

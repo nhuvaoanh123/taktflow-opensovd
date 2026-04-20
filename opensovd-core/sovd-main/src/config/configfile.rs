@@ -116,6 +116,14 @@ impl Default for DltConfig {
     }
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+pub struct BenchFaultInjectionConfig {
+    /// Enable the internal `PUT /__bench/components/{id}/faults` seed route
+    /// plus the matching override reset route.
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Configuration {
     pub server: ServerConfig,
@@ -141,6 +149,10 @@ pub struct Configuration {
     /// Optional CDA-backed forwards registered at startup.
     #[serde(default, rename = "cda_forward")]
     pub cda_forwards: Vec<CdaForwardConfig>,
+    /// Bench-only deterministic fault seeding plane. Disabled by default so
+    /// non-bench deployments never expose the internal override routes.
+    #[serde(default)]
+    pub bench_fault_injection: BenchFaultInjectionConfig,
     /// Optional MQTT backend configuration. When present **and** the
     /// `fault-sink-mqtt` Cargo feature is enabled, `MqttFaultSink` is
     /// registered as a fault-sink alongside the DFM.
@@ -215,6 +227,7 @@ impl Default for Configuration {
             dfm_component_id: default_dfm_component_id(),
             local_demo_components: default_local_demo_components(),
             cda_forwards: Vec::new(),
+            bench_fault_injection: BenchFaultInjectionConfig::default(),
             mqtt: None,
             logging: LoggingConfig::default(),
             rate_limit: RateLimitConfig::default(),

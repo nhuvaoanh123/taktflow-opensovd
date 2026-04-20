@@ -40,7 +40,8 @@
 
   body > h1,
   body > .meta,
-  body > blockquote {
+  body > blockquote,
+  body > .link-buttons {
     grid-column: 1 / -1;
   }
 
@@ -104,6 +105,41 @@
     margin-bottom: 1.2rem;
   }
   .meta span { display: inline-block; margin-right: 2rem; }
+
+  .link-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 0 0 1.5rem;
+  }
+
+  .link-buttons a {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.55rem 1.1rem;
+    background: var(--blue-600);
+    color: #fff;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border: 1px solid transparent;
+    transition: background 0.15s ease-in-out, transform 0.05s ease-in-out;
+  }
+
+  .link-buttons a:hover,
+  .link-buttons a:focus {
+    background: #0d47a1;
+    outline: none;
+  }
+
+  .link-buttons a:active { transform: translateY(1px); }
+
+  .link-buttons a::before {
+    content: "\2192";
+    margin-right: 0.45rem;
+    font-weight: 700;
+  }
 
   /* --- Tables --- */
   table {
@@ -219,6 +255,13 @@ zonal diagnostic stack implementing the Eclipse OpenSOVD capability scope
 as an internal engineering deliverable. Upstream contribution to Eclipse
 was dropped from scope on 2026-04-20; see <a href="MASTER-PLAN.md">MASTER-PLAN.md</a> &sect;1.5 for the alignment model.
 </blockquote>
+
+<nav class="link-buttons" aria-label="External resources">
+  <a href="https://sovd.taktflow-systems.com/" target="_blank" rel="noopener">Website</a>
+  <a href="https://sovd.taktflow-systems.com/dashboard/" target="_blank" rel="noopener">SIL Dashboard</a>
+  <a href="https://sovd.taktflow-systems.com/sovd/v1/components" target="_blank" rel="noopener">Live SOVD API</a>
+  <a href="https://sovd.taktflow-systems.com/sovd/grafana/" target="_blank" rel="noopener">Grafana</a>
+</nav>
 
 <nav class="toc">
 <h2>Contents</h2>
@@ -442,6 +485,107 @@ graph BT
 <tr><td>DFM &rarr; SQLite</td><td>sqlx async driver</td><td>WAL mode</td></tr>
 </tbody>
 </table>
+
+<h3>2.5 Two request paths &mdash; native-SOVD vs CDA-backed</h3>
+
+<p>
+The SOVD server surface supports two request paths side by side. The
+<em>native-SOVD path</em> speaks JSON/REST end-to-end &mdash; no ODX,
+no UDS, no DoIP &mdash; and is the first-class citizen of the stack.
+The <em>CDA-backed path</em> bridges the same SOVD surface to legacy
+UDS/DoIP ECUs through an ODX-compiled MDD database. Both paths exit
+through the same <code>sovd-gateway</code> REST endpoint; the tester
+cannot tell the difference at the wire level.
+</p>
+
+<pre class="mermaid">
+graph LR
+    TESTER["&lt;b&gt;Tester&lt;/b&gt;&lt;br/&gt;(HTTP/JSON)"]
+    GW["&lt;b&gt;sovd-gateway&lt;/b&gt;"]
+    SRV["&lt;b&gt;sovd-server&lt;/b&gt;"]
+
+    TESTER -->|"HTTPS SOVD"| GW
+    GW --> SRV
+
+    subgraph NATIVE ["Native-SOVD path (JSON-only, no ODX)"]
+        DFM["sovd-dfm"]
+        FL["fault-lib (apps)"]
+        COVESA["sovd-covesa (VSS)"]
+        XV["sovd-extended-vehicle"]
+        ML["sovd-ml"]
+        FL -->|IPC| DFM
+        SRV --> DFM
+        SRV --> COVESA
+        SRV --> XV
+        SRV --> ML
+    end
+
+    subgraph LEGACY ["CDA-backed path (UDS/DoIP via ODX/MDD)"]
+        CDA["Classic Diagnostic Adapter"]
+        MDD["MDD database&lt;br/&gt;(compiled from ODX)"]
+        UDSECU["Legacy UDS ECU"]
+        SRV -->|"HTTP"| CDA
+        CDA --> MDD
+        CDA -->|"UDS / DoIP"| UDSECU
+    end
+
+    style NATIVE fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style LEGACY fill:#ffe0b2,stroke:#e65100,stroke-width:2px
+    style TESTER fill:#fff3e0,stroke:#e65100
+    style GW fill:#bbdefb,stroke:#1565c0
+    style SRV fill:#bbdefb,stroke:#1565c0
+</pre>
+
+<h4>2.5.1 Comparison</h4>
+<table>
+<thead><tr><th>Property</th><th>Native-SOVD path</th><th>CDA-backed path</th></tr></thead>
+<tbody>
+<tr><td>Wire to tester</td><td>HTTPS / JSON (SOVD REST)</td><td>HTTPS / JSON (SOVD REST)</td></tr>
+<tr><td>Wire to ECU / app</td><td>IPC (Unix domain socket, postcard)</td><td>UDS over DoIP (TCP / 13400)</td></tr>
+<tr><td>Configuration source</td><td>Runtime schema self-describe (SEM-1/2; online capability description &mdash; planned PROD-12)</td><td>ODX authoring &rarr; MDD compile &rarr; CDA</td></tr>
+<tr><td>Originator</td><td>HPC apps / native-SOVD ECU firmware</td><td>Legacy ECU responding to UDS request</td></tr>
+<tr><td>Crates involved</td><td><code>sovd-server</code>, <code>sovd-gateway</code>, <code>sovd-dfm</code>, <code>sovd-interfaces</code>, <code>fault-lib</code>, <code>sovd-covesa</code>, <code>sovd-extended-vehicle</code>, <code>sovd-ml</code></td><td><code>classic-diagnostic-adapter/*</code>, <code>odx-converter</code> (CI-side only)</td></tr>
+<tr><td>Target ECU kind</td><td>Zonal HPC (POSIX / Linux / QNX)</td><td>Legacy MCU with UDS stack</td></tr>
+<tr><td>ODX needed?</td><td><strong>No</strong></td><td>Yes</td></tr>
+<tr><td>Status</td><td>Shipped at M3&ndash;M4 (DFM, fault-lib, server, gateway); schema / online-description work in P7&ndash;P10</td><td>Shipped at M4; downstream DoIP patches committed 2026-04-20 (see <code>classic-diagnostic-adapter/DOWNSTREAM-PATCHES.md</code>)</td></tr>
+</tbody>
+</table>
+
+<h4>2.5.2 When the JSON-only path is the answer</h4>
+
+<p>
+Stakeholders asking for a pure JSON / REST diagnostic surface
+&mdash; no ODX files, no offline authoring step, no UDS translation
+&mdash; are describing the native-SOVD path. It is already the
+architecture's first-class citizen: every <code>sovd-server</code>
+instance can serve the SOVD REST surface without a CDA or MDD in the
+picture, and the bench-fault-injection plane committed in
+<code>d42cb2f</code> exercises exactly that path end-to-end.
+</p>
+
+<p>
+Two capabilities still have to ship before the &quot;no more ODX&quot;
+story is fully deliverable to a third-party tester:
+</p>
+<ul>
+<li><strong>PROD-12 online capability description</strong> &mdash; every
+SOVD resource must self-describe its schema variant-exactly at runtime,
+so a tester can drive the server using only the schema endpoint. See
+<code>MASTER-PLAN-PART-2-PRODUCTION-GRADE.md</code> &sect;II.6.12;
+benchmark: ACTIA IME ships this today.</li>
+<li><strong>SEM-1 / SEM-2 semantic schema enforcement</strong> &mdash;
+every response envelope validates against a machine-readable semantic
+schema, and the schemas themselves are discoverable. See MASTER-PLAN
+&sect;5.5; P7-SEM-03 / P7-SEM-04 in progress.</li>
+</ul>
+
+<p>
+CDA is not the JSON-native story &mdash; it is the transitional
+bridge that keeps legacy UDS ECUs reachable while zonal architectures
+migrate to native SOVD. For an OEM fleet fully on a post-ODX HPC,
+CDA can be disabled at config time and every request goes through the
+native path.
+</p>
 
 <hr>
 

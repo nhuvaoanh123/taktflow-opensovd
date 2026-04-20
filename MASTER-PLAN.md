@@ -45,6 +45,7 @@ plan entries.
 | A | ADR index |
 | B | Use-case catalog |
 | C | Glossary |
+| — | **Part II — Production Grade** (separate file, DRAFT): [MASTER-PLAN-PART-2-PRODUCTION-GRADE.md](MASTER-PLAN-PART-2-PRODUCTION-GRADE.md) — extends this plan from M10 (reference / docs maturity) to in-vehicle production release. Pending OEM answers to `Q-PROD-1..9`. |
 
 ### 0.3 Time Convention
 
@@ -94,6 +95,16 @@ Diagnostics (SOVD, ISO 17978) implementation on the Taktflow zonal bench
 listed in the Eclipse OpenSOVD project description — not as an Eclipse
 contribution, but as an internal engineering deliverable validated against
 physical hardware.
+
+Taktflow OpenSOVD is an **OEM-owned reference stack**. Its purpose is to
+be the normative diagnostic implementation that Tier-1 (T1) suppliers
+are required to adopt and conform to when delivering ECUs into the OEM's
+zonal architecture. Conformance is verified against this codebase and
+the ISO-17978 subset declared in ADR-0021 / ADR-0035; public efforts
+(Eclipse OpenSOVD, S-CORE, COVESA VSS, ISO 20078) are used as capability
+references, never as authority. Design decisions favor T1 onboarding
+cost and OEM-run conformance testability over alignment with any
+external reference model.
 
 ### 1.2 In-Scope Capability Buckets
 
@@ -154,6 +165,7 @@ plus the four future-proofing extensions the project description names.
 | ECO-1 | S-CORE-compatible pluggable backend interface | §5.4.1 |
 | ECO-2 | COVESA VSS semantic mapping (internal) | §5.4.2 |
 | ECO-3 | ML artifact delivery + observability boundary | §5.4.3 |
+| ECO-5 | S-CORE Diagnostic Concept alignment (box-level mapping) | §5.4.4 |
 
 #### 1.2.5 Future-Proofing Extensions
 
@@ -290,12 +302,12 @@ P11 requires P8, P9, P10.
 
 ### 3.1 Tier Inventory
 
-| Tier | Host | Role | Touches Physical ECUs? |
-|---|---|---|---|
-| Public SIL | Netcup VPS (`sovd.taktflow-systems.com`) | Public demo — engineering spec HTML, live SOVD SIL API, Grafana anonymous view | No |
-| HIL bench | Raspberry Pi 4 (Ubuntu 24.04 aarch64, bench LAN) | Only tier that touches physical ECUs; runs CAN-to-DoIP proxy, observer nginx + mTLS, cloud_connector → AWS IoT Core, bench dashboard | Yes — USB-CAN adapter |
-| Development | Ubuntu 24.04 x86_64 laptop on bench LAN | Cross-compile, unit/integration tests, dev-time Docker, deploy origin for Pi and VPS | No |
-| Cloud telemetry | AWS IoT Core (shared `taktflow-embedded-production` account) | Fleet telemetry sink; `DEVICE_ID=taktflow-sovd-hil-001` publishes `vehicle/dtc/new`, `taktflow/cloud/status` | No |
+| Tier | Host | Authority | Role | Touches Physical ECUs? |
+|---|---|---|---|---|
+| Development | Windows 11 laptop at `h:\taktflow-opensovd` (main working station) | **PRIMARY — authoritative source of truth** | Cross-compile, unit/integration tests, dev-time Docker, deploy origin for Pi and VPS. All edits land here first; Pi / VPS / AWS receive pushes, never originate them. | No |
+| Public SIL | Netcup VPS (`sovd.taktflow-systems.com`) | Public mirror (deploy target) | Public demo — engineering spec HTML, live SOVD SIL API, Grafana anonymous view | No |
+| HIL bench | Raspberry Pi 4 (Ubuntu 24.04 aarch64, bench LAN) | Deploy target (read-only for code; writes are for measurement data only) | Only tier that touches physical ECUs; runs CAN-to-DoIP proxy, observer nginx + mTLS, cloud_connector → AWS IoT Core, bench dashboard | Yes — USB-CAN adapter |
+| Cloud telemetry | AWS IoT Core (shared `taktflow-embedded-production` account) | Telemetry sink | Fleet telemetry sink; `DEVICE_ID=taktflow-sovd-hil-001` publishes `vehicle/dtc/new`, `taktflow/cloud/status` | No |
 
 ### 3.2 Architectural Split Rationale
 
@@ -305,6 +317,20 @@ Pi is the only host with a USB-CAN adapter attached to physical ECUs, so
 HIL must stay on the Pi. Mixing the two tiers on the same host ties
 public availability to bench state and makes the Pi's 4 GB RAM a single
 point of failure for demos.
+
+**Primary-workstation policy.** The Windows 11 laptop at
+`h:\taktflow-opensovd` is the **single source of truth** for this
+project. Every code change, plan edit, ADR, test scenario, and
+deployment artifact originates on the laptop and flows outward to Pi /
+VPS / AWS. This is not a convenience note — it is policy. A worker
+(human or AI) MUST NOT edit code in place on the Pi, VPS, or cloud
+resources; those tiers hold deployed copies that get overwritten on the
+next push. If an edit is only on the Pi, it is effectively lost the
+next time a release gets pushed from the laptop. The laptop's `origin`
+remote at `github.com/nhuvaoanh123/taktflow-opensovd` is the mirror of
+record; forks under the same account (see
+[docs/upstream/README.md](docs/upstream/README.md)) are the upstream
+monitoring layer and are not authority.
 
 ### 3.3 Topology Reference
 
@@ -784,20 +810,24 @@ Covered in §9. Executive summary:
 
 #### 5.4.1 ECO-1 Pluggable Backend Interface
 
-**Role.** Keep the backend trait pluggable so a Taktflow SOVD backend can
-be consumed by any runtime — including, but not limited to, an S-CORE
-runtime. This is a technical abstraction choice, not a collaboration
-commitment.
+**Role.** Keep the backend trait pluggable so the OEM can swap the
+concrete backend (default Taktflow, optional S-CORE, optional future
+OEM-authored backends) without changing the T1-facing REST surface. This
+is an internal abstraction that protects OEM backend-vendor optionality;
+it is not a compatibility commitment to any external runtime.
 
 **Design approach.**
 - [ADR-0016](docs/adr/0016-pluggable-score-backends.md) defines the
-  pluggable-backend shape.
+  pluggable-backend shape (S-CORE or other backends plug in behind the
+  Taktflow defaults).
 - Planned **ADR-0034** — backend compatibility interface — will
   formalize the exact trait, lifecycle, and data model mapping.
 
-**Constraint.** No external engagement implied. Compatibility is
-one-way: our backends can be consumed by external callers, we do not
-consume theirs.
+**Constraint.** Direction is inward only: external backends (e.g. the
+S-CORE persistency / fault-lib backends) can be loaded behind the
+Taktflow trait; the OEM does not export the Taktflow backend for
+external systems to host, and no external governance body dictates the
+trait shape.
 
 **Planned in.** §7.P10.
 
@@ -834,6 +864,73 @@ tracking any external working group's opinion.
   OTLP / DLT / Prometheus surfaces.
 - Lifecycle states (load, hot-swap, rollback, unload) owned entirely by
   Taktflow per ADR-0028 and ADR-0029.
+
+#### 5.4.4 ECO-5 S-CORE Diagnostic Concept Alignment
+
+**Role.** The Eclipse S-CORE Diagnostic Concept publishes a box-level
+reference architecture for a SOVD-based diagnostic stack. Taktflow
+OpenSOVD is the **OEM's normative stack**; S-CORE is one of several
+public references it draws from. Selective alignment serves two OEM
+goals: (a) keep the architecture legible to T1 suppliers who already
+know the S-CORE diagram, and (b) let the OEM substitute S-CORE-backed
+components (via ECO-1 trait seams) where that serves procurement
+leverage. Alignment is never pursued for its own sake — every alignment
+step is justified by a concrete T1-onboarding or OEM-leverage outcome.
+
+**Authority.** The OEM is the authority on diagnostic-stack shape. T1
+suppliers implement against Taktflow, not against S-CORE. Where
+Taktflow diverges from the S-CORE diagram, the divergence is the spec.
+
+**Current mapping (as of P5 exit).**
+
+| S-CORE box | Taktflow today | Status under OEM policy |
+|---|---|---|
+| Fault Library | [`fault-lib/`](fault-lib/) | aligned; no action |
+| DFM | [`opensovd-core/sovd-dfm/`](opensovd-core/sovd-dfm/) | aligned; no action |
+| SOVD Server | [`opensovd-core/sovd-server/`](opensovd-core/sovd-server/) | aligned; no action |
+| SOVD Gateway | [`opensovd-core/sovd-gateway/`](opensovd-core/sovd-gateway/) | aligned; no action |
+| CDA | [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/) | aligned; ODX→MDD compile step is internal pipeline detail (ADR-0008) |
+| UDS2SOVD Proxy | crate exists, not wired | **close (Track A)** — T1 benches need legacy UDS tester ingress |
+| Service / Flash App | OTA on CVC (P6-05) | **close (Track A)** — T1s must flash via the SOVD surface; endpoint exposure outstanding |
+| Config Manager (IPC peer) | TOML + env inside `sovd-server` | **do not close** — monolith retained; see design decision below |
+| Authentication Manager (IPC peer) | tower middleware inside `sovd-server` | **do not close** — same rationale |
+| Crypto (IPC peer) | inline in OTA + ML signing paths | **do not close** — same rationale |
+
+**Design decision — monolith over multi-process decomposition.**
+
+S-CORE's reference decomposes Config Manager, Authentication Manager,
+and Crypto into separate IPC-reachable services. Taktflow deliberately
+keeps these inline in `sovd-server` and relies on the trait-seam model
+(ECO-1, ADR-0016) for backend substitutability. The OEM rationale:
+
+1. **T1 onboarding cost.** A single-binary stack drops into a T1's ECU
+   software with one systemd unit and one TOML; a multi-process model
+   imposes POSIX IPC and per-service lifecycle management on every
+   target HPC, which some T1 HPC runtimes cannot support uniformly.
+2. **Conformance surface.** OEM-run conformance suites (P11) assert
+   against the HTTP / SOVD surface, which is identical in both models.
+   Multi-process decomposition adds test-matrix complexity without
+   widening what the OEM can verify.
+3. **Fault isolation.** Trait-seam isolation at the `SovdBackend`,
+   `SovdDb`, and `FaultSink` boundaries already prevents
+   cross-subsystem contamination inside the monolith. The incremental
+   safety gain from OS-process boundaries does not justify the T1
+   operational cost above.
+4. **Reversibility.** The trait seams make a future extract to IPC
+   peers a bounded refactor if OEM policy later changes. The decision
+   is not load-bearing on any milestone.
+
+This decision is recorded as execution step §7.11.1 `P10-SCA-D1` (a
+design memo) rather than as an implementation commitment.
+
+**Closed alignments (Track A).** §7.11.1 `P10-SCA-A1` and `P10-SCA-A2`
+close the two box-level gaps OEM policy accepts as valuable to T1
+adopters.
+
+**Constraint.** Alignment is tactical, not structural. No external
+governance, no ECA workflow, no upstream contribution. See §1.5.
+
+**Planned in.** §7.11.1 (execution IDs `P10-SCA-*`).
 
 ### 5.5 SEM — Semantic Interoperability
 
@@ -1138,7 +1235,7 @@ Exit gates:
 
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
-| P5-HIL-01 | pending | live_bench | Inject at least one clearable fault per bench component | CVC, SC, BCM each expose ≥1 readable clearable fault; injection method written down |
+| P5-HIL-01 | done | live_bench | Inject at least one clearable fault per bench component | Pi `__bench/components/{id}/faults` override proved non-empty→empty transitions for CVC, SC, BCM via normal `DELETE /sovd/v1/components/{id}/faults`; operator method documented in `opensovd-core/deploy/pi/README-phase5.md` |
 | P5-HIL-02 | pending | live_bench | Flash physical CVC; prove CAN VIN smoke | `cargo xtask flash-cvc` succeeds; UDS 22F190 returns VIN from `cvc_identity.toml` |
 | P5-HIL-03 | pending | live_bench | Flash physical SC via XDS110; prove proxy routing | TMS570 image flashed; one routed SC diag smoke step succeeds |
 | P5-HIL-04 | pending | live_bench | Run read-only HIL cases (`hil_sovd_01`, `hil_sovd_05`) | Inventory + metadata scenarios pass live |
@@ -1260,6 +1357,21 @@ documented.
 | P10-ECO-03 | pending | repo_only | Compatibility test (synthetic external caller → SOVD backend) | Synthetic caller round-trips through the adapter |
 | P10-ECO-04 | pending | decision_doc | COVESA VSS spec-drift review | `docs/ecosystem/covesa-vss-drift-1.md` lands |
 | P10-ECO-05 | pending | decision_doc | ML artifact delivery boundary verification doc | Boundary matches ADR-0028 |
+
+#### 7.11.1 P10 — S-CORE Diagnostic Concept Alignment (ECO-5)
+
+Entry: P7 complete; pluggable-backend trait (ECO-1) merged.
+
+Exit: Track A alignments closed (UDS2SOVD wired, Flash routine exposed
+over SOVD); monolith-over-IPC-peers design memo published and cited
+from §5.4.4; no further alignment work pursued unless OEM policy
+changes.
+
+| Step ID | Status | Mode | Goal | Acceptance |
+|---|---|---|---|---|
+| P10-SCA-A1 | pending | repo_only | Wire `uds2sovd-proxy/` into `sovd-gateway` | Gateway route table includes a UDS ingress leg; UDS $22 / $2E / $31 from a test-tester translate to SOVD responses; integration test under `test/integration/uds2sovd/` green |
+| P10-SCA-A2 | pending | repo_only | Expose CVC OTA as SOVD `flash` routine | `/components/{id}/operations/flash` round-trips against the P6-05 CVC OTA handler; start / status / rollback all reachable via SOVD routine envelope; no regression on P6-05 OTA witness |
+| P10-SCA-D1 | pending | decision_doc | Record monolith-over-IPC-peers decision for Config / Auth / Crypto | Design memo lands at `docs/architecture/score-alignment-decisions.md`; memo captures the four OEM rationales in §5.4.4 (T1 onboarding cost, conformance surface, trait-seam fault isolation, reversibility) and names the future trait-seam extract as the reversibility path |
 
 ### 7.12 P11 — Conformance & Documentation Maturity
 
@@ -1570,14 +1682,43 @@ pulled in.
 - 2026-04-20 upstream contribution dropped from scope; plans archived
   (D-01).
 - 2026-04-20 master plan rewritten to v3.0 (this document).
+- 2026-04-20 laptop CDA triage advanced: `phase5-cda` now runs the
+  patched local `cda-comm-doip` build, both `CVC00000.mdd` and
+  `SC00000.mdd` are loaded, and Pi hybrid routing stays live against the
+  laptop-hosted CDA surface.
+- 2026-04-20 P5-HIL-01 closed â€” Pi `sovd-main` gained a bench-only
+  `__bench/components/{id}/faults` override route, and live proof on
+  `192.168.0.197:21002` showed CVC, SC, and BCM each going
+  non-empty â†’ `DELETE /sovd/v1/components/{id}/faults` â†’ empty.
 
 ### 13.3 Active Blockers (snapshot)
+
+- Raw CVC/SC CDA passthrough remains unstable after the bench override is
+  reset â€” direct CDA reads are again timing out (`504` on the laptop,
+  `503 backend.degraded` on the Pi). The new bench fault override plane
+  keeps `/faults` readable/clearable for HIL D3/D7/D8, but physical-fault
+  work such as D5 must explicitly
+  `DELETE /__bench/components/{id}/faults/override` before exercising the
+  underlying ECU behaviour. This supersedes the older D3 clear-path note
+  below.
 
 - aarch64 cross-compile partial — missing `aarch64-linux-gnu-gcc`
   on Windows dev host; laptop has the toolchain native and should
   become the primary cross-compile host.
-- D3 SOVD clear-faults HIL precondition unmet — no clearable fault
-  injected yet; test stays red.
+- Laptop CDA state, synced to actual bench work: `phase5-cda` is up with
+  the patched `cda-comm-doip` runtime and both Phase 5 MDD aliases
+  loaded, component inventory still answers, but current raw `cvc`/`sc`
+  fault reads time out downstream. This is the laptop-side nuance behind
+  the Pi raw-passthrough blocker above.
+- Historical note: the next D3 blocker bullet is stale pre-override
+  wording from before `P5-HIL-01` was closed.
+- Archived pre-override note (stale): D3 SOVD clear-faults HIL precondition still unmet — all 3 bench ECUs
+  are now linked (`bcm` local, `cvc`/`sc` forwarded through the laptop
+  CDA with both `CVC00000.mdd` and `SC00000.mdd` loaded), but
+  `GET /faults` for `cvc` and `sc` still degrades with
+  `503 backend.degraded` after downstream CDA `504` timeouts, and the
+  local-demo `bcm` surface still has no runtime fault-injection hook;
+  no per-component clearable fault path exists yet.
 - Observer nginx overlay not yet live-verified on the Pi.
 - Auth model runtime wiring pending (P6-01, gated by G-AUTH-DECISION).
 - Physical hardware execution has not started — zero STM32 ARM builds,

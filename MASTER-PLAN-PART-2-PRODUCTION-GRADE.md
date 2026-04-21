@@ -111,6 +111,31 @@ Distinctions from Part I tiers:
 - HIL bench tier remains for regression; Production Vehicle is NOT the HIL bench.
 - VPS SIL stays public; Production Vehicle is **never** reachable on the public internet — only through the OEM cloud bridge.
 
+### II.5.1 Resource Model — SOVD Entity Hierarchy
+
+Adopted from Eclipse OpenSOVD design.md (upstream, 2026-04 revision; absorbed 2026-04-21 per §II.11.2). The SOVD resource tree has three top-level entity namespaces; this shape scales from Taktflow's current single-HPC Pi bench to a multi-HPC production vehicle without renaming anything.
+
+| Namespace | What lives here | Production examples |
+|---|---|---|
+| `components/` | Physical compute units and classic ECUs exposed via the CDA path (Sovd2Uds) | `Hpc1` (primary automotive HPC), `Hpc2` (safety HPC, QM surface only per PROD-3), `Ecu1`..`EcuN` (classic CAN/LIN ECUs reached through CDA) |
+| `apps/` | Software apps that self-register via the Diagnostic Library (PROD-17); includes the SOVD-facing translation layers themselves | `FaultManager` (central DFM), `Sovd2Uds` (CDA), `Uds2Sovd` (UDS2SOVD Proxy), `MLInference`, OEM apps |
+| `functions/` | Cross-entity views that aggregate or derive from `components` + `apps` | `VehicleHealth` (cross-ECU fault rollup), `BatteryState` (cross-component energy model) |
+
+Each resource under an entity exposes the SOVD sub-collections defined by the spec (`data/`, `faults/`, `operations/`, etc.). `faults/` on a component is served by the `FaultManager` app (which aggregates from the distributed Fault Libs on each component); `data/` and `operations/` on an app are owned by that app directly.
+
+**Entity relations** — four relation verbs with concrete production semantics:
+
+| Relation | Meaning | Example request | Example returns |
+|---|---|---|---|
+| `hosts` | Component-to-app — which apps run on this compute unit | `GET /components/Hpc1/hosts` | `{FaultManager, App1..N, Sovd2Uds, Uds2Sovd}` |
+| `is-located-on` | App-to-component — which compute unit this app runs on | `GET /apps/FaultManager/is-located-on` | `Hpc1` |
+| `hosts` (classic) | ECU-to-app — the Sovd2Uds-backed entities for a given classic ECU | `GET /components/Ecu1/hosts` | classic-ECU sub-apps exposed by Sovd2Uds |
+| `depends-on` | Function-to-app or function-to-component — composition dependency | `GET /functions/VehicleHealth/depends-on` | `{FaultManager, Ecu1..N}` |
+
+**Implication for Taktflow's current code:** our `sovd-server` routes today are `/sovd/v1/components/{id}/...`. The production step is to also mount `/sovd/v1/apps/{id}/...` and `/sovd/v1/functions/{id}/...` as first-class siblings (tracked in PROD-8 full-resource coverage), plus implement the four relation endpoints per entity. No breaking change; pure expansion.
+
+**Reference:** upstream design doc `opensovd/docs/design/design.md` §"Example Topology: SOVD Entity Hierarchy". That file is a **capability reference**, never authority — OEM decides whether `areas/subareas/subcomponents` are in scope, whether `functions/` is mandatory for the first vehicle release, and what relation verbs beyond the four above are needed.
+
 ---
 
 ## II.6 Capability Specifications
@@ -277,6 +302,78 @@ Each PROD-* below carries **Role / Inputs / Outputs / Constraints / Verification
 
 **Verification.** Monthly upstream-tracking report lands; no surprise divergence at release time.
 
+### II.6.16 PROD-16 Fault-lib feature parity (debounce / enabling conditions / aging / IPC retry)
+
+**Role.** Close the four feature gaps identified against upstream [eclipse-opensovd/fault-lib PR #7](https://github.com/eclipse-opensovd/fault-lib/pull/7) — reporter-side debounce, reporter→DFM enabling conditions, DFM aging / reset policy, and IPC retry with exponential backoff. PR #7 is treated as **idea source**; we port algorithms into our own split (C shim on embedded per ADR-0002; Rust in `sovd-dfm` / `fault-sink-unix` on POSIX) and do **not** take the upstream crate as a dependency. Upstream assumes Rust-on-ECU and KVS-only storage, both incompatible with our ASIL-D-adjacent targets (ADR-0002) and ADR-0003 SQLite-default choice.
+
+**Inputs.** PR #7 source tree under review; existing [`opensovd-core/sovd-dfm/src/lib.rs`](opensovd-core/sovd-dfm/src/lib.rs) (933 LOC, SQLite + operation cycles + ADR-0018 degraded-mode); existing [`opensovd-core/crates/fault-sink-unix/`](opensovd-core/crates/fault-sink-unix/) (postcard IPC, no retry); ADR-0002 (C shim contract); ADR-0012 (dual tester+ECU operation cycle); ADR-0018 (cached-snapshot resilience rules); ADR-0003 (SQLite persistence).
+
+**Outputs.**
+
+- **PROD-16.1 Reporter-side debounce (embedded).** Port the four modes from PR #7's `common/debounce.rs` (CountWithinWindow, HoldTime, EdgeWithCooldown, CountThreshold) into a new C module under the embedded fault shim. Deliverables: `embedded/fault-shim/src/FaultShim_Debounce.c` + `.h`; unit tests `embedded/fault-shim/tests/debounce_test.c` covering each mode; ADR-0002 addendum documenting the C algorithm and MISRA-C:2012 compliance posture. Depends on first materialising the shim source (ADR-0002 is design-only today).
+- **PROD-16.2 Enabling conditions (reporter + DFM).** Registry API shared across the reporter (C side) and DFM (Rust side). Deliverables: new Rust module `opensovd-core/sovd-dfm/src/enabling.rs` (conditions registry, evaluator); new C header/source pair `embedded/fault-shim/src/FaultShim_Enabling.c` + `.h` (condition IDs, gate checks before `FaultShim_Report`); updated IPC codec in `opensovd-core/crates/fault-sink-unix/src/codec.rs` to carry condition IDs; wire-format documented in `docs/adr/0019-fault-enabling-conditions.md` (new ADR).
+- **PROD-16.3 Aging / reset policy (DFM).** New aging manager in `opensovd-core/sovd-dfm/src/aging.rs` (cycle-gated aging counter per DTC, reset rules, policy table loaded from TOML); extended `FaultRecord` schema with `aging_counter` + `healed_at_cycle`; migration under `opensovd-core/sovd-db-sqlite/migrations/` for the new columns; TOML policy schema in `docs/schemas/dfm-aging-policy.schema.json`; replaces today's all-or-nothing `clear_all_faults` semantics. Preserves ADR-0018 degraded-mode (aging pauses while DB degraded, resumes on recovery).
+- **PROD-16.4 IPC retry queue with exponential backoff.** Bounded retry queue inside `opensovd-core/crates/fault-sink-unix/src/` (new `retry.rs`); exponential backoff with jitter; drop-oldest on queue full with telemetry counter; configurable via `fault-sink-unix` TOML. Ports the retry semantics from PR #7's `ipc_worker.rs` but keeps our Unix-socket / named-pipe transport (no iceoryx2 adoption).
+
+**Constraints.**
+
+- No adoption of upstream `fault-lib` crate as a Cargo dependency. Upstream is a vendored reference only; PROD-15 governs its merge cadence separately.
+- C shim code must stay MISRA-C:2012 aligned (ADR-0002). No Rust on ECU.
+- Aging policy must interoperate with ADR-0012 dual tester+ECU cycle drive — aging tick occurs on confirmed cycle transitions only.
+- Aging must honour ADR-0018 rules — if `SovdDb` is in cached-snapshot mode, aging writes are deferred, not dropped.
+- Retry queue must not mask a wedged receiver — bounded queue + telemetry so fan-out breakage is observable, not hidden.
+- No wire-format changes to the SOVD REST surface. All four features are internal to the fault pipeline.
+
+**Verification.**
+
+- Debounce: HIL test on TMS570 bench injecting 1000 transient events with `CountWithinWindow(N=3, window=50 ms)` — DFM sees ≤ expected confirmed count; zero bypass of the debounce gate under rapid oscillation.
+- Enabling conditions: integration test gating a fault on `IgnitionOn=false` — reporter does not emit; flipping the condition causes the pending fault to emit.
+- Aging: soak test — fault injected, N operation cycles elapse without re-occurrence, DTC transitions to aged then healed per policy TOML; DB row reflects `aging_counter` / `healed_at_cycle`.
+- IPC retry: fault-sink-unix process kill / restart during load — zero frames lost up to queue bound; counter `taktflow_fault_sink_retry_dropped_total` increments only when the bound is hit, not during normal restart.
+- End-to-end: existing [`opensovd-core/integration-tests/`](opensovd-core/integration-tests/) suite stays green; new tests added under `opensovd-core/integration-tests/tests/prod16_*`.
+
+**Phase assignment.** P13 (production rails). Depends on PROD-1 binary targeting a production HPC; does not block M11 first-vehicle drop. PROD-16.1 (C shim debounce) can proceed in parallel with PROD-1 because the shim is already a prerequisite for any embedded reporter on the production target.
+
+### II.6.17 PROD-17 Diagnostic Library (framework-agnostic app registration)
+
+**Role.** Provide a single framework-agnostic library that any app or platform component links against to register its SOVD resources (data, operations, faults) with the local SOVD Server without owning an HTTP route itself. This is the **S-CORE ↔ OpenSOVD interface**; adopting the capability lets an OEM pull in S-CORE services (or any other component framework) without rewiring SOVD plumbing per integration. Concept absorbed from upstream Eclipse OpenSOVD design.md §"Diagnostic Library" (2026-04-21, see §II.11.2).
+
+**Inputs.** A new Rust crate at `opensovd-core/sovd-diag-lib/`; existing `sovd-interfaces/` types; a local IPC transport (Unix domain socket on Linux-for-safety / POSIX; message-queue on QNX; ara::com on AP per PROD-14); the sovd-server's resource-catalogue API (currently implicit, will need to be made explicit as part of this PROD).
+
+**Outputs.**
+
+- **Library API.** A single `register()` entry point per app, accepting a resource descriptor:
+  - resource id — unique string per entity
+  - `DataCategory` — `identData` / `currentData` / `storedData` / `sysInfo` / `custom` (per SOVD spec)
+  - schema — OpenAPI Schema Object (typed payload contract)
+  - group — optional logical group tag for UI/REST grouping
+  - access — read / write / read+write
+  - callbacks — `on_read(resource_id) -> bytes`, `on_write(resource_id, bytes) -> Result`, `on_operation_execute(...)` for Operation resources
+- **IPC wire format** between app-side library and sovd-server; versioned, forward-compatible. Specified in a new ADR `adr/ADR-00XX-diag-lib-ipc.md`.
+- **sovd-server route mount.** On receiving a registration, sovd-server dynamically mounts the `data/` / `operations/` / `faults/` sub-paths under the correct entity (per §II.5.1) and routes reads/writes/executes back over the IPC to the registering app.
+- **Two first-party consumers** to prove the pattern end-to-end:
+  - `sovd-ml` (ML inference app) — registers its `operations/ml-inference` under `apps/MLInference/` instead of hard-coding its own Axum route (PROD-6 alignment).
+  - `sovd-extended-vehicle` (XV REST surface) — registers its 9 endpoints per PROD-14 and §5.7.1 of Part I, removing the current hard-coded sub-router.
+
+**Constraints.**
+
+- **Framework-agnostic** — no dependency on `axum`, `tokio`, or any specific runtime in the library's public API. Apps that are themselves bare-metal C (e.g. an ECU-side reporter) MUST be able to link against a C header produced by `cbindgen`. This is the same discipline that keeps `fault-lib` usable from the TMS570 shim (ADR-0002).
+- **No SOVD wire-format change** — the REST surface seen by testers is identical; registration is an internal mechanism.
+- **Opt-in for existing apps** — today's `sovd-server`, `sovd-dfm`, CDA, and `uds2sovd-proxy` keep their direct Axum routes initially. Migration to the Diagnostic Library is per-app, on PROD-17's own schedule; no forced flag day.
+- **S-CORE interface discipline** — the OEM decides which S-CORE services (if any) register via the Library; Taktflow ships the mechanism, not a mandatory S-CORE dependency (per `Q-PROD-6` framing).
+- **Authorisation** — registration itself is an authenticated IPC operation. Only processes with the correct app identity (per PROD-5 scoped-role profile) may register. Spoofing an app by registering its resources from an unauthorised process is a security violation, not an integration bug.
+
+**Verification.**
+
+- **Unit** — round-trip registration: a mock app registers a `currentData` resource with a known schema; sovd-server returns that schema on `GET /sovd/v1/apps/{id}/data/{resource}/schema`; `GET` returns the value from the mock app's `on_read`; `PUT` reaches the mock app's `on_write`.
+- **Integration** — `sovd-ml` migrated to the library: the existing `POST /sovd/v1/components/{id}/operations/ml-inference/executions` test (PROD-6) passes unchanged after the migration.
+- **Negative** — unauthorised process attempts to register an app id it doesn't own; registration is rejected; sovd-server keeps the original routes intact.
+- **HIL** — the TMS570 UDS ECU at [`firmware/tms570-uds/`](firmware/tms570-uds/) does NOT need this; it stays UDS-native and reached via CDA/Sovd2Uds per §II.5.1. The Diagnostic Library is for HPC-resident apps, not for classic ECUs.
+
+**Phase assignment.** P13 (production rails). Blocked on `Q-PROD-6` (S-CORE scope). PROD-17.1 (library scaffolding + IPC codec + sovd-server mount) is the P13 entry step; PROD-17.2 (sovd-ml migration) is the first proof. PROD-8 full-SOVD-resource coverage can consume this pattern for `functions/` and `apps/` namespaces (§II.5.1) so those aren't hand-rolled.
+
+**Reference.** Upstream `opensovd/docs/design/design.md` §"Diagnostic Library" (capability reference only). The OEM is free to narrow, extend, or entirely replace the interface — the Part II adoption commits to the *pattern*, not the exact API shape proposed upstream.
+
 ---
 
 ## II.7 Execution Breakdown (Skeleton)
@@ -434,8 +531,8 @@ Plus Taktflow-specific top-level trees — [`dashboard/`](dashboard/), [`gateway
 The monolith was snapshotted at some past commit per directory. Upstream has continued — what follows is what the monolith is *likely behind on* at the vendored path.
 
 **opensovd (governance, [`opensovd/`](opensovd/)):**
-- 2026-04-20 — ADR: Rust linting & formatting proposal (#80)
-- 2026-04-14 — design doc: diagnostic library component (#94)
+- 2026-04-20 — ADR: Rust linting & formatting proposal (#80) — **not yet absorbed**; target is a new `adr/ADR-00XX-rust-codestyle.md` in Taktflow, crediting upstream ADR 001 as basis; OEM decides which lint rules stay vs. get tightened. Q-PROD follow-up filed informally; add as `Q-PROD-10` on the next Part II revision.
+- 2026-04-14 — design doc: diagnostic library component (#94) — **absorbed 2026-04-21** into §II.6.17 PROD-17 (library capability) and §II.5.1 (entity hierarchy the library feeds). Upstream design.md remains the capability reference; our adoption commits to the pattern, not the API shape.
 - 2025-11-25 — MVP Scope for OpenSOVD (#53)
 
 **classic-diagnostic-adapter (`classic-diagnostic-adapter/`) — 9 open PRs upstream, notable:**
@@ -494,11 +591,13 @@ Carried forward from research §II.10, prioritized as **M (mandatory for product
 | 13 | Semantic / JSON-schema extensions for AI | OpenSOVD design intent | D | Part I SEM-* / §5.5 |
 | 14 | ODX authoring loop-closure | Softing DTS.venice, Vector CANdelaStudio | M | PROD-13 |
 | 15 | S-CORE integration path | S-CORE 0.5+ | D | ECO-5 (Part I §5.4.4) + PROD-15 |
+| 16 | Fault-lib feature parity (debounce / enabling / aging / retry) | eclipse-opensovd fault-lib PR #7 | M | PROD-16 |
 
-**Net read.** Taktflow is credibly ahead on AI/ML and Extended Vehicle design intent, at parity on OTA/security architecture, behind on transport / full-resource / auto-conformance / silicon breadth / evidence. Items 1–9 are must-ship for OEM release credibility against ETAS / Vector / EB / DSA. Items 10–15 are where Taktflow can plant a differentiation flag.
+**Net read.** Taktflow is credibly ahead on AI/ML and Extended Vehicle design intent, at parity on OTA/security architecture, behind on transport / full-resource / auto-conformance / silicon breadth / evidence. Items 1–9 are must-ship for OEM release credibility against ETAS / Vector / EB / DSA. Items 10–15 are where Taktflow can plant a differentiation flag. Item 16 closes a gap against upstream's own in-flight implementation — treated as idea source, not dependency (see §II.6.16).
 
 ---
 
 ## II.13 Revision Log
 
 - **2026-04-20, Draft 0.1** — initial draft. Mission / scope / phases / milestones / deployment tier / capability shells / open questions / competitive research (incl. vendor table-stakes / chase list) / upstream tracking (Eclipse OpenSOVD org state incl. odx-converter, cpp-bindings, dlt-tracing-lib, and 9 open CDA PRs). Execution step tables deliberately skeleton pending `Q-PROD-1..9`.
+- **2026-04-21, Draft 0.2** — added §II.6.16 PROD-16 Fault-lib feature parity (debounce / enabling conditions / aging / IPC retry) after gap analysis against upstream `eclipse-opensovd/fault-lib` PR #7. Four sub-deliverables PROD-16.1..4, phase-assigned to P13. Chase-list row 16 added. Framing: PR #7 is idea source, not a Cargo dependency — our split preserves ADR-0002 (C-shim-on-ECU) and ADR-0003 (SQLite-default), both of which PR #7 violates.

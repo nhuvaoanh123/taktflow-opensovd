@@ -111,6 +111,7 @@ pub(crate) struct ConnectionConfig {
     pub source_ip: String,
     pub port: u16,
     pub tls_port: u16,
+    pub enable_alive_check: bool,
 }
 
 pub(crate) trait ECUConnectionRead {

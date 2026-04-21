@@ -17,9 +17,11 @@ pub struct DoipConfig {
     pub protocol_version: u8,
     pub tester_address: String,
     pub tester_subnet: String,
+    pub static_gateway_ip: Option<String>,
     pub gateway_port: u16,
     pub tls_port: u16,
     pub send_timeout_ms: u64,
+    pub enable_alive_check: bool,
     pub send_diagnostic_message_ack: bool,
 }
 
@@ -29,9 +31,11 @@ impl Default for DoipConfig {
             protocol_version: 0x02,
             tester_address: "127.0.0.1".to_owned(),
             tester_subnet: "255.255.0.0".to_owned(),
+            static_gateway_ip: None,
             gateway_port: 13400,
             tls_port: 3496,
             send_timeout_ms: 1000,
+            enable_alive_check: true,
             send_diagnostic_message_ack: true,
         }
     }

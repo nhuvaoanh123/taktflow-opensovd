@@ -12,10 +12,9 @@ They are derived from the upstream `FLXC1000.mdd` template and patched
 to expose distinct downstream CDA ids and DoIP logical addresses:
 
 - `CVC00000.mdd` -> `0x0001`
-- `FZC00000.mdd` -> `0x0002`
-- `RZC00000.mdd` -> `0x0003`
+- `SC00000.mdd` -> `0x0004`
 
-OpenSOVD keeps the external ids `cvc`, `fzc`, and `rzc` via
+OpenSOVD keeps the external ids `cvc` and `sc` via
 `remote_component_id` in `deploy/pi/opensovd-pi-phase5-hybrid.toml`.
 
 Regenerate the committed files with:

@@ -18,7 +18,8 @@ use std::{
 
 use cda_interfaces::{
     DiagServiceError, DoipComParamProvider, DoipGatewaySetupError, EcuAddressProvider, EcuGateway,
-    HashMap, HashMapExtensions, ServicePayload, TransmissionParameters, UdsResponse, dlt_ctx,
+    HashMap, HashMapExtensions, HashSet, ServicePayload, TransmissionParameters, UdsResponse,
+    dlt_ctx,
     util::{self, tokio_ext},
 };
 use doip_definitions::{
@@ -158,9 +159,11 @@ impl<T: EcuAddressProvider + DoipComParamProvider> DoipDiagGateway<T> {
             protocol_version,
             tester_address: tester_ip,
             tester_subnet,
+            static_gateway_ip,
             gateway_port,
             tls_port,
             send_timeout_ms,
+            enable_alive_check,
             send_diagnostic_message_ack,
         } = doip_config;
         let gateway_port = *gateway_port;
@@ -168,6 +171,7 @@ impl<T: EcuAddressProvider + DoipComParamProvider> DoipDiagGateway<T> {
             source_ip: tester_ip.to_owned(),
             port: gateway_port,
             tls_port: *tls_port,
+            enable_alive_check: *enable_alive_check,
         };
         let doip_connection_config = DoIPConfig {
             protocol_version: ProtocolVersion::try_from(protocol_version).map_err(|err| {
@@ -184,7 +188,7 @@ impl<T: EcuAddressProvider + DoipComParamProvider> DoipDiagGateway<T> {
         let mut socket = create_socket(tester_ip, gateway_port)?;
         let mask = create_netmask(tester_ip, tester_subnet)?;
 
-        let gateways = vir_vam::get_vehicle_identification::<T, F>(
+        let mut gateways = vir_vam::get_vehicle_identification::<T, F>(
             &mut socket,
             mask,
             gateway_port,
@@ -197,6 +201,26 @@ impl<T: EcuAddressProvider + DoipComParamProvider> DoipDiagGateway<T> {
                 "Could not get vehicle identification. {err}"
             ))
         })?;
+
+        if gateways.is_empty() {
+            if let Some(static_gateway_ip) = static_gateway_ip {
+                gateways = static_gateway_targets(&ecus, static_gateway_ip).await;
+                if gateways.is_empty() {
+                    tracing::warn!(
+                        gateway_ip = %static_gateway_ip,
+                        "No gateway ECUs available for static DoIP fallback"
+                    );
+                } else {
+                    tracing::warn!(
+                        gateway_ip = %static_gateway_ip,
+                        gateway_count = gateways.len(),
+                        "No DoIP VAMs received; using static gateway fallback"
+                    );
+                }
+            } else {
+                tracing::warn!("No DoIP VAMs received and no static gateway fallback configured");
+            }
+        }
 
         let gateway = if gateways.is_empty() {
             DoipDiagGateway {
@@ -216,12 +240,19 @@ impl<T: EcuAddressProvider + DoipComParamProvider> DoipDiagGateway<T> {
                 let gateway = ecu.logical_gateway_address();
                 gateway_ecu_map.entry(gateway).or_default().push(addr);
             }
+            let gateway_logical_addresses_by_ip = gateway_logical_addresses_by_ip(&gateways);
+            merge_gateway_ecu_map_by_ip(&mut gateway_ecu_map, &gateway_logical_addresses_by_ip);
 
             let doip_connections: Arc<RwLock<Vec<Arc<DoipConnection>>>> =
                 Arc::new(RwLock::new(Vec::new()));
             let mut logical_address_to_connection = HashMap::new();
+            let mut connected_gateway_ips = HashSet::default();
 
             for gateway in gateways {
+                let gateway_ip = gateway.ip.clone();
+                if connected_gateway_ips.contains(&gateway_ip) {
+                    continue;
+                }
                 if let Ok(logical_address) = connections::handle_gateway_connection::<T>(
                     &connection_config,
                     gateway,
@@ -233,10 +264,23 @@ impl<T: EcuAddressProvider + DoipComParamProvider> DoipDiagGateway<T> {
                 )
                 .await
                 {
-                    logical_address_to_connection.insert(
-                        logical_address,
-                        doip_connections.read().await.len().saturating_sub(1),
-                    );
+                    let connection_idx = doip_connections.read().await.len().saturating_sub(1);
+                    let gateway_logical_addresses = gateway_logical_addresses_by_ip
+                        .get(&gateway_ip)
+                        .cloned()
+                        .unwrap_or_else(|| vec![logical_address]);
+                    if gateway_logical_addresses.len() > 1 {
+                        tracing::info!(
+                            gateway_ip = %gateway_ip,
+                            logical_addresses = ?gateway_logical_addresses,
+                            "Sharing one DoIP connection across gateway addresses on the same IP"
+                        );
+                    }
+                    for gateway_logical_address in gateway_logical_addresses {
+                        logical_address_to_connection
+                            .insert(gateway_logical_address, connection_idx);
+                    }
+                    connected_gateway_ips.insert(gateway_ip);
                 }
             }
 
@@ -313,6 +357,76 @@ impl<T: EcuAddressProvider + DoipComParamProvider> DoipDiagGateway<T> {
     }
 }
 
+async fn static_gateway_targets<T>(
+    ecus: &Arc<HashMap<String, RwLock<T>>>,
+    static_gateway_ip: &str,
+) -> Vec<DoipTarget>
+where
+    T: EcuAddressProvider,
+{
+    let mut gateways = Vec::new();
+    let mut seen_gateway_addresses = HashSet::default();
+
+    for (name, ecu_lock) in ecus.iter() {
+        let ecu = ecu_lock.read().await;
+        let gateway_address = ecu.logical_gateway_address();
+        if gateway_address != ecu.logical_address() {
+            continue;
+        }
+        if !seen_gateway_addresses.insert(gateway_address) {
+            continue;
+        }
+        gateways.push(DoipTarget {
+            ip: static_gateway_ip.to_owned(),
+            ecu: name.to_owned(),
+            logical_address: gateway_address,
+        });
+    }
+
+    gateways
+}
+
+fn gateway_logical_addresses_by_ip(gateways: &[DoipTarget]) -> HashMap<String, Vec<u16>> {
+    let mut gateway_logical_addresses_by_ip: HashMap<String, Vec<u16>> = HashMap::new();
+    for gateway in gateways {
+        gateway_logical_addresses_by_ip
+            .entry(gateway.ip.clone())
+            .or_default()
+            .push(gateway.logical_address);
+    }
+
+    for logical_addresses in gateway_logical_addresses_by_ip.values_mut() {
+        logical_addresses.sort_unstable();
+        logical_addresses.dedup();
+    }
+
+    gateway_logical_addresses_by_ip
+}
+
+fn merge_gateway_ecu_map_by_ip(
+    gateway_ecu_map: &mut HashMap<u16, Vec<u16>>,
+    gateway_logical_addresses_by_ip: &HashMap<String, Vec<u16>>,
+) {
+    for logical_addresses in gateway_logical_addresses_by_ip.values() {
+        if logical_addresses.len() <= 1 {
+            continue;
+        }
+
+        let mut ecu_ids = logical_addresses
+            .iter()
+            .filter_map(|logical_address| gateway_ecu_map.get(logical_address))
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        ecu_ids.sort_unstable();
+        ecu_ids.dedup();
+
+        for logical_address in logical_addresses {
+            gateway_ecu_map.insert(*logical_address, ecu_ids.clone());
+        }
+    }
+}
+
 impl<T: EcuAddressProvider + DoipComParamProvider> EcuGateway for DoipDiagGateway<T> {
     async fn get_gateway_network_address(&self, logical_address: u16) -> Option<String> {
         self.doip_connections
@@ -385,6 +499,7 @@ impl<T: EcuAddressProvider + DoipComParamProvider> EcuGateway for DoipDiagGatewa
 
                     // allow continue expression here
                     // as it makes it more clear on what exactly is happening.
+                    let mut prefetched_response: Option<DiagnosticResponse> = None;
                     #[allow(clippy::needless_continue)]
                     if let Ok(ack_received) =
                         tokio::time::timeout(transmission_params.timeout_ack, async {
@@ -430,18 +545,34 @@ impl<T: EcuAddressProvider + DoipComParamProvider> EcuGateway for DoipDiagGatewa
                                             .await;
                                         }
                                         Ok(msg) => {
-                                            tracing::warn!(
-                                                "Expected ACK/NACK but received unexpected \
-                                                 message: {:?}",
-                                                msg
-                                            );
-                                            // any response but ACK/NACK is unexpected because
-                                            // every sent message should be answered with
-                                            // ACK or NACK before sending anything else.
-                                            // however, we should still continue waiting
-                                            // for ACK/NACK in case we get something unexpected,
-                                            // as some ECUs might not follow the spec properly.
-                                            continue 'ack_waiting;
+                                            match msg {
+                                                DiagnosticResponse::Msg(_)
+                                                | DiagnosticResponse::Pending(_)
+                                                | DiagnosticResponse::BusyRepeatRequest(_)
+                                                | DiagnosticResponse::TemporarilyNotAvailable(_)
+                                                | DiagnosticResponse::TesterPresentNRC(_) => {
+                                                    tracing::warn!(
+                                                        response = ?msg,
+                                                        "Received diagnostic response before DoIP ACK/NACK; treating it as implicit ACK for bench proxy compatibility"
+                                                    );
+                                                    prefetched_response = Some(msg);
+                                                    break 'ack_waiting true;
+                                                }
+                                                _ => {
+                                                    tracing::warn!(
+                                                        "Expected ACK/NACK but received unexpected \
+                                                         message: {:?}",
+                                                        msg
+                                                    );
+                                                    // any response but ACK/NACK is unexpected because
+                                                    // every sent message should be answered with
+                                                    // ACK or NACK before sending anything else.
+                                                    // however, we should still continue waiting
+                                                    // for ACK/NACK in case we get something unexpected,
+                                                    // as some ECUs might not follow the spec properly.
+                                                    continue 'ack_waiting;
+                                                }
+                                            }
                                         }
                                         Err(e) => {
                                             try_send_uds_response(
@@ -492,6 +623,12 @@ impl<T: EcuAddressProvider + DoipComParamProvider> EcuGateway for DoipDiagGatewa
                         .saturating_sub(receiver_flushed);
                     if !expect_uds_reply {
                         try_send_uds_response(&response_sender, Ok(None)).await;
+                    }
+
+                    if let Some(response) = prefetched_response.take()
+                        && !try_send_uds_response(&response_sender, response.try_into()).await
+                    {
+                        return;
                     }
 
                     // Read ECU responses as long as the sender is open

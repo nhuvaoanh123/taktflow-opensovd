@@ -310,8 +310,8 @@ P11 requires P8, P9, P10.
 
 | Tier | Host | Authority | Role | Touches Physical ECUs? |
 |---|---|---|---|---|
-| Development | Windows 11 PC at `h:\taktflow-opensovd` (main working station, XDS110 attached for TMS570 flashing) | **PRIMARY — authoritative source of truth** | Cross-compile, unit/integration tests, dev-time Docker, deploy origin for Pi and VPS. All edits land here first; Pi / VPS / AWS receive pushes, never originate them. | Yes — XDS110 to TMS570 LaunchPad |
-| Bench-LAN relay | Ubuntu laptop (bench LAN) | Deploy relay | Runs `classic-diagnostic-adapter` (CDA) locally when the Pi proxy needs a laptop-hosted MDD backend; cross-builds aarch64 natively | No |
+| Development | Ubuntu laptop (bench LAN, canonical working tree at `~/taktflow-opensovd`) | **PRIMARY - authoritative source of truth after the 2026-04-21 laptop merge** | Cross-compile, unit/integration tests, dev-time Docker, CDA home, and deploy origin for Pi and VPS. Canonical Phase 6+ work lands here first; Pi / VPS / AWS receive pushes, never originate them. | No |
+| Control / flash host | Windows 11 PC at `h:\taktflow-opensovd` (XDS110 attached for TMS570 flashing) | Control host mirror | Control shell, review workspace mirror, and TMS570 flashing host. It may stage or inspect work, but the laptop working tree is authoritative after the laptop merge. | Yes - XDS110 to TMS570 LaunchPad |
 | Public SIL | Netcup VPS (`sovd.taktflow-systems.com`) | Public mirror (deploy target) | Public demo — engineering spec HTML, live SOVD SIL API, Grafana anonymous view | No |
 | HIL bench | Raspberry Pi 4 (Ubuntu 24.04 aarch64, bench LAN) | Deploy target (read-only for code; writes are for measurement data only) | Only tier that touches physical ECUs; runs CAN-to-DoIP proxy, observer nginx + mTLS, cloud_connector → AWS IoT Core, bench dashboard | Yes — USB-CAN adapter |
 | Cloud telemetry | AWS IoT Core (shared `taktflow-embedded-production` account) | Telemetry sink | Fleet telemetry sink; `DEVICE_ID=taktflow-sovd-hil-001` publishes `vehicle/dtc/new`, `taktflow/cloud/status` | No |
@@ -325,23 +325,11 @@ HIL must stay on the Pi. Mixing the two tiers on the same host ties
 public availability to bench state and makes the Pi's 4 GB RAM a single
 point of failure for demos.
 
-**Primary-workstation policy.** The Windows 11 PC at
-`h:\taktflow-opensovd` is the **single source of truth** for this
-project. Every code change, plan edit, ADR, test scenario, firmware
-edit, and deployment artifact originates on the PC and flows outward
-to the Ubuntu bench-LAN laptop, Pi, VPS, AWS. This is not a convenience
-note — it is policy. A worker (human or AI) MUST NOT edit code in
-place on the Ubuntu laptop, Pi, VPS, or cloud resources; those tiers
-hold deployed copies that get overwritten on the next push. If an edit
-is only on one of those tiers, it is effectively lost the next time a
-release gets pushed from the PC. The PC's `origin` remote at
-`github.com/nhuvaoanh123/taktflow-opensovd` is the mirror of record;
-forks under the same account (see
-[docs/upstream/README.md](docs/upstream/README.md)) are the upstream
-monitoring layer and are not authority.
+**Primary-workstation policy.** After the 2026-04-21 laptop merge, the Ubuntu bench-LAN laptop at `~/taktflow-opensovd` is the **single source of truth** for this project. New code changes, plan edits, ADRs, test scenarios, and deployment artifacts now originate on the laptop and flow outward to the Pi, VPS, AWS, and any mirrored PC checkout. This is not a convenience note - it is policy. A worker (human or AI) MUST NOT treat the Windows PC, Pi, VPS, or cloud copies as authority over the laptop working tree.
 
-In this plan "**laptop**" always means the Ubuntu bench-LAN laptop
-(deploy relay). The Windows dev machine is called the "**PC**".
+The Windows 11 PC remains important, but its role changes: it is the control-shell and flashing host because the XDS110 USB cable for TMS570 work is physically attached there. Bench-only secrets and physical-flash steps may still run from the PC, but canonical repo edits must be merged back into the laptop tree before they count as project state. The laptop's `origin` remote at `github.com/nhuvaoanh123/taktflow-opensovd` remains the mirror of record; forks under the same account (see [docs/upstream/README.md](docs/upstream/README.md)) are the upstream monitoring layer and are not authority.
+
+In this plan "**laptop**" always means the Ubuntu bench-LAN laptop (canonical dev/build host). The Windows machine is called the "**PC**" and is a control/flash mirror, not the authority.
 
 ### 3.3 Topology Reference
 

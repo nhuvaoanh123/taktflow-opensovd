@@ -304,6 +304,8 @@ Each PROD-* below carries **Role / Inputs / Outputs / Constraints / Verification
 
 ### II.6.16 PROD-16 Fault-lib feature parity (debounce / enabling conditions / aging / IPC retry)
 
+**Context.** Upstream Eclipse OpenSOVD ADR 001 (2025-07-21) pins `fault-lib` as **the primary technical and organisational interface between OpenSOVD and S-CORE** — S-CORE carries safety-relevant (up to ASIL-B), OpenSOVD stays QM. Subsequent upstream design work (absorbed into our §II.6.17 / §II.5.1) adds a second interface (`diagnostic-lib`) for non-fault SOVD resources, but the **fault** path remains fault-lib's. PROD-16 therefore is not an internal transport story — it is Taktflow's adoption of the S-CORE ↔ OpenSOVD boundary on the fault side, with OEM authority on which features are in scope and where the safety cut-line lives.
+
 **Role.** Close the four feature gaps identified against upstream [eclipse-opensovd/fault-lib PR #7](https://github.com/eclipse-opensovd/fault-lib/pull/7) — reporter-side debounce, reporter→DFM enabling conditions, DFM aging / reset policy, and IPC retry with exponential backoff. PR #7 is treated as **idea source**; we port algorithms into our own split (C shim on embedded per ADR-0002; Rust in `sovd-dfm` / `fault-sink-unix` on POSIX) and do **not** take the upstream crate as a dependency. Upstream assumes Rust-on-ECU and KVS-only storage, both incompatible with our ASIL-D-adjacent targets (ADR-0002) and ADR-0003 SQLite-default choice.
 
 **Inputs.** PR #7 source tree under review; existing [`opensovd-core/sovd-dfm/src/lib.rs`](opensovd-core/sovd-dfm/src/lib.rs) (933 LOC, SQLite + operation cycles + ADR-0018 degraded-mode); existing [`opensovd-core/crates/fault-sink-unix/`](opensovd-core/crates/fault-sink-unix/) (postcard IPC, no retry); ADR-0002 (C shim contract); ADR-0012 (dual tester+ECU operation cycle); ADR-0018 (cached-snapshot resilience rules); ADR-0003 (SQLite persistence).
@@ -312,7 +314,7 @@ Each PROD-* below carries **Role / Inputs / Outputs / Constraints / Verification
 
 - **PROD-16.1 Reporter-side debounce (embedded).** Port the four modes from PR #7's `common/debounce.rs` (CountWithinWindow, HoldTime, EdgeWithCooldown, CountThreshold) into a new C module under the embedded fault shim. Deliverables: `embedded/fault-shim/src/FaultShim_Debounce.c` + `.h`; unit tests `embedded/fault-shim/tests/debounce_test.c` covering each mode; ADR-0002 addendum documenting the C algorithm and MISRA-C:2012 compliance posture. Depends on first materialising the shim source (ADR-0002 is design-only today).
 - **PROD-16.2 Enabling conditions (reporter + DFM).** Registry API shared across the reporter (C side) and DFM (Rust side). Deliverables: new Rust module `opensovd-core/sovd-dfm/src/enabling.rs` (conditions registry, evaluator); new C header/source pair `embedded/fault-shim/src/FaultShim_Enabling.c` + `.h` (condition IDs, gate checks before `FaultShim_Report`); updated IPC codec in `opensovd-core/crates/fault-sink-unix/src/codec.rs` to carry condition IDs; wire-format documented in `docs/adr/0019-fault-enabling-conditions.md` (new ADR).
-- **PROD-16.3 Aging / reset policy (DFM).** New aging manager in `opensovd-core/sovd-dfm/src/aging.rs` (cycle-gated aging counter per DTC, reset rules, policy table loaded from TOML); extended `FaultRecord` schema with `aging_counter` + `healed_at_cycle`; migration under `opensovd-core/sovd-db-sqlite/migrations/` for the new columns; TOML policy schema in `docs/schemas/dfm-aging-policy.schema.json`; replaces today's all-or-nothing `clear_all_faults` semantics. Preserves ADR-0018 degraded-mode (aging pauses while DB degraded, resumes on recovery).
+- **PROD-16.3 Aging / reset policy (DFM).** New aging manager in `opensovd-core/sovd-dfm/src/aging.rs` (cycle-gated aging counter per DTC, reset rules, policy table loaded from TOML); extended `FaultRecord` schema with `aging_counter` + `healed_at_cycle`; migration under `opensovd-core/sovd-db-sqlite/migrations/` for the new columns; TOML policy schema in `docs/schemas/dfm-aging-policy.schema.json`; replaces today's all-or-nothing `clear_all_faults` semantics. Preserves ADR-0018 degraded-mode (aging pauses while DB degraded, resumes on recovery). Aging policies reference cycles by **named identity string** (`cycle_ref = "ignition.main"`, `"drive.standard"`, etc.) per the upstream fault-lib design — lets the DFM correlate counts from different cycle domains (ADR-0012 tester vs. ECU) without hard-wiring the mapping into code. A registry of valid `cycle_ref` names lives alongside the TOML policy schema.
 - **PROD-16.4 IPC retry queue with exponential backoff.** Bounded retry queue inside `opensovd-core/crates/fault-sink-unix/src/` (new `retry.rs`); exponential backoff with jitter; drop-oldest on queue full with telemetry counter; configurable via `fault-sink-unix` TOML. Ports the retry semantics from PR #7's `ipc_worker.rs` but keeps our Unix-socket / named-pipe transport (no iceoryx2 adoption).
 
 **Constraints.**
@@ -373,6 +375,51 @@ Each PROD-* below carries **Role / Inputs / Outputs / Constraints / Verification
 **Phase assignment.** P13 (production rails). Blocked on `Q-PROD-6` (S-CORE scope). PROD-17.1 (library scaffolding + IPC codec + sovd-server mount) is the P13 entry step; PROD-17.2 (sovd-ml migration) is the first proof. PROD-8 full-SOVD-resource coverage can consume this pattern for `functions/` and `apps/` namespaces (§II.5.1) so those aren't hand-rolled.
 
 **Reference.** Upstream `opensovd/docs/design/design.md` §"Diagnostic Library" (capability reference only). The OEM is free to narrow, extend, or entirely replace the interface — the Part II adoption commits to the *pattern*, not the exact API shape proposed upstream.
+
+### II.6.18 PROD-18 Fault Library (framework-agnostic fault API for apps)
+
+**Context.** PROD-16 closes fault-pipeline feature parity (debounce / enabling / aging / retry) but leaves a **shape gap**: Taktflow today has the transport (`fault-sink-unix` / `fault-sink-mqtt`) and the DFM backend (`sovd-dfm`), but no crate that an HPC app **links against and calls** to report a fault. Apps wanting to emit a DTC currently have to speak the IPC wire format directly, which couples every app to the transport crate and breaks S-CORE's authority model — S-CORE components need a stable, framework-agnostic API above the transport.
+
+**Role.** Deliver `opensovd-core/fault-lib/`, a Rust crate apps link against to declare their fault catalog and publish fault records without owning IPC code. Mirrors the shape of upstream `eclipse-opensovd/fault-lib` (vendored at [`fault-lib/`](fault-lib/)) so concepts line up cross-project, while keeping our own split implementation (no upstream crate as a Cargo dependency, same rule as PROD-16 cites).
+
+**Inputs.** Upstream `fault-lib/docs/design/design.md` (capability reference, absorbed 2026-04-21); our existing `fault-sink-unix` + `fault-sink-mqtt` crates (transports that will back the `FaultSink` trait); ADR-0012 operation-cycle identities; ADR-0002 MISRA-C bindings for the embedded side.
+
+**Outputs.**
+
+- **Crate** at `opensovd-core/fault-lib/` with the upstream surface:
+  - `FaultApi` — singleton per process, constructed once with `Arc<dyn FaultSink>` + `Arc<dyn LogHook>`.
+  - `Reporter` — one per fault ID, bound to a `FaultDescriptor` from a static `FaultCatalog { id, version, descriptors }`. Exposes `create_record()` + `publish(&record)`.
+  - `FaultRecord` — runtime-mutable data only (fault_id, time, severity, source, lifecycle_phase, stage, environment_data). Not the same as ISO 14229-1 DTC lifecycle — that's DFM-derived.
+  - `FaultLifecycleStage` enum: `NotTested / PreFailed / Failed / PrePassed / Passed` (test-centric; DTC pending/confirmed/aged stays in DFM).
+  - `DebounceMode` + `ResetTrigger` declarative policies per PROD-16.1 / PROD-16.3.
+- **Traits** — `FaultSink` (transport, backed by our existing fault-sink-* crates) and `LogHook` (observability, pluggable to DLT per PROD-15 / Part I §4.5). Deliberately separate — IPC and logging have different failure domains.
+- **C-friendly FFI** via `cbindgen` — produces `fault-lib.h` for the embedded fault-shim (ADR-0002) and for ara::diag glue code (PROD-14). API stays sync-free from C's perspective; `publish` returns immediately, transport runs on an internal runtime or a caller-supplied executor.
+- **Three first-party consumers** wired as migration proof:
+  - `sovd-dfm` self-faults (e.g. ADR-0018 degraded-mode transition) now reported via fault-lib into fault-sink-unix rather than an internal shortcut. Closes the current circular dependency between DFM and transport.
+  - `sovd-ml` publishes inference-failure faults via fault-lib (PROD-6 signal quality).
+  - The Pi bench proxy (`opensovd-core/crates/ws-bridge/`) publishes transport-level faults via fault-lib instead of its current ad-hoc log line.
+
+**Constraints.**
+
+- **Framework-agnostic** — no `tokio` or `axum` dependency in the public API. Apps choose their runtime; the crate accepts an executor handle.
+- **Non-blocking publish** — `Reporter::publish` enqueues and returns immediately (matches upstream decision and PROD-16.4 retry-queue semantics).
+- **Static catalog, runtime policy load** — components embed a `&'static FaultCatalog` at build time for zero-cost dispatch; DFM reads the **same** catalog artifact (YAML + descriptor table) at runtime to pick up policy changes without a DFM rebuild. Mirrors the upstream design decision.
+- **Panic on missing descriptor** — upstream policy (flush drift early). Documented so it's not a surprise in production logs.
+- **Quality discipline** — per upstream design §Security (*"client libs need same quality as safe components + FFI guarantees"*), the crate has its own CI quality gate: `#![deny(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]` (per ADR-0032); miri run on the `unsafe` FFI path; `cbindgen` output committed to keep the C ABI reviewable.
+- **Not an upstream Cargo dep** — same rule as PROD-16. Upstream `fault-lib/` is a vendored capability reference; PROD-15 governs its merge cadence.
+
+**Verification.**
+
+- **Unit** — round-trip publish: mock `FaultSink` captures a record, mock `LogHook` sees the same event; descriptor lookup panics when the fault id is not in the catalog; `Reporter::publish` never blocks under a stalled sink.
+- **Integration** — `sovd-dfm` reports its own degraded-mode transition via the new crate; existing ADR-0018 degraded-mode test still passes; wire-level the IPC format is unchanged (fault-sink-unix codec stable).
+- **FFI** — C consumer (embedded fault-shim prototype) links `fault-lib.h`, publishes a fault, receives ack via the same wire format.
+- **Quality gate** — crate compiles clean under ADR-0032 lints without any `#[allow]`.
+
+**Phase assignment.** P13, concurrent with PROD-16 (shares the transport and DFM edits). PROD-18.1 (crate scaffold + `FaultApi` / `Reporter` / `FaultDescriptor` shape) is the P13 entry step. PROD-18.2 (sovd-dfm self-fault migration) is the first proof.
+
+**Open question.** **Q-PROD-10b** — do we expose the upstream crate's `FaultCatalog::from_config` loader verbatim, or a Taktflow-specific loader that also honours ADR-0012 cycle identities and ADR-0018 degraded-mode metadata? Answer drives whether our YAML schema is upstream-compatible or deliberately Taktflow-specific.
+
+**Reference.** Upstream `fault-lib/docs/design/design.md` + `opensovd/docs/design/adr/001-adr-score-interface.md` (fault-lib as S-CORE interface). Both are capability references; OEM retains authority over API shape, especially the FFI contract and the catalog-loader semantics.
 
 ---
 

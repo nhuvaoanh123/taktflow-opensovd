@@ -4,9 +4,9 @@
 # SC00000 - Safety Controller, Phase 5 bench ECU
 # ===============================================
 # Authoritative source-of-truth YAML for the SC00000 CDA database.
-# TMS570LS1224-based safety controller on Pi bench at DoIP logical 0x0004.
-# No motor self-test (safety domain does not own motor); otherwise shares
-# the Phase 5 DTC taxonomy with CVC00000.
+# TMS570-based minimum UDS safety controller on Pi bench at DoIP logical 0x0004.
+# No motor self-test (safety domain does not own motor). This catalog tracks
+# the live firmware's three hardcoded bench DTCs, not the older shared CVC taxonomy.
 
 schema: "opensovd.cda.diagdesc/v1"
 
@@ -15,7 +15,7 @@ meta:
   domain: "Phase5"
   created: "2026-04-20"
   revision: "1.0.0"
-  description: "SC (Safety Controller) — TMS570LS1224 bench ECU, DoIP logical 0x0004"
+  description: "SC (Safety Controller) - TMS570 bench ECU, DoIP logical 0x0004"
   tags: [taktflow, phase5, sc, tms570, bench, safety]
 
 ecu:
@@ -28,7 +28,7 @@ ecu:
   default_addressing_mode: physical
   addressing:
     doip:
-      ip: "PI_BENCH_IP_HERE"          # Pi bench proxy IP — see CLAUDE.md §"Never commit private data"; substitute locally before generation
+      ip: "PI_BENCH_IP_HERE"          # Pi bench proxy IP; keep placeholder in git
       port: 13400
       logical_address: 0x0004         # SC per Phase 5 topology
       functional_address: 0xFFFF
@@ -65,8 +65,8 @@ comparams:
         param_class: UNIQUE_ID
         dop: { base_type: string }
     values:
-      UDS_Ethernet_DoIP:       ["4", "0", "SC00000"]
-      UDS_Ethernet_DoIP_DOBT:  ["4", "0", "SC00000"]
+      UDS_Ethernet_DoIP:      ["4", "0", "SC00000"]
+      UDS_Ethernet_DoIP_DOBT: ["4", "0", "SC00000"]
 
 sessions:
   default:
@@ -167,31 +167,9 @@ services:
       off: 0x02
 
 # Safety Controller does NOT host RoutineControl; motor self-test is CVC-only.
-
-# -----------------------------------------------------------------------------
-# DTCs — shared Phase 5 bench taxonomy, same 23 codes as CVC00000.
-# -----------------------------------------------------------------------------
+#
+# DTCs -- live TMS570 minimum-UDS firmware currently returns exactly these 3.
 dtcs:
-  0xC00100: { name: C00100, description: "Pedal Sensor Plausibility Failure", severity: 2 }
-  0xC00200: { name: C00200, description: "Pedal Sensor 1 Communication Loss", severity: 2 }
-  0xC00300: { name: C00300, description: "Pedal Sensor 2 Communication Loss", severity: 2 }
-  0xC00400: { name: C00400, description: "Both Pedal Sensors Failed", severity: 2 }
-  0xC10100: { name: C10100, description: "CAN Rx Timeout (FZC Lost CVC)", severity: 2 }
-  0xC10200: { name: C10200, description: "CAN Rx Timeout (RZC Lost CVC)", severity: 2 }
-  0xC10300: { name: C10300, description: "Can Bus Off", severity: 2 }
-  0xC10400: { name: C10400, description: "E2E CRC Error On Safety Message", severity: 2 }
-  0xC10500: { name: C10500, description: "E2E Alive Counter Error", severity: 2 }
-  0xC20100: { name: C20100, description: "Motor Overcurrent", severity: 2 }
-  0xC20200: { name: C20200, description: "Motor Overtemperature", severity: 2 }
-  0xC20300: { name: C20300, description: "Motor Overtemperature Warning", severity: 1 }
-  0xC20001: { name: C20001, description: "Motor Overcurrent", severity: 2 }
-  0xC20002: { name: C20002, description: "Motor Overtemperature", severity: 2 }
-  0xC20004: { name: C20004, description: "Battery Low", severity: 1 }
-  0xC30001: { name: C30001, description: "Lidar Blocked", severity: 1 }
-  0xC30002: { name: C30002, description: "Steering Lost", severity: 2 }
-  0xC30100: { name: C30100, description: "Steering Angle Sensor Failure", severity: 2 }
-  0xC30200: { name: C30200, description: "Steering Servo Jammed", severity: 2 }
-  0xC30300: { name: C30300, description: "Lidar Sensor Failure", severity: 1 }
-  0xC40100: { name: C40100, description: "E-Stop Activated", severity: 2 }
-  0xC50100: { name: C50100, description: "WdgM Supervision Expired", severity: 2 }
-  0xC50200: { name: C50200, description: "BswM Mode Transition Failure", severity: 2 }
+  0x100001: { name: "100001", description: "SC bench firmware hardcoded DTC 1", severity: 2 }
+  0x100002: { name: "100002", description: "SC bench firmware hardcoded DTC 2", severity: 2 }
+  0x100003: { name: "100003", description: "SC bench firmware hardcoded DTC 3", severity: 2 }

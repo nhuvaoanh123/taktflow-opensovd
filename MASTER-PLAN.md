@@ -1242,7 +1242,7 @@ Exit gates:
 |---|---|---|---|---|
 | P5-HIL-01 | done | live_bench | Inject at least one clearable fault per bench component | Pi `__bench/components/{id}/faults` override proved non-empty→empty transitions for CVC, SC, BCM via normal `DELETE /sovd/v1/components/{id}/faults`; operator method documented in `opensovd-core/deploy/pi/README-phase5.md` |
 | P5-HIL-02 | done | live_bench | Flash physical CVC; prove CAN VIN smoke | CVC ST-LINK serial `<cvc-stlink-serial>` flashed from the Windows host with `<taktflow-embedded>/build\cvc-arm\cvc_firmware.bin` (`cvc_firmware.elf` sha256 `<cvc-firmware-sha256>`); Pi `can0` regained `0x010` heartbeat and direct UDS `0x22 F190` on `0x7E0/0x7E8` reassembled to VIN `TAKTFLWCVC0000001` |
-| P5-HIL-03 | blocked | live_bench | Flash physical SC via XDS110; prove proxy routing | XDS110/DSLite flash of `<taktflow-embedded>/build\tms570\sc.elf` still succeeds and COM11 UART proves the TMS570 app is alive. The live Phase 5 route is proved through CDA plus Pi proxy to `can0`, and a new HIL-only SC UDS shim plus TMS570 TX-mailbox rework were built and flashed, but the blocker remains physical transmit behavior on the board: Pi `can0` still shows outbound SC requests (`0x7E3#031902FF`, `0x7E3#033E0000`) with no reply on `0x7EB` or `0x644`, and passive captures still show no SC status heartbeat on `0x013`. `P5-HIL-03` is therefore blocked by the live SC TX path / board capability, not by CDA aliasing or missing firmware hooks alone |
+| P5-HIL-03 | done | live_bench | Flash physical SC via XDS110; prove proxy routing | XDS110-flashed minimum UDS firmware in `firmware/tms570-uds/` @ `aca2b2c` now answers end-to-end through the live Pi proxy plus laptop CDA path; `GET /sovd/v1/components/sc/faults` returned exactly `{"items":[{"code":"100002","scope":"FaultMem","display_code":"100002","fault_name":"SC bench firmware hardcoded DTC 2","severity":2,"status":{"confirmed_dtc":false,"mask":"00","pending_dtc":false,"test_failed":false,"test_failed_since_last_clear":false,"test_failed_this_operation_cycle":false,"test_not_completed_since_last_clear":false,"test_not_completed_this_operation_cycle":false,"warning_indicator_requested":false}},{"code":"100003","scope":"FaultMem","display_code":"100003","fault_name":"SC bench firmware hardcoded DTC 3","severity":2,"status":{"confirmed_dtc":false,"mask":"00","pending_dtc":false,"test_failed":false,"test_failed_since_last_clear":false,"test_failed_this_operation_cycle":false,"test_not_completed_since_last_clear":false,"test_not_completed_this_operation_cycle":false,"warning_indicator_requested":false}},{"code":"100001","scope":"FaultMem","display_code":"100001","fault_name":"SC bench firmware hardcoded DTC 1","severity":2,"status":{"confirmed_dtc":false,"mask":"00","pending_dtc":false,"test_failed":false,"test_failed_since_last_clear":false,"test_failed_this_operation_cycle":false,"test_not_completed_since_last_clear":false,"test_not_completed_this_operation_cycle":false,"warning_indicator_requested":false}}],"total":3}` |
 | P5-HIL-04 | done | live_bench | Run read-only HIL cases (`hil_sovd_01`, `hil_sovd_05`) | `cargo test -p integration-tests --test phase5_hil_sovd_01_read_faults_all -- --nocapture` and `cargo test -p integration-tests --test phase5_hil_sovd_05_components_metadata -- --nocapture` both passed live against Pi `<pi-bench-ip>:21002`; D6 scenario now matches the live BCM discovery name `Body Control Module` |
 | P5-HIL-05 | done | live_bench | Run clear-fault + operation scenarios (`02`, `03`) | Bench overrides seeded one fault each for `cvc`, `sc`, and `bcm`; `cargo test -p integration-tests --test phase5_hil_sovd_02_clear_faults -- --nocapture` passed live against Pi `<pi-bench-ip>:21002` with non-empty -> empty transitions for all three, and `cargo test -p integration-tests --test phase5_hil_sovd_03_operation_execution -- --nocapture` passed live with `cvc/motor_self_test` reaching a contract-valid terminal state |
 | P5-HIL-06 | done | live_bench | Run fault-injection + error-handling (`04`, `08`) | `cargo test -p integration-tests --test phase5_hil_sovd_04_can_busoff -- --nocapture` and `cargo test -p integration-tests --test phase5_hil_sovd_08_error_handling -- --nocapture` both passed live against Pi `<pi-bench-ip>:21002`; the Pi proxy now treats `TesterPresent 0x3E80` as a suppressed-response keepalive, `sovd-main` serves cached stale snapshots when the laptop CDA degrades, D9 falls back when `gs_usb` rejects `restart-ms`, and D5 now verifies real `can0` BUS-OFF plus stale/fresh `/faults` transitions honestly on the retained-state bench where `C10300` persists even after full-chip erase + reflash of the known-good CVC image |
@@ -1718,7 +1718,21 @@ pulled in.
   `503 backend.degraded` after
   `DELETE /__bench/components/sc/faults/override`.
 
+- 2026-04-21 P5-HIL-03 closed - the replacement SC CDA artifacts were
+  regenerated from the PC source of truth for the live TMS570 minimum
+  UDS firmware at `firmware/tms570-uds/` @ `aca2b2c`, the laptop CDA
+  runtime was refreshed from the PC-authored `classic-diagnostic-adapter/`
+  tree, and the public Pi proof on
+  `/sovd/v1/components/sc/faults` returned 3 DTCs with no degradation:
+  `100002`, `100003`, `100001`.
+
 ### 13.3 Active Blockers (snapshot)
+
+- SC routed diagnostics are no longer blocked: `P5-HIL-03` closed on
+  2026-04-21 after the live TMS570 minimum UDS firmware at
+  `firmware/tms570-uds/` @ `aca2b2c` returned 3 DTCs through the public
+  Pi SOVD endpoint. Any older blocker text below that still mentions
+  `sc` is superseded historical context.
 
 - Raw CVC/SC CDA passthrough remains unstable after the bench override is
   reset — direct CDA reads are again timing out (`504` on the laptop,

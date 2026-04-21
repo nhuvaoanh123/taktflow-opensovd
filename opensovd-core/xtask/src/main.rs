@@ -141,6 +141,7 @@ struct Phase5MddSpec {
     remote_component_id_upper: &'static str,
     logical_address_decimal: &'static str,
     include_motor_self_test: bool,
+    dtc_records: &'static [(u32, &'static str, &'static str, u32)],
 }
 
 const PHASE5_FUNCTIONAL_ADDRESS: &str = "65535";
@@ -153,15 +154,17 @@ const PHASE5_MDD_SPECS: &[Phase5MddSpec] = &[
         remote_component_id_upper: "CVC00000",
         logical_address_decimal: "0001",
         include_motor_self_test: true,
+        dtc_records: PHASE5_CVC_DTC_RECORDS,
     },
     Phase5MddSpec {
         remote_component_id_upper: "SC00000",
         logical_address_decimal: "0004",
         include_motor_self_test: false,
+        dtc_records: PHASE5_SC_DTC_RECORDS,
     },
 ];
 
-const PHASE5_DTC_RECORDS: &[(u32, &str, &str, u32)] = &[
+const PHASE5_CVC_DTC_RECORDS: &[(u32, &str, &str, u32)] = &[
     (0xC00100, "C00100", "Pedal Sensor Plausibility Failure", 2),
     (0xC00200, "C00200", "Pedal Sensor 1 Communication Loss", 2),
     (0xC00300, "C00300", "Pedal Sensor 2 Communication Loss", 2),
@@ -185,6 +188,12 @@ const PHASE5_DTC_RECORDS: &[(u32, &str, &str, u32)] = &[
     (0xC40100, "C40100", "E-Stop Activated", 2),
     (0xC50100, "C50100", "WdgM Supervision Expired", 2),
     (0xC50200, "C50200", "BswM Mode Transition Failure", 2),
+];
+
+const PHASE5_SC_DTC_RECORDS: &[(u32, &str, &str, u32)] = &[
+    (0x100001, "100001", "SC bench firmware hardcoded DTC 1", 2),
+    (0x100002, "100002", "SC bench firmware hardcoded DTC 2", 2),
+    (0x100003, "100003", "SC bench firmware hardcoded DTC 3", 2),
 ];
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -480,7 +489,8 @@ fn build_phase5_diag_blob(spec: &Phase5MddSpec) -> Result<Vec<u8>, Box<dyn std::
 
     let fault_mem_class = builder.create_funct_class("FaultMem");
 
-    let dtcs = PHASE5_DTC_RECORDS
+    let dtcs = spec
+        .dtc_records
         .iter()
         .map(|(code, display_code, fault_name, severity)| {
             builder.create_dtc(*code, Some(display_code), Some(fault_name), *severity)
@@ -939,10 +949,12 @@ fn diag_converter_manifest() -> PathBuf {
         .join("Cargo.toml")
 }
 
-/// Phase 5 ECUs whose MDD / ODX are regenerated from YAML. Kept in sync
-/// with `PHASE5_MDD_SPECS` above (the legacy Rust builder). When the
-/// YAML pipeline takes over fully, `PHASE5_MDD_SPECS` can retire.
-const PHASE5_YAML_ECUS: &[&str] = &["CVC00000", "SC00000"];
+/// Phase 5 ECUs whose MDD / ODX are regenerated from YAML.
+///
+/// `SC00000.yml` still tracks the live bench DTC catalog, but the
+/// committed `SC00000.mdd` stays on the legacy builder until the
+/// diag-converter output matches the Phase 5 CDA runtime shape again.
+const PHASE5_YAML_ECUS: &[&str] = &["CVC00000"];
 
 fn phase5_yaml_to_mdd(check: bool) -> Result<(), Box<dyn std::error::Error>> {
     let manifest = diag_converter_manifest();

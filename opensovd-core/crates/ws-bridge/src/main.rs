@@ -12,21 +12,24 @@
 
 //! `ws-bridge` binary entrypoint.
 //!
-//! Reads env vars via [`ws_bridge::Config::from_env`], installs a
-//! `tracing-subscriber`, then hands off to the library.
-
-use tracing_subscriber::EnvFilter;
+//! Reads env vars via [`ws_bridge::Config::from_env`], installs the shared
+//! Phase 6 tracing bootstrap, then hands off to the library.
 
 use ws_bridge::Config;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Honour RUST_LOG; default to `info` so a vanilla deployment
-    // still emits the startup banner and connection logs.
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    tracing_subscriber::fmt().with_env_filter(filter).init();
-
     let cfg = Config::from_env()?;
+    let _tracing_guard = sovd_tracing::init(&cfg.tracing_config())
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+
+    if cfg.logging.dlt.enabled {
+        tracing::info!(
+            app_id = %cfg.logging.dlt.app_id,
+            app_description = %cfg.logging.dlt.app_description,
+            "DLT tracing enabled for ws-bridge"
+        );
+    }
 
     let server = ws_bridge::serve(cfg, shutdown_signal()).await?;
     tracing::info!(addr = %server.local_addr, "ws-bridge ready");

@@ -42,6 +42,7 @@ use tokio_tungstenite::tungstenite::{
     Message, client::IntoClientRequest as _, handshake::client::Response as HandshakeResponse,
 };
 use ws_bridge::Config;
+use ws_bridge::config::{DltConfig, LoggingConfig};
 
 const TOKEN: &str = "test-token-sekret-xyz";
 
@@ -109,6 +110,14 @@ async fn start_bridge(mqtt_port: u16) -> ws_bridge::Server {
         sub_topic: "vehicle/#".to_owned(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         token: TOKEN.to_owned(),
+        logging: LoggingConfig {
+            filter_directive: "info".to_owned(),
+            dlt: DltConfig {
+                enabled: false,
+                app_id: "WSBR".to_owned(),
+                app_description: "OpenSOVD ws-bridge".to_owned(),
+            },
+        },
     };
     // Shutdown future is `pending<()>()` so the bridge runs until
     // the test process exits.

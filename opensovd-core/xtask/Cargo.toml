@@ -25,11 +25,17 @@ workspace = true
 name = "xtask"
 path = "src/main.rs"
 
+[features]
+default = []
+dlt-tracing = ["sovd-tracing/dlt-tracing"]
+
 [dependencies]
 sovd-server = { workspace = true }
+sovd-tracing = { workspace = true }
 clap = { workspace = true }
 utoipa = { workspace = true, features = ["yaml"] }
 cda-database = { path = "../../classic-diagnostic-adapter/cda-database", features = ["database-builder"] }
 cda-interfaces = { path = "../../classic-diagnostic-adapter/cda-interfaces" }
 tempfile = { workspace = true }
 prost = { workspace = true }
+tracing = { workspace = true }

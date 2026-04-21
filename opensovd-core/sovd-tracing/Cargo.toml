@@ -21,9 +21,24 @@ description = "Tracing and structured logging setup for the Eclipse OpenSOVD cor
 [lints]
 workspace = true
 
+[features]
+default = []
+dlt-tracing = ["dep:tracing-dlt"]
+otel = [
+  "dep:opentelemetry",
+  "dep:opentelemetry_sdk",
+  "dep:opentelemetry-otlp",
+  "dep:tracing-opentelemetry",
+]
+
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+opentelemetry = { workspace = true, features = ["trace"], optional = true }
+opentelemetry_sdk = { workspace = true, features = ["trace"], optional = true }
+opentelemetry-otlp = { workspace = true, features = ["grpc-tonic"], optional = true }
+tracing-dlt = { path = "../../dlt-tracing-lib/tracing-dlt", optional = true }

@@ -32,6 +32,7 @@ use std::{
     sync::Arc,
 };
 
+use axum::http::Request;
 use axum::middleware::from_fn_with_state;
 use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
@@ -43,7 +44,7 @@ use sovd_interfaces::{
     traits::{fault_sink::FaultSink, operation_cycle::OperationCycle, sovd_db::SovdDb},
 };
 use sovd_server::{CdaBackend, InMemoryServer, RateLimiter};
-use tower_http::trace::{DefaultMakeSpan, TraceLayer};
+use tower_http::trace::{DefaultOnResponse, MakeSpan, TraceLayer};
 use url::Url;
 
 #[cfg(feature = "fault-sink-mqtt")]
@@ -104,6 +105,27 @@ impl AppArgs {
             }
         }
     }
+}
+
+#[derive(Clone, Default)]
+struct SovdRequestSpan;
+
+impl<B> MakeSpan<B> for SovdRequestSpan {
+    fn make_span(&mut self, request: &Request<B>) -> tracing::Span {
+        let correlation_id = sovd_server::correlation::resolve_correlation_id(request.headers());
+
+        tracing::info_span!(
+            "http.request",
+            dlt_context = "SOVD",
+            method = %request.method(),
+            path = request.uri().path(),
+            correlation_id = %correlation_id,
+        )
+    }
+}
+
+fn request_tracing_enabled(config: &Configuration) -> bool {
+    config.logging.dlt.enabled || config.logging.otel.enabled
 }
 
 async fn build_dfm(
@@ -503,10 +525,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         app
     };
 
-    let app = if config.logging.otel.enabled {
+    let app = if request_tracing_enabled(&config) {
         app.layer(
             TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().level(tracing::Level::INFO)),
+                .make_span_with(SovdRequestSpan)
+                .on_response(DefaultOnResponse::new().level(tracing::Level::INFO)),
         )
     } else {
         app

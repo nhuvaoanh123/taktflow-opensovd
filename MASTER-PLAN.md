@@ -1285,8 +1285,8 @@ FMEA approved; OTA demonstrable end-to-end on CVC.
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
 | P6-01 | done | repo_only | TLS defaults + feature-flagged fallback in server/gateway | `sovd-main` now enforces HTTPS on non-loopback binds, `sovd-gateway::RemoteHost` defaults to HTTPS for non-loopback peers, and the `insecure-http-fallback` feature tests both explicit fallback paths |
-| P6-02 | pending | repo_only | Roll DLT tracing to every intended Rust binary | Correlation IDs propagate; per-binary coverage checklist |
-| P6-03 | pending | repo_only | Roll OpenTelemetry to production path | Traces cover main request path end-to-end |
+| P6-02 | done | repo_only | Roll DLT tracing to every intended Rust binary | `sovd-main`, `ws-bridge`, and `xtask` now share the `sovd-tracing` bootstrap; `sovd-main` request spans carry correlation ids, and `opensovd-core/docs/phase6-dlt-rollout-checklist.md` records per-binary coverage plus the current Windows DLT-host limitation |
+| P6-03 | done | repo_only | Roll OpenTelemetry to production path | `sovd-main` ingress spans now propagate into `sovd-server::backends::CdaBackend`, forwarded CDA requests carry W3C `traceparent`, `classic-diagnostic-adapter/cda-sovd` joins the same trace, and `opensovd-core/docs/phase6-otlp-production-path.md` records the verifier plus the current Windows OpenSSL limitation for full `opensovd-cda` verification |
 | P6-04 | pending | decision_doc | Complete safety approval package (HARA + FMEA) | Artifacts updated; sign-off target package review-ready |
 | P6-05 | pending | live_bench | Implement + prove CVC OTA end-to-end | Signed download, verify, commit, rollback demonstrated; boot-OK witness recorded |
 | P6-06 | pending | repo_only | Finalize integrator guide (beyond skeleton) | Every section has concrete install/config/troubleshoot content |

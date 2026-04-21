@@ -3570,9 +3570,6 @@ dependencies = [
  "figment",
  "opcycle-score-lifecycle",
  "opcycle-taktflow",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
  "rcgen",
  "rustls 0.23.38",
  "serde",
@@ -3581,13 +3578,11 @@ dependencies = [
  "sovd-dfm",
  "sovd-interfaces",
  "sovd-server",
+ "sovd-tracing",
  "tempfile",
  "tokio",
  "tower-http",
  "tracing",
- "tracing-dlt",
- "tracing-opentelemetry",
- "tracing-subscriber",
  "url",
 ]
 
@@ -3607,6 +3602,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "reqwest",
  "serde",
  "serde_json",
@@ -3615,6 +3612,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "tracing-opentelemetry",
  "url",
  "utoipa",
  "uuid",
@@ -3624,7 +3622,12 @@ dependencies = [
 name = "sovd-tracing"
 version = "0.1.0"
 dependencies = [
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
  "tracing",
+ "tracing-dlt",
+ "tracing-opentelemetry",
  "tracing-subscriber",
 ]
 
@@ -5136,12 +5139,12 @@ dependencies = [
  "serde",
  "serde_json",
  "sovd-interfaces",
+ "sovd-tracing",
  "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite 0.24.0",
  "tower-http",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -5171,7 +5174,9 @@ dependencies = [
  "clap",
  "prost",
  "sovd-server",
+ "sovd-tracing",
  "tempfile",
+ "tracing",
  "utoipa",
 ]
 

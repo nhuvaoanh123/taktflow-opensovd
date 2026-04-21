@@ -96,7 +96,10 @@ services:
       WS_BRIDGE_BIND_ADDR: 0.0.0.0:8082
       WS_BRIDGE_SUB_TOPIC: vehicle/#
       WS_BRIDGE_TOKEN: ${WS_BRIDGE_TOKEN:-stage1-vps-static-token}
-      RUST_LOG: info
+      WS_BRIDGE_DLT_ENABLED: "${WS_BRIDGE_DLT_ENABLED:-false}"
+      WS_BRIDGE_DLT_APP_ID: "${WS_BRIDGE_DLT_APP_ID:-WSBR}"
+      WS_BRIDGE_DLT_APP_DESCRIPTION: "${WS_BRIDGE_DLT_APP_DESCRIPTION:-OpenSOVD ws-bridge}"
+      RUST_LOG: "${WS_BRIDGE_LOG:-info}"
     depends_on:
       mosquitto:
         condition: service_healthy

@@ -33,7 +33,7 @@ score = [
     "opcycle-score-lifecycle",
 ]
 fault-sink-mqtt = ["dep:fault-sink-mqtt"]
-dlt-tracing = ["dep:tracing-dlt"]
+dlt-tracing = ["sovd-tracing/dlt-tracing"]
 insecure-http-fallback = []
 
 [dependencies]
@@ -42,23 +42,18 @@ sovd-dfm = { workspace = true }
 sovd-interfaces = { workspace = true }
 sovd-db-sqlite = { workspace = true }
 opcycle-taktflow = { workspace = true }
+sovd-tracing = { workspace = true, features = ["otel"] }
 sovd-db-score = { workspace = true, optional = true }
 opcycle-score-lifecycle = { workspace = true, optional = true }
 fault-sink-mqtt = { workspace = true, optional = true }
 axum = { workspace = true, features = ["http1", "tokio"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "net"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-opentelemetry = { workspace = true }
 clap = { workspace = true }
 figment = { workspace = true }
 serde = { workspace = true }
 url = { workspace = true }
 tower-http = { workspace = true, features = ["trace"] }
-opentelemetry = { workspace = true, features = ["trace"] }
-opentelemetry_sdk = { workspace = true, features = ["trace"] }
-opentelemetry-otlp = { workspace = true, features = ["grpc-tonic"] }
-tracing-dlt = { path = "../../dlt-tracing-lib/tracing-dlt", optional = true }
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 rustls = { version = "0.23.38", default-features = false, features = ["aws-lc-rs"] }
 

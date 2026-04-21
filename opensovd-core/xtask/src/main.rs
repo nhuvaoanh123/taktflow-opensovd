@@ -40,6 +40,7 @@ use cda_database::{
 use cda_interfaces::datatypes::{ComParamValue, FlatbBufConfig};
 use clap::{Parser, Subcommand};
 use prost::Message;
+use tracing::Level;
 use utoipa::OpenApi;
 
 #[derive(Parser, Debug)]
@@ -78,26 +79,124 @@ enum Command {
     },
 }
 
+fn init_tracing() -> Result<sovd_tracing::TracingGuard, Box<dyn std::error::Error>> {
+    let dlt_enabled = match std::env::var("XTASK_DLT_ENABLED") {
+        Ok(raw) => parse_bool_flag(raw.trim())
+            .ok_or_else(|| format!("XTASK_DLT_ENABLED has unsupported boolean value `{raw}`"))?,
+        Err(_) => false,
+    };
+
+    let config = sovd_tracing::TracingConfig {
+        filter_directive: std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_owned()),
+        dlt: sovd_tracing::DltConfig {
+            enabled: dlt_enabled,
+            app_id: std::env::var("XTASK_DLT_APP_ID").unwrap_or_else(|_| "XTSK".to_owned()),
+            app_description: std::env::var("XTASK_DLT_APP_DESCRIPTION")
+                .unwrap_or_else(|_| "OpenSOVD xtask".to_owned()),
+        },
+        otel: sovd_tracing::OtelConfig::default(),
+    };
+
+    sovd_tracing::init(&config)
+}
+
+fn parse_bool_flag(value: &str) -> Option<bool> {
+    match value {
+        value
+            if value.eq_ignore_ascii_case("1")
+                || value.eq_ignore_ascii_case("true")
+                || value.eq_ignore_ascii_case("yes")
+                || value.eq_ignore_ascii_case("on") =>
+        {
+            Some(true)
+        }
+        value
+            if value.eq_ignore_ascii_case("0")
+                || value.eq_ignore_ascii_case("false")
+                || value.eq_ignore_ascii_case("no")
+                || value.eq_ignore_ascii_case("off") =>
+        {
+            Some(false)
+        }
+        _ => None,
+    }
+}
+
 fn main() -> std::process::ExitCode {
+    let _tracing_guard = match init_tracing() {
+        Ok(guard) => guard,
+        Err(e) => {
+            eprintln!("xtask tracing init failed: {e}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+
     let cli = Cli::parse();
+    tracing::event!(Level::INFO, command = ?cli.command, "xtask command starting");
+
     match cli.command {
         Command::OpenapiDump { check } => match openapi_dump(check) {
-            Ok(()) => std::process::ExitCode::SUCCESS,
+            Ok(()) => {
+                tracing::event!(
+                    Level::INFO,
+                    command = "openapi-dump",
+                    check,
+                    "xtask command completed"
+                );
+                std::process::ExitCode::SUCCESS
+            }
             Err(e) => {
+                tracing::event!(
+                    Level::ERROR,
+                    command = "openapi-dump",
+                    check,
+                    error = %e,
+                    "xtask command failed"
+                );
                 eprintln!("xtask openapi-dump failed: {e}");
                 std::process::ExitCode::FAILURE
             }
         },
         Command::Phase5CdaMdds { check } => match phase5_cda_mdds(check) {
-            Ok(()) => std::process::ExitCode::SUCCESS,
+            Ok(()) => {
+                tracing::event!(
+                    Level::INFO,
+                    command = "phase5-cda-mdds",
+                    check,
+                    "xtask command completed"
+                );
+                std::process::ExitCode::SUCCESS
+            }
             Err(e) => {
+                tracing::event!(
+                    Level::ERROR,
+                    command = "phase5-cda-mdds",
+                    check,
+                    error = %e,
+                    "xtask command failed"
+                );
                 eprintln!("xtask phase5-cda-mdds failed: {e}");
                 std::process::ExitCode::FAILURE
             }
         },
         Command::Phase5YamlToMdd { check } => match phase5_yaml_to_mdd(check) {
-            Ok(()) => std::process::ExitCode::SUCCESS,
+            Ok(()) => {
+                tracing::event!(
+                    Level::INFO,
+                    command = "phase5-yaml-to-mdd",
+                    check,
+                    "xtask command completed"
+                );
+                std::process::ExitCode::SUCCESS
+            }
             Err(e) => {
+                tracing::event!(
+                    Level::ERROR,
+                    command = "phase5-yaml-to-mdd",
+                    check,
+                    error = %e,
+                    "xtask command failed"
+                );
                 eprintln!("xtask phase5-yaml-to-mdd failed: {e}");
                 std::process::ExitCode::FAILURE
             }

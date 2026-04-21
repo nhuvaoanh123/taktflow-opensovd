@@ -28,9 +28,16 @@ use cda_interfaces::{
 };
 use cda_plugin_security::SecurityPluginLoader;
 use dynamic_router::DynamicRouter;
+use opentelemetry::{
+    Context as OtelContext,
+    propagation::{Extractor, TextMapPropagator},
+    trace::TraceContextExt as _,
+};
+use opentelemetry_sdk::propagation::TraceContextPropagator;
 use tokio::net::TcpListener;
 use tower::{Layer, ServiceExt as TowerServiceExt};
 use tower_http::{normalize_path::NormalizePathLayer, trace::TraceLayer};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub use crate::sovd::{
     error::VendorErrorCode, locks::Locks, static_data::add_static_data_endpoint,
@@ -205,23 +212,46 @@ fn rewrite_request_uri<B>(mut req: Request<B>) -> Request<B> {
     req
 }
 
+struct AxumHeaderExtractor<'a>(&'a http::HeaderMap);
+
+impl Extractor for AxumHeaderExtractor<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|value| value.to_str().ok())
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(http::HeaderName::as_str).collect()
+    }
+}
+
+fn extract_parent_context(headers: &http::HeaderMap) -> OtelContext {
+    TraceContextPropagator::new().extract(&AxumHeaderExtractor(headers))
+}
+
+fn create_request_span<B>(request: &axum::http::Request<B>) -> tracing::Span {
+    let span = tracing::info_span!(
+        "request",
+        method = ?request.method(),
+        path = request.uri().to_string(),
+        status_code = tracing::field::Empty,
+        latency = tracing::field::Empty,
+        error = tracing::field::Empty,
+        dlt_context = dlt_ctx!("SOVD"),
+    );
+    let parent_context = extract_parent_context(request.headers());
+    if parent_context.span().span_context().is_valid() {
+        let _ = span.set_parent(parent_context);
+    }
+    span
+}
+
 fn create_trace_layer<S>(route: Router<S>) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
     route.layer(
         TraceLayer::new_for_http()
-            .make_span_with(|request: &axum::http::Request<_>| {
-                tracing::info_span!(
-                        "request",
-                    method = ?request.method(),
-                        path = request.uri().to_string(),
-                        status_code = tracing::field::Empty,
-                        latency = tracing::field::Empty,
-                        error = tracing::field::Empty,
-                        dlt_context = dlt_ctx!("SOVD"),
-                )
-            })
+            .make_span_with(create_request_span)
             .on_request(|request: &axum::http::Request<_>, _span: &tracing::Span| {
                 tracing::debug!(
                     method = %request.method(),
@@ -268,5 +298,31 @@ pub(crate) mod test_utils {
             .await
             .unwrap();
         serde_json::from_slice::<T>(body.as_ref())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::HeaderValue;
+
+    use super::*;
+
+    #[test]
+    fn extract_parent_context_reads_traceparent_header() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::HeaderName::from_static("traceparent"),
+            HeaderValue::from_static("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"),
+        );
+
+        let context = extract_parent_context(&headers);
+        let span = context.span();
+        let span_context = span.span_context();
+
+        assert!(span_context.is_valid());
+        assert_eq!(
+            span_context.trace_id().to_string(),
+            "0af7651916cd43dd8448eb211c80319c"
+        );
     }
 }

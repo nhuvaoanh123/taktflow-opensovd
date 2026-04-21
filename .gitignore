@@ -31,3 +31,8 @@ work/
 # — internal playbooks, never public
 docs/plans/vps-*.md
 docs/plans/vps-*-notes.md
+
+# Claude Code session rules — project-local AI prompt config, not for
+# the public mirror. Keep the file locally so Claude Code still loads
+# the rules, but don't publish workstation-specific details.
+CLAUDE.md

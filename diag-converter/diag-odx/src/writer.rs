@@ -987,7 +987,7 @@ fn ir_dtc_dop_to_odx(
     diag_coded_type: &Option<DiagCodedType>,
     physical_type: &Option<PhysicalType>,
     compu_method: &Option<CompuMethod>,
-    _dtcs: &[Dtc],
+    dtcs: &[Dtc],
     is_visible: bool,
 ) -> OdxDtcDop {
     OdxDtcDop {
@@ -999,7 +999,9 @@ fn ir_dtc_dop_to_odx(
         diag_coded_type: diag_coded_type.as_ref().map(ir_dct_to_odx),
         physical_type: physical_type.as_ref().map(ir_pt_to_odx),
         compu_method: compu_method.as_ref().map(ir_cm_to_odx),
-        dtcs: None,
+        dtcs: (!dtcs.is_empty()).then(|| DtcsWrapper {
+            items: dtcs.iter().map(ir_dtc_to_odx).collect(),
+        }),
     }
 }
 

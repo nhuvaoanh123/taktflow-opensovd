@@ -125,6 +125,22 @@ fn yaml_to_ir(doc: &YamlDocument) -> Result<DiagDatabase, YamlParseError> {
         doc.authentication.as_ref(),
     );
 
+    // Build DTCs before service generation so fault-memory services can emit
+    // typed DTC and end-of-PDU record DOPs that match the bench CDA runtime.
+    let dtcs = if let Some(serde_yaml::Value::Mapping(dtc_map)) = &doc.dtcs {
+        dtc_map
+            .iter()
+            .filter_map(|(key, val)| {
+                let code = parse_hex_key(key);
+                serde_yaml::from_value::<YamlDtc>(val.clone())
+                    .ok()
+                    .map(|dtc| convert_dtc(code, &dtc))
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+
     // Build services from DID definitions + enabled standard services
     let mut diag_services = Vec::new();
 
@@ -163,7 +179,8 @@ fn yaml_to_ir(doc: &YamlDocument) -> Result<DiagDatabase, YamlParseError> {
     if let Some(yaml_services) = &doc.services {
         let svc_gen = crate::service_generator::ServiceGenerator::new(yaml_services)
             .with_sessions(doc.sessions.as_ref())
-            .with_security(doc.security.as_ref());
+            .with_security(doc.security.as_ref())
+            .with_dtcs(&dtcs);
         diag_services.extend(svc_gen.generate_all());
     }
 
@@ -250,21 +267,6 @@ fn yaml_to_ir(doc: &YamlDocument) -> Result<DiagDatabase, YamlParseError> {
         Some(Sdgs {
             sdgs: layer_sdg_vec,
         })
-    };
-
-    // Build DTCs
-    let dtcs = if let Some(serde_yaml::Value::Mapping(dtc_map)) = &doc.dtcs {
-        dtc_map
-            .iter()
-            .filter_map(|(key, val)| {
-                let code = parse_hex_key(key);
-                serde_yaml::from_value::<YamlDtc>(val.clone())
-                    .ok()
-                    .map(|dtc| convert_dtc(code, &dtc))
-            })
-            .collect()
-    } else {
-        vec![]
     };
 
     // Build state charts from sessions, state_model, and security

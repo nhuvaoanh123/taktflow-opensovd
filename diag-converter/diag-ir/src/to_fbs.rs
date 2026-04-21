@@ -946,12 +946,12 @@ fn build_diag_coded_type<'a>(
             bit_mask,
             condensed,
         }) => {
-            let bm = builder.create_vector(bit_mask);
+            let bm = (!bit_mask.is_empty()).then(|| builder.create_vector(bit_mask));
             let sl = dataformat::StandardLengthType::create(
                 builder,
                 &dataformat::StandardLengthTypeArgs {
                     bit_length: *bit_length,
-                    bit_mask: Some(bm),
+                    bit_mask: bm,
                     condensed: *condensed,
                 },
             );

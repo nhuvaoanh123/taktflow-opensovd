@@ -951,10 +951,7 @@ fn diag_converter_manifest() -> PathBuf {
 
 /// Phase 5 ECUs whose MDD / ODX are regenerated from YAML.
 ///
-/// `SC00000.yml` still tracks the live bench DTC catalog, but the
-/// committed `SC00000.mdd` stays on the legacy builder until the
-/// diag-converter output matches the Phase 5 CDA runtime shape again.
-const PHASE5_YAML_ECUS: &[&str] = &["CVC00000"];
+const PHASE5_YAML_ECUS: &[&str] = &["CVC00000", "SC00000"];
 
 fn phase5_yaml_to_mdd(check: bool) -> Result<(), Box<dyn std::error::Error>> {
     let manifest = diag_converter_manifest();

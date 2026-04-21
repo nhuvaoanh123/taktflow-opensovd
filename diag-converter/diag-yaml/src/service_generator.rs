@@ -11,6 +11,7 @@ pub struct ServiceGenerator<'a> {
     services: &'a YamlServices,
     sessions: Option<&'a BTreeMap<String, Session>>,
     security: Option<&'a BTreeMap<String, SecurityLevel>>,
+    dtcs: &'a [Dtc],
 }
 
 impl<'a> ServiceGenerator<'a> {
@@ -19,6 +20,7 @@ impl<'a> ServiceGenerator<'a> {
             services,
             sessions: None,
             security: None,
+            dtcs: &[],
         }
     }
 
@@ -29,6 +31,11 @@ impl<'a> ServiceGenerator<'a> {
 
     pub fn with_security(mut self, security: Option<&'a BTreeMap<String, SecurityLevel>>) -> Self {
         self.security = security;
+        self
+    }
+
+    pub fn with_dtcs(mut self, dtcs: &'a [Dtc]) -> Self {
+        self.dtcs = dtcs;
         self
     }
 
@@ -536,7 +543,7 @@ impl<'a> ServiceGenerator<'a> {
             "CLEAR-DTC",
             vec![
                 coded_const_param("SID_RQ", 0, 8, "20"),
-                value_param("Dtc", 1, 24, "RecordDataType"),
+                value_param_with_dop("Dtc", 1, 0, dtc_dop(self.dtcs)),
             ],
             vec![coded_const_param("SID_PR", 0, 8, "84")],
         )]
@@ -556,7 +563,7 @@ impl<'a> ServiceGenerator<'a> {
         };
 
         let build_by_subfunc = |name: &str, subfunc: u8| {
-            let (req_params, resp_params) = read_dtc_params(subfunc);
+            let (req_params, resp_params) = read_dtc_params(subfunc, self.dtcs);
             build_service(
                 &format!("FaultMem_{name}"),
                 "READ-DTC-INFO",
@@ -868,6 +875,133 @@ fn value_param(name: &str, byte_pos: u32, bit_size: u32, dop_name: &str) -> Para
     }
 }
 
+fn value_param_with_dop(name: &str, byte_pos: u32, bit_pos: u32, dop: Dop) -> Param {
+    Param {
+        short_name: name.to_string(),
+        param_type: ParamType::Value,
+        semantic: "DATA".to_string(),
+        byte_position: Some(byte_pos),
+        bit_position: Some(bit_pos),
+        specific_data: Some(ParamData::Value {
+            dop: Box::new(dop),
+            physical_default_value: String::new(),
+        }),
+        ..Default::default()
+    }
+}
+
+fn identical_compu_method() -> CompuMethod {
+    CompuMethod {
+        category: CompuCategory::Identical,
+        internal_to_phys: None,
+        phys_to_internal: None,
+    }
+}
+
+fn standard_length_diag_coded_type(bit_size: u32) -> DiagCodedType {
+    DiagCodedType {
+        base_data_type: DataType::AUint32,
+        is_high_low_byte_order: true,
+        specific_data: Some(DiagCodedTypeData::StandardLength {
+            bit_length: bit_size,
+            bit_mask: vec![],
+            condensed: false,
+        }),
+        ..Default::default()
+    }
+}
+
+fn identical_regular_dop(short_name: &str, bit_size: u32) -> Dop {
+    Dop {
+        dop_type: DopType::Regular,
+        short_name: short_name.to_string(),
+        specific_data: Some(DopData::NormalDop {
+            compu_method: Some(identical_compu_method()),
+            diag_coded_type: Some(standard_length_diag_coded_type(bit_size)),
+            unit_ref: None,
+            internal_constr: None,
+            physical_type: None,
+            phys_constr: None,
+        }),
+        sdgs: None,
+    }
+}
+
+fn dtc_dop(dtcs: &[Dtc]) -> Dop {
+    Dop {
+        dop_type: DopType::Dtc,
+        short_name: String::new(),
+        specific_data: Some(DopData::DtcDop {
+            diag_coded_type: Some(standard_length_diag_coded_type(24)),
+            physical_type: None,
+            compu_method: Some(identical_compu_method()),
+            dtcs: dtcs.to_vec(),
+            is_visible: true,
+        }),
+        sdgs: None,
+    }
+}
+
+const STATUS_BIT_NAMES: &[&str] = &[
+    "testFailed",
+    "testFailedThisOperationCycle",
+    "pendingDTC",
+    "confirmedDTC",
+    "testNotCompletedSinceLastClear",
+    "testFailedSinceLastClear",
+    "testNotCompletedThisOperationCycle",
+    "warningIndicatorRequested",
+];
+
+fn status_value_params(byte_pos: u32) -> Vec<Param> {
+    STATUS_BIT_NAMES
+        .iter()
+        .enumerate()
+        .map(|(bit_pos, name)| {
+            value_param_with_dop(
+                name,
+                byte_pos,
+                bit_pos as u32,
+                identical_regular_dop("true_false_dop", 1),
+            )
+        })
+        .collect()
+}
+
+fn dtc_and_status_record_param(byte_pos: u32, dtcs: &[Dtc]) -> Param {
+    let mut record_params = vec![value_param_with_dop("DtcRecord", 0, 0, dtc_dop(dtcs))];
+    record_params.extend(status_value_params(3));
+
+    value_param_with_dop(
+        "DTCAndStatusRecord",
+        byte_pos,
+        0,
+        Dop {
+            dop_type: DopType::EndOfPduField,
+            short_name: String::new(),
+            specific_data: Some(DopData::EndOfPduField {
+                max_number_of_items: Some(0),
+                min_number_of_items: None,
+                field: Some(Field {
+                    basic_structure: Some(Box::new(Dop {
+                        dop_type: DopType::Structure,
+                        short_name: String::new(),
+                        specific_data: Some(DopData::Structure {
+                            params: record_params,
+                            byte_size: None,
+                            is_visible: true,
+                        }),
+                        sdgs: None,
+                    })),
+                    env_data_desc: None,
+                    is_visible: true,
+                }),
+            }),
+            sdgs: None,
+        },
+    )
+}
+
 #[allow(clippy::cast_possible_wrap)]
 fn matching_request_param(name: &str, byte_pos: u32, byte_length: u32) -> Param {
     Param {
@@ -891,41 +1025,21 @@ fn matching_request_param(name: &str, byte_pos: u32, byte_length: u32) -> Param 
 /// - 0x04 (ReportDTCSnapshotRecordByDtcNumber): SID + SubFunction + DtcCode + RecordNr
 /// - 0x06 (ReportDTCExtDataRecordByDtcNumber): SID + SubFunction + DtcCode + RecordNr
 /// - Other: SID + SubFunction (generic fallback)
-fn read_dtc_params(subfunc: u8) -> (Vec<Param>, Vec<Param>) {
+fn read_dtc_params(subfunc: u8, dtcs: &[Dtc]) -> (Vec<Param>, Vec<Param>) {
     let sf = subfunction_param_name("READ-DTC-INFO");
     let sid_rq = coded_const_param("SID_RQ", 0, 8, "25");
     let sid_pr = coded_const_param("SID_PR", 0, 8, "89");
     let subfunc_rq = coded_const_param(sf, 1, 8, &subfunc.to_string());
-    let subfunc_echo = matching_request_param(sf, 1, 1);
+    let subfunc_pr = coded_const_param("SubFunction_PR", 1, 8, &subfunc.to_string());
 
     match subfunc {
         0x02 => {
             // ReportDTCByStatusMask: status mask bits as individual parameters
-            let status_bit_names = [
-                "testFailed",
-                "testFailedThisOperationCycle",
-                "pendingDTC",
-                "confirmedDTC",
-                "testNotCompletedSinceLastClear",
-                "testFailedSinceLastClear",
-                "testNotCompletedThisOperationCycle",
-                "warningIndicatorRequested",
-            ];
             let mut req = vec![sid_rq, subfunc_rq];
-            for (i, name) in status_bit_names.iter().enumerate() {
-                req.push(value_param(name, 2, 1, "TrueFalseDop"));
-                // Bit position differentiates them within the same byte
-                if let Some(p) = req.last_mut() {
-                    p.bit_position = Some(i as u32);
-                }
-            }
-            let mut resp = vec![sid_pr, subfunc_echo];
-            resp.push(value_param("DTCAndStatusRecord", 3, 0, ""));
-            for (i, name) in status_bit_names.iter().enumerate() {
-                let mut p = value_param(name, 2, 1, "TrueFalseDop");
-                p.bit_position = Some(i as u32);
-                resp.push(p);
-            }
+            req.extend(status_value_params(2));
+            let mut resp = vec![sid_pr, subfunc_pr];
+            resp.extend(status_value_params(2));
+            resp.push(dtc_and_status_record_param(3, dtcs));
             (req, resp)
         }
         0x04 | 0x06 => {
@@ -933,20 +1047,21 @@ fn read_dtc_params(subfunc: u8) -> (Vec<Param>, Vec<Param>) {
             let req = vec![
                 sid_rq,
                 subfunc_rq,
-                value_param("DtcCode", 2, 24, "RecordDataType"),
-                value_param("DTCSnapshotRecordNr", 5, 8, "DtcSnapshotRecordDop"),
+                value_param_with_dop("DtcCode", 2, 0, dtc_dop(dtcs)),
+                value_param_with_dop(
+                    "DTCSnapshotRecordNr",
+                    5,
+                    0,
+                    identical_regular_dop("u8_dop", 8),
+                ),
             ];
-            let resp = vec![
-                sid_pr,
-                subfunc_echo,
-                value_param("DTCAndStatusRecord", 2, 32, ""),
-            ];
+            let resp = vec![sid_pr, subfunc_pr, dtc_and_status_record_param(2, dtcs)];
             (req, resp)
         }
         _ => {
             // Generic fallback
             let req = vec![sid_rq, subfunc_rq];
-            let resp = vec![sid_pr, subfunc_echo];
+            let resp = vec![sid_pr, subfunc_pr];
             (req, resp)
         }
     }

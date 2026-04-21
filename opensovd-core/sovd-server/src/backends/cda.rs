@@ -47,6 +47,7 @@ use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use sovd_interfaces::{
     ComponentId, SovdError,
+    extras::response::ResponseExtras,
     spec::{
         component::EntityCapabilities,
         data::{Datas, ReadValue},
@@ -60,7 +61,7 @@ use sovd_interfaces::{
     traits::backend::{BackendKind, SovdBackend},
     types::error::Result,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use url::Url;
 use uuid::Uuid;
 
@@ -72,6 +73,13 @@ use uuid::Uuid;
 const CDA_MAX_ATTEMPTS: u32 = 3;
 const CDA_TOTAL_BUDGET: Duration = Duration::from_millis(2_000);
 const CDA_INITIAL_BACKOFF: Duration = Duration::from_millis(50);
+const CDA_CACHE_LOCK_BUDGET: Duration = Duration::from_millis(50);
+
+#[derive(Debug, Clone)]
+struct LastKnownFaults {
+    list: ListOfFaults,
+    captured_at: Instant,
+}
 
 /// Classify whether a `reqwest::Error` is worth retrying. Connection
 /// resets, timeouts, and 5xx responses are transient. 4xx (except
@@ -164,6 +172,11 @@ pub struct CdaBackend {
     /// SOVD async start/poll contract by caching their final result
     /// under a generated execution id.
     executions: Arc<Mutex<HashMap<String, CdaExecutionRecord>>>,
+    /// ADR-0018 rule 4 last-known fault snapshot. Successful CDA fault
+    /// reads warm this cache; degraded retry-budget exhaustion serves
+    /// it back with `extras.stale=true` instead of surfacing a hard
+    /// transport failure to the caller.
+    last_known_faults: Arc<RwLock<Option<LastKnownFaults>>>,
 }
 
 impl CdaBackend {
@@ -249,6 +262,7 @@ impl CdaBackend {
             http,
             auth_token: Arc::new(Mutex::new(None)),
             executions: Arc::new(Mutex::new(HashMap::new())),
+            last_known_faults: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -304,6 +318,7 @@ impl CdaBackend {
             http,
             auth_token: Arc::new(Mutex::new(None)),
             executions: Arc::new(Mutex::new(HashMap::new())),
+            last_known_faults: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -460,6 +475,75 @@ impl CdaBackend {
             next_page: None,
             schema: None,
             extras: None,
+        }
+    }
+
+    async fn cache_last_known_faults(&self, list: &ListOfFaults) {
+        if let Ok(mut cache) =
+            tokio::time::timeout(CDA_CACHE_LOCK_BUDGET, self.last_known_faults.write()).await
+        {
+            *cache = Some(LastKnownFaults {
+                list: list.clone(),
+                captured_at: Instant::now(),
+            });
+        } else {
+            tracing::warn!(
+                backend = "cda",
+                operation = "list_faults",
+                component_id = %self.component_id,
+                error_kind = "cache_lock_timeout",
+                budget_ms = u64::try_from(CDA_CACHE_LOCK_BUDGET.as_millis()).unwrap_or(u64::MAX),
+                "CdaBackend: last_known_faults write lock contended; skipping cache update"
+            );
+        }
+    }
+
+    async fn stale_cached_faults(&self, reason: String) -> Result<ListOfFaults> {
+        let cache_guard = if let Ok(guard) =
+            tokio::time::timeout(CDA_CACHE_LOCK_BUDGET, self.last_known_faults.read()).await
+        {
+            Some(guard)
+        } else {
+            tracing::warn!(
+                backend = "cda",
+                operation = "list_faults",
+                component_id = %self.component_id,
+                error_kind = "cache_lock_timeout",
+                budget_ms = u64::try_from(CDA_CACHE_LOCK_BUDGET.as_millis()).unwrap_or(u64::MAX),
+                "CdaBackend: last_known_faults read lock contended on fallback"
+            );
+            None
+        };
+        let Some(guard) = cache_guard.as_ref() else {
+            return Err(SovdError::Degraded {
+                reason: "cda cache lock contention".into(),
+            });
+        };
+        if let Some(snapshot) = guard.as_ref() {
+            let age_ms =
+                u64::try_from(snapshot.captured_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+            let mut cached = snapshot.list.clone();
+            cached.extras = Some(ResponseExtras::stale_cache(age_ms));
+            tracing::warn!(
+                backend = "cda",
+                operation = "list_faults",
+                component_id = %self.component_id,
+                error_kind = "stale_cache_fallback",
+                age_ms,
+                "CdaBackend: serving last-known snapshot after degraded read: {reason}"
+            );
+            Ok(cached)
+        } else {
+            Err(SovdError::Degraded { reason })
+        }
+    }
+
+    async fn stale_cached_faults_for_soft_error(&self, err: SovdError) -> Result<ListOfFaults> {
+        match err {
+            SovdError::BackendUnavailable(_)
+            | SovdError::Transport(_)
+            | SovdError::Degraded { .. } => self.stale_cached_faults(err.to_string()).await,
+            other => Err(other),
         }
     }
 
@@ -702,10 +786,19 @@ impl SovdBackend for CdaBackend {
                 Ok(response) => {
                     let status = response.status();
                     if status.is_success() {
-                        return response
-                            .json::<ListOfFaults>()
-                            .await
-                            .map_err(|e| map_reqwest_err(&self.component_id, &e));
+                        let list = match response.json::<ListOfFaults>().await {
+                            Ok(list) => list,
+                            Err(err) => {
+                                return self
+                                    .stale_cached_faults_for_soft_error(map_reqwest_err(
+                                        &self.component_id,
+                                        &err,
+                                    ))
+                                    .await;
+                            }
+                        };
+                        self.cache_last_known_faults(&list).await;
+                        return Ok(list);
                     }
                     if (status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN)
                         && !auth_refreshed
@@ -739,19 +832,29 @@ impl SovdBackend for CdaBackend {
                             "CdaBackend transient failure; will retry within budget"
                         );
                     } else {
-                        // Non-retryable (4xx) — map through the
-                        // existing reqwest error path.
-                        return response
+                        // Non-retryable status (typically 4xx). If it
+                        // still maps to a soft transport/backend error,
+                        // serve the last-known snapshot when available.
+                        let err = response
                             .error_for_status()
-                            .map_err(|e| map_reqwest_err(&self.component_id, &e))?
-                            .json::<ListOfFaults>()
-                            .await
-                            .map_err(|e| map_reqwest_err(&self.component_id, &e));
+                            .err()
+                            .map(|e| map_reqwest_err(&self.component_id, &e))
+                            .unwrap_or_else(|| {
+                                SovdError::Transport(format!(
+                                    "unexpected non-success CDA status {status}"
+                                ))
+                            });
+                        return self.stale_cached_faults_for_soft_error(err).await;
                     }
                 }
                 Err(err) => {
                     if !is_retryable(&err) {
-                        return Err(map_reqwest_err(&self.component_id, &err));
+                        return self
+                            .stale_cached_faults_for_soft_error(map_reqwest_err(
+                                &self.component_id,
+                                &err,
+                            ))
+                            .await;
                     }
                     tracing::warn!(
                         backend = "cda",
@@ -784,7 +887,7 @@ impl SovdBackend for CdaBackend {
             error_kind = "retry_budget_exhausted",
             "CdaBackend: {reason}"
         );
-        Err(SovdError::Degraded { reason })
+        self.stale_cached_faults(reason).await
     }
 
     async fn clear_all_faults(&self) -> Result<()> {
@@ -1769,6 +1872,78 @@ mod tests {
         (url, calls, handle)
     }
 
+    async fn spin_up_toggleable_cda(
+    ) -> (
+        Url,
+        StdArc<AtomicU32>,
+        StdArc<AtomicU32>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use axum::{
+            Json, Router,
+            extract::State,
+            http::StatusCode as AxumStatus,
+            response::{IntoResponse, Response},
+            routing::get,
+        };
+        use sovd_interfaces::spec::fault::{Fault, ListOfFaults};
+        use tokio::net::TcpListener;
+
+        #[derive(Clone)]
+        struct SharedState {
+            calls: StdArc<AtomicU32>,
+            fail_mode: StdArc<AtomicU32>,
+        }
+
+        async fn handler(State(state): State<SharedState>) -> Response {
+            state.calls.fetch_add(1, Ordering::SeqCst);
+            match state.fail_mode.load(Ordering::SeqCst) {
+                0 => {}
+                1 => return AxumStatus::SERVICE_UNAVAILABLE.into_response(),
+                2 => return AxumStatus::BAD_REQUEST.into_response(),
+                _ => return AxumStatus::INTERNAL_SERVER_ERROR.into_response(),
+            }
+            Json(ListOfFaults {
+                items: vec![Fault {
+                    code: "P0A1F".into(),
+                    scope: None,
+                    display_code: None,
+                    fault_name: "mock".into(),
+                    fault_translation_id: None,
+                    severity: Some(2),
+                    status: None,
+                    symptom: None,
+                    symptom_translation_id: None,
+                    tags: None,
+                }],
+                total: Some(1),
+                next_page: None,
+                schema: None,
+                extras: None,
+            })
+            .into_response()
+        }
+
+        let calls = StdArc::new(AtomicU32::new(0));
+        let fail_mode = StdArc::new(AtomicU32::new(0));
+        let app = Router::new()
+            .route(
+                "/vehicle/v15/components/{component_id}/faults",
+                get(handler),
+            )
+            .with_state(SharedState {
+                calls: StdArc::clone(&calls),
+                fail_mode: StdArc::clone(&fail_mode),
+            });
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        let url = Url::parse(&format!("http://{addr}/")).expect("parse");
+        (url, calls, fail_mode, handle)
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn retry_within_budget_succeeds_after_transient_503s() {
         // Two 503s then a 200. ADR-0018 says the retry loop must
@@ -1815,6 +1990,68 @@ mod tests {
             (2..=5).contains(&seen),
             "expected 2..=5 retry attempts, saw {seen}"
         );
+        handle.abort();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn retry_budget_exhausted_serves_stale_snapshot_after_success() {
+        let (base, calls, fail_mode, handle) = spin_up_toggleable_cda().await;
+        let backend = CdaBackend::new(ComponentId::new("cvc"), base).expect("construct backend");
+
+        let fresh = backend
+            .list_faults(FaultFilter::all())
+            .await
+            .expect("initial list_faults should warm the cache");
+        assert_eq!(fresh.total, Some(1));
+        assert!(fresh.extras.is_none(), "fresh response must stay nominal");
+
+        fail_mode.store(1, Ordering::SeqCst);
+
+        let stale = backend
+            .list_faults(FaultFilter::all())
+            .await
+            .expect("cached list_faults should survive degraded CDA");
+        assert_eq!(stale.items, fresh.items);
+        assert_eq!(stale.total, fresh.total);
+        let extras = stale.extras.expect("stale fallback must set extras");
+        assert!(extras.stale, "stale fallback must advertise stale=true");
+        assert!(
+            extras.age_ms.is_some(),
+            "stale fallback must carry snapshot age"
+        );
+        assert!(
+            calls.load(Ordering::SeqCst) >= 3,
+            "expected at least one fresh call plus degraded retries, saw {}",
+            calls.load(Ordering::SeqCst)
+        );
+
+        handle.abort();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn non_retryable_soft_error_serves_stale_snapshot_after_success() {
+        let (base, _calls, fail_mode, handle) = spin_up_toggleable_cda().await;
+        let backend = CdaBackend::new(ComponentId::new("cvc"), base).expect("construct backend");
+
+        let fresh = backend
+            .list_faults(FaultFilter::all())
+            .await
+            .expect("initial list_faults should warm the cache");
+        fail_mode.store(2, Ordering::SeqCst);
+
+        let stale = backend
+            .list_faults(FaultFilter::all())
+            .await
+            .expect("cached list_faults should survive CDA 400 soft failure");
+        assert_eq!(stale.items, fresh.items);
+        assert_eq!(stale.total, fresh.total);
+        let extras = stale.extras.expect("stale fallback must set extras");
+        assert!(extras.stale, "stale fallback must advertise stale=true");
+        assert!(
+            extras.age_ms.is_some(),
+            "stale fallback must carry snapshot age"
+        );
+
         handle.abort();
     }
 }

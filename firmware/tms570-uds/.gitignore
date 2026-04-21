@@ -1,0 +1,7 @@
+build/
+*.o
+*.obj
+*.out
+*.hex
+*.map
+*.dis

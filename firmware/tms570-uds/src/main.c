@@ -25,7 +25,8 @@
 #define LOOPS_PER_MS        15000U
 #define BLINK_PERIOD_MS     500U
 
-static void busy_wait_ms(uint32 ms)
+/* Exposed to uds.c for ISO-TP STmin / FC-wait pacing. */
+void busy_wait_ms(uint32 ms)
 {
     volatile uint32 loops = ms * LOOPS_PER_MS;
     for (volatile uint32 i = 0U; i < loops; i++) { __asm(" NOP"); }

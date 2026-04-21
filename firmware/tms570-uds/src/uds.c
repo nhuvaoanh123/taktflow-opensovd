@@ -1,17 +1,24 @@
 /*
  * Minimum UDS server — see uds.h for scope.
  *
- * ISO-TP single-frame layout (physical addressing, 8-byte CAN payload):
- *   byte 0 : PCI byte.  Upper nibble = 0x0 (single-frame). Lower nibble = len.
- *   bytes 1..len : UDS payload (SID + params).
- *   bytes len+1..7 : padding (0x00).
+ * ISO-TP (ISO 15765-2) frame types used here:
+ *   SF (single-frame):    byte0 = 0x0X      , X = total payload bytes (1..7)
+ *   FF (first-frame):     byte0 = 0x1X      , byte1 = total_len low 8 bits,
+ *                         X = total_len high 4 bits ; carries 6 payload bytes
+ *   CF (consecutive):     byte0 = 0x2N      , N = seq (1..15, wraps to 0); 7 bytes
+ *   FC (flow-control):    byte0 = 0x30|FS   , byte1 = BS, byte2 = STmin
+ *
+ * Responses over 7 UDS bytes (including response SID) are sent via FF+CF
+ * pair, with a simple blocking wait for the tester's FC on the request ID.
  *
  * Positive response SID = request SID | 0x40.
- * Negative response = 0x7F <reqSID> <NRC>.
+ * Negative response     = 0x7F <reqSID> <NRC>.
  */
 
 #include "uds.h"
 #include "can_drv.h"
+
+extern void busy_wait_ms(unsigned int ms);   /* implemented in main.c */
 
 /* ---- Session / state ------------------------------------------------- */
 
@@ -39,15 +46,97 @@ static void fill_pad(uint8 buf[CAN_DLC_MAX], uint32 from)
     for (uint32 i = from; i < CAN_DLC_MAX; i++) { buf[i] = 0x00U; }
 }
 
+/* ---- ISO-TP transmitter ---------------------------------------------- */
+
+/* Poll for a Flow-Control frame on the request ID. Returns 1 and fills
+ * fc_stmin/fc_bs on success, 0 on timeout. Caller is expected to use
+ * a reasonable timeout (ISO 15765-2 N_Bs is typically 150 ms). */
+static uint32 wait_for_fc(uint32 timeout_ms, uint8 *fc_stmin, uint8 *fc_bs)
+{
+    uint8 frame[CAN_DLC_MAX];
+    while (timeout_ms > 0U) {
+        if (can_drv_rx_poll(frame) != 0U) {
+            if ((frame[0] & 0xF0U) == 0x30U) {
+                uint8 fs = frame[0] & 0x0FU;
+                if (fs == 0U) {          /* CTS — continue to send */
+                    *fc_bs = frame[1];
+                    *fc_stmin = frame[2];
+                    return 1U;
+                }
+                if (fs == 2U) { return 0U; }    /* overflow — abort */
+                /* fs == 1 (wait) : keep polling */
+            }
+            /* any non-FC frame: drop silently during this transmit path */
+        }
+        busy_wait_ms(1U);
+        timeout_ms--;
+    }
+    return 0U;
+}
+
+/* Emit one UDS response as ISO-TP. Transparently picks SF or FF+CFs.
+ * n is the number of payload bytes after the response SID byte; total
+ * UDS length = 1 + n. */
 static uint32 send_positive(uint8 sid, const uint8 *payload, uint32 n)
 {
     uint8 frame[CAN_DLC_MAX];
-    /* Single-frame PCI: upper nibble 0, lower nibble = payload length (1 + n). */
-    frame[0] = (uint8)((1U + n) & 0x0FU);
-    frame[1] = sid | 0x40U;
-    for (uint32 i = 0U; i < n; i++) { frame[2U + i] = payload[i]; }
-    fill_pad(frame, 2U + n);
-    return can_drv_tx(frame);
+    uint32 total = 1U + n;   /* SID + payload */
+
+    if (total <= 7U) {
+        /* Single frame. */
+        frame[0] = (uint8)(total & 0x0FU);
+        frame[1] = sid | 0x40U;
+        for (uint32 i = 0U; i < n; i++) { frame[2U + i] = payload[i]; }
+        fill_pad(frame, 2U + n);
+        return can_drv_tx(frame);
+    }
+
+    /* First frame: 2 PCI bytes + 6 UDS bytes (response SID + 5 payload). */
+    frame[0] = (uint8)(0x10U | ((total >> 8U) & 0x0FU));
+    frame[1] = (uint8)(total & 0xFFU);
+    frame[2] = sid | 0x40U;
+    for (uint32 i = 0U; i < 5U; i++) { frame[3U + i] = payload[i]; }
+    if (can_drv_tx(frame) == 0U) { return 0U; }
+
+    /* Wait for FC from tester. N_Bs = 150 ms is a sane default. */
+    uint8 fc_stmin = 0U;
+    uint8 fc_bs    = 0U;
+    if (wait_for_fc(150U, &fc_stmin, &fc_bs) == 0U) {
+        return 0U;  /* tester never sent FC — abort multi-frame */
+    }
+
+    /* Consecutive frames. ISO 15765-2 encodes STmin 0x00..0x7F as
+     * milliseconds, 0xF1..0xF9 as microseconds (100..900 us). We
+     * honor only the millisecond range here; the bench tolerates it. */
+    if (fc_stmin > 0x7FU) { fc_stmin = 0U; }
+
+    uint32 idx = 5U;         /* payload bytes already sent in FF */
+    uint32 cf_in_block = 0U;
+    uint8  seq = 1U;
+    while (idx < n) {
+        frame[0] = (uint8)(0x20U | (seq & 0x0FU));
+        uint32 chunk = (n - idx);
+        if (chunk > 7U) { chunk = 7U; }
+        for (uint32 i = 0U; i < 7U; i++) {
+            frame[1U + i] = (i < chunk) ? payload[idx + i] : 0x00U;
+        }
+        if (can_drv_tx(frame) == 0U) { return 0U; }
+        idx += chunk;
+        seq = (seq + 1U) & 0x0FU;
+
+        /* If tester specified a block size, wait for a fresh FC after
+         * each block instead of continuing blindly. BS=0 means no FC
+         * gating — just keep streaming. */
+        if (fc_bs != 0U) {
+            cf_in_block++;
+            if (cf_in_block >= fc_bs && idx < n) {
+                if (wait_for_fc(150U, &fc_stmin, &fc_bs) == 0U) { return 0U; }
+                cf_in_block = 0U;
+            }
+        }
+        if (idx < n && fc_stmin > 0U) { busy_wait_ms(fc_stmin); }
+    }
+    return 1U;
 }
 
 static uint32 send_negative(uint8 req_sid, uint8 nrc)
@@ -129,24 +218,19 @@ static void svc_read_dtc_info(const uint8 *req, uint32 len)
     }
     if (subf == 0x02U) {
         /* reportDTCByStatusMask.
-         * Req: 19 02 <mask> ; Resp: 59 02 <availMask> <DTC1..3 stat> <DTC2...>
-         * With 3 DTCs × 4 bytes = 12 DTC bytes + 2 header bytes = 14 total
-         * payload. This overflows an 8-byte single-frame. For the minimum
-         * firmware we truncate to the first DTC only (fits in SF) and flag
-         * the list as truncated by returning a shortened payload. */
+         * Req  : 19 02 <statusMask>
+         * Resp : 59 02 <availMask> { 4 bytes per DTC } * N
+         * Total UDS payload = 1 (SID) + 2 (header) + 4*N (DTCs).
+         * For N=3 (our hardcoded set): 15 bytes — delivered over ISO-TP
+         * FF + 2 CFs; send_positive() drives the FC handshake. */
         if (len != 3U) { (void)send_negative(0x19U, 0x13U); return; }
-        uint8 payload[6];
-        payload[0] = 0x02U;       /* subf */
-        payload[1] = 0xFFU;       /* availability mask */
-        payload[2] = k_dtcs[0];   /* DTC high   */
-        payload[3] = k_dtcs[1];   /* DTC mid    */
-        payload[4] = k_dtcs[2];   /* DTC low    */
-        payload[5] = k_dtcs[3];   /* status byte */
-        (void)send_positive(0x19U, payload, 6U);
-        /* Returning only DTC #1 keeps us inside an ISO-TP single-frame
-         * (2 header + 4 DTC bytes = 6 → fits in 7 payload + 1 PCI). */
-        /* TODO(phase3): ISO-TP multi-frame to return all DTCs + their
-         * status bytes. */
+        uint8 payload[2U + sizeof(k_dtcs)];
+        payload[0] = 0x02U;
+        payload[1] = 0xFFU;
+        for (uint32 i = 0U; i < sizeof(k_dtcs); i++) {
+            payload[2U + i] = k_dtcs[i];
+        }
+        (void)send_positive(0x19U, payload, 2U + sizeof(k_dtcs));
         return;
     }
     (void)send_negative(0x19U, 0x12U);

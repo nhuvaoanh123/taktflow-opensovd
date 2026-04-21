@@ -531,7 +531,7 @@ Plus Taktflow-specific top-level trees — [`dashboard/`](dashboard/), [`gateway
 The monolith was snapshotted at some past commit per directory. Upstream has continued — what follows is what the monolith is *likely behind on* at the vendored path.
 
 **opensovd (governance, [`opensovd/`](opensovd/)):**
-- 2026-04-20 — ADR: Rust linting & formatting proposal (#80) — **not yet absorbed**; target is a new `adr/ADR-00XX-rust-codestyle.md` in Taktflow, crediting upstream ADR 001 as basis; OEM decides which lint rules stay vs. get tightened. Q-PROD follow-up filed informally; add as `Q-PROD-10` on the next Part II revision.
+- 2026-04-20 — ADR: Rust linting & formatting proposal (#80) — **absorbed 2026-04-21** as [`docs/adr/ADR-0032-rust-codestyle.md`](docs/adr/ADR-0032-rust-codestyle.md). Adopts the upstream CDA pedantic ruleset verbatim (5 explicit deny/warn rules + rustfmt config); encoded in workspace-level `Cargo.toml` rather than a separate cicd-workflows repo (monolith convention). Rollout is not-a-flag-day: new violations block PRs, historical ones get tracked `#[allow]` comments. Follow-up Q-PROD-10 still pending on whether any Taktflow-specific lints apply beyond upstream's five.
 - 2026-04-14 — design doc: diagnostic library component (#94) — **absorbed 2026-04-21** into §II.6.17 PROD-17 (library capability) and §II.5.1 (entity hierarchy the library feeds). Upstream design.md remains the capability reference; our adoption commits to the pattern, not the API shape.
 - 2025-11-25 — MVP Scope for OpenSOVD (#53)
 

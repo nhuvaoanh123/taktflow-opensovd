@@ -188,7 +188,7 @@ pub fn authed_client(token: &str) -> Client {
 
 // ---- lifecycle -----------------------------------------------------------
 
-/// Run `ssh taktflow-pi@... sudo -n systemctl <verb> ecu-sim` and return
+/// Run `ssh <pi-user>@<pi-bench-ip> sudo -n systemctl <verb> ecu-sim` and return
 /// the command exit status. Uses `-n` (non-interactive) so a missing
 /// sudoers rule surfaces immediately instead of hanging.
 fn ecu_sim_systemctl(verb: &str) -> std::io::Result<std::process::ExitStatus> {

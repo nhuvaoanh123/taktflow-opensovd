@@ -32,6 +32,10 @@ cargo run -p sovd-main
 This starts the SOVD server with the in-memory backend. No external
 dependencies required.
 
+The default local config binds `127.0.0.1:20002` and keeps plain HTTP on
+loopback only. External-facing deployments should use
+`[server.tls] mode = "https"` with real certificate paths.
+
 ### Option B: With CDA and ECU simulator
 
 ```bash
@@ -57,10 +61,10 @@ This starts CDA, ECU simulator, and ODX database in containers.
 
 ```bash
 # Health check
-curl http://127.0.0.1:21002/sovd/v1/components
+curl http://127.0.0.1:20002/sovd/v1/components
 
 # Read faults for a component
-curl http://127.0.0.1:21002/sovd/v1/components/CVC/faults
+curl http://127.0.0.1:20002/sovd/v1/components/CVC/faults
 ```
 
 ## HIL deployment (Pi bench)
@@ -86,7 +90,7 @@ The script performs:
 2. Transfers binary and configuration to `/opt/taktflow/sovd-main/` via rsync.
 3. Installs and enables systemd service units.
 4. Optionally deploys the CAN-to-DoIP proxy binary.
-5. Verifies deployment with a health check HTTP request.
+5. Verifies deployment with a loopback health check on the Pi over SSH.
 
 ### Systemd services
 
@@ -105,10 +109,13 @@ The Pi deployment uses `opensovd-pi.toml`:
 
 ```toml
 [server]
-listen_address = "0.0.0.0"
+address = "127.0.0.1"
+port = 21002
+
+[server.tls]
+mode = "http"
 
 [backend]
-type = "sqlite"
 sqlite_path = "/opt/taktflow/sovd-main/dfm.db"
 ```
 
@@ -129,8 +136,14 @@ All configuration is via TOML files. The default config file is
 
 ```toml
 [server]
-listen_address = "127.0.0.1"    # Bind address
-listen_port = 21002             # HTTP port
+address = "127.0.0.1"
+port = 20002
+
+[server.tls]
+mode = "http"                   # loopback-only local SIL
+# mode = "https"                # external interfaces
+# cert_path = "/etc/opensovd/tls/server.crt"
+# key_path = "/etc/opensovd/tls/server.key"
 ```
 
 ### Backend section
@@ -151,7 +164,7 @@ kind = "local"
 [[gateway.hosts]]
 name = "remote-ecu"
 kind = "remote"
-url = "http://192.0.2.50:21002"
+address = "https://192.0.2.50:21002"
 components = ["ECU_A", "ECU_B"]
 ```
 
@@ -185,8 +198,9 @@ No rollback needed. Stop the process and rebuild from the desired commit.
 ### Health endpoint
 
 ```bash
-curl http://<host>:<port>/sovd/v1/components
+curl https://<host>:<port>/sovd/v1/components
 ```
 
 Returns HTTP 200 with a JSON array of registered components if the server
-is healthy.
+is healthy. For local SIL on loopback, `http://127.0.0.1:20002/...` remains
+valid.

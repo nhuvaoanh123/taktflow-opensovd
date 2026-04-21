@@ -22,7 +22,17 @@ Thumbs.db
 # phase-specific runs, HIL captures, architecture snapshots, scratch notes
 work/
 
+# Ephemeral scratch from codex / AI-tool runs (rendered TOMLs, captured
+# stdout/stderr, source-tarball snapshots). Can be large (60 MB+) and
+# is always regenerable. Never commit.
+.codex-tmp/
+
 # Deploy / infra plans (contain VPS IPs, SSH targets, nginx paths)
 # — internal playbooks, never public
 docs/plans/vps-*.md
 docs/plans/vps-*-notes.md
+
+# Claude Code session rules — project-local AI prompt config, not for
+# the public mirror. Keep the file locally so Claude Code still loads
+# the rules, but don't publish workstation-specific details.
+CLAUDE.md

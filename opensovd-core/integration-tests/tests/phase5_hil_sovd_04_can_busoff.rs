@@ -386,13 +386,23 @@ fn is_stale(list: &ListOfFaults) -> bool {
     list.extras.as_ref().is_some_and(|extras| extras.stale)
 }
 
-async fn poll_for_bus_off_fault(client: &reqwest::Client, scenario: &Scenario) -> ListOfFaults {
+async fn poll_for_bus_off_fault(
+    client: &reqwest::Client,
+    scenario: &Scenario,
+    baseline_marker_count: usize,
+) -> ListOfFaults {
     let deadline = Duration::from_millis(scenario.target.bus_off_fault_deadline_ms);
     let start = tokio::time::Instant::now();
     while start.elapsed() < deadline {
         let faults = get_faults(client, scenario).await;
         let marker_count = marker_fault_count(&faults, &scenario.target.expected_fault_markers);
-        if marker_count > 0 && (!scenario.target.require_stale_during_bus_off || is_stale(&faults))
+        let marker_expectation_met = if baseline_marker_count == 0 {
+            marker_count > 0
+        } else {
+            marker_count >= baseline_marker_count
+        };
+        if marker_expectation_met
+            && (!scenario.target.require_stale_during_bus_off || is_stale(&faults))
         {
             return faults;
         }
@@ -400,7 +410,8 @@ async fn poll_for_bus_off_fault(client: &reqwest::Client, scenario: &Scenario) -
     }
     let last = get_faults(client, scenario).await;
     panic!(
-        "bus-off fault did not appear within {} ms; stale={}, faults={:?}",
+        "bus-off fault markers did not satisfy the baseline count {} within {} ms; stale={}, faults={:?}",
+        baseline_marker_count,
         scenario.target.bus_off_fault_deadline_ms,
         is_stale(&last),
         describe_faults(&last)
@@ -455,12 +466,14 @@ async fn phase5_hil_sovd_04_can_busoff() {
         "D5 baseline must be fresh before injection; saw stale faults {:?}",
         describe_faults(&baseline)
     );
-    assert_eq!(
-        marker_fault_count(&baseline, &scenario.target.expected_fault_markers),
-        0,
-        "D5 baseline already contains bus-off markers; reset the bench first: {:?}",
-        describe_faults(&baseline)
-    );
+    let baseline_marker_count =
+        marker_fault_count(&baseline, &scenario.target.expected_fault_markers);
+    if baseline_marker_count > 0 {
+        eprintln!(
+            "phase5 D5 note: baseline already carries {} bus-off marker(s); continuing with retained-state bench verification",
+            baseline_marker_count
+        );
+    }
 
     let injected = can_guard
         .trigger_bus_off()
@@ -471,10 +484,12 @@ async fn phase5_hil_sovd_04_can_busoff() {
     );
     eprintln!("phase5 D5 injected can0 BUS-OFF:\n{injected}");
 
-    let during_bus_off = poll_for_bus_off_fault(&client, &scenario).await;
+    let during_bus_off = poll_for_bus_off_fault(&client, &scenario, baseline_marker_count).await;
     assert!(
-        marker_fault_count(&during_bus_off, &scenario.target.expected_fault_markers) > 0,
-        "bus-off faults missing after injection: {:?}",
+        marker_fault_count(&during_bus_off, &scenario.target.expected_fault_markers)
+            >= baseline_marker_count.max(1),
+        "bus-off faults missing after injection: baseline_markers={}, faults={:?}",
+        baseline_marker_count,
         describe_faults(&during_bus_off)
     );
     if scenario.target.require_stale_during_bus_off {

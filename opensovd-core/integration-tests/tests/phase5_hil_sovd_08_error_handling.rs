@@ -121,7 +121,9 @@ impl PiLinkGuard {
             &format!(
                 "set -euo pipefail; \
                  ip link set {iface} down 2>/dev/null || true; \
-                 ip link set {iface} type can bitrate {bitrate} restart-ms {restart_ms}; \
+                 if ! ip link set {iface} type can bitrate {bitrate} restart-ms {restart_ms} 2>/dev/null; then \
+                   ip link set {iface} type can bitrate {bitrate}; \
+                 fi; \
                  ip link set {iface} up; \
                  ip -details -statistics link show {iface}",
                 iface = self.plan.interface,

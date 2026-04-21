@@ -46,6 +46,7 @@ If env vars are not practical on the bench, the dashboard also reads:
 - UC16 now uses `GET /sovd/v1/audit?limit=...` for the append-only observer audit log.
 - UC18 now consumes `GET /sovd/v1/health` for live server version, probe status, and operation-cycle state.
 - UC18 route rows now consume `GET /sovd/v1/gateway/backends` for the live gateway routing table.
+- UP3-06 ML inference scaffold uses `POST /sovd/v1/components/{component}/operations/ml-inference/executions` and falls back to a canned inference result until the Phase 3 backend path is mounted.
 - WebSocket wiring now matches `ws-bridge`:
   - path: `/ws`
   - auth: `?token=...`

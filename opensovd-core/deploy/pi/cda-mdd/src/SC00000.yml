@@ -1,0 +1,175 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Taktflow (Phase 5 bench authoring)
+#
+# SC00000 - Safety Controller, Phase 5 bench ECU
+# ===============================================
+# Authoritative source-of-truth YAML for the SC00000 CDA database.
+# TMS570-based minimum UDS safety controller on Pi bench at DoIP logical 0x0004.
+# No motor self-test (safety domain does not own motor). This catalog tracks
+# the live firmware's three hardcoded bench DTCs, not the older shared CVC taxonomy.
+
+schema: "opensovd.cda.diagdesc/v1"
+
+meta:
+  author: "Taktflow bench"
+  domain: "Phase5"
+  created: "2026-04-20"
+  revision: "1.0.0"
+  description: "SC (Safety Controller) - TMS570 bench ECU, DoIP logical 0x0004"
+  tags: [taktflow, phase5, sc, tms570, bench, safety]
+
+ecu:
+  id: "SC00000"
+  name: "SC00000"
+  protocols:
+    doip:
+      protocol_short_name: "UDSonDoIP"
+      is_default: true
+  default_addressing_mode: physical
+  addressing:
+    doip:
+      ip: "PI_BENCH_IP_HERE"          # Pi bench proxy IP; keep placeholder in git
+      port: 13400
+      logical_address: 0x0004         # SC per Phase 5 topology
+      functional_address: 0xFFFF
+
+comparams:
+  CP_DoIPLogicalGatewayAddress:
+    param_class: COM
+    usage: ECU_COMM
+    dop: { base_type: u32, min: 0, max: 65535 }
+    values:
+      UDS_Ethernet_DoIP: "4"
+      UDS_Ethernet_DoIP_DOBT: "4"
+
+  CP_DoIPLogicalFunctionalAddress:
+    param_class: COM
+    usage: ECU_COMM
+    dop: { base_type: u32, min: 0, max: 65535 }
+    values:
+      UDS_Ethernet_DoIP: "65535"
+      UDS_Ethernet_DoIP_DOBT: "65535"
+
+  CP_UniqueRespIdTable:
+    cptype: complex
+    param_class: UNIQUE_ID
+    usage: ECU_COMM
+    children:
+      - name: CP_DoIPLogicalEcuAddress
+        param_class: UNIQUE_ID
+        dop: { base_type: u32, min: 0, max: 65535 }
+      - name: CP_DoIPSecondaryLogicalECUResponseAddress
+        param_class: UNIQUE_ID
+        dop: { base_type: u32, min: 0, max: 65535 }
+      - name: CP_ECULayerShortName
+        param_class: UNIQUE_ID
+        dop: { base_type: string }
+    values:
+      UDS_Ethernet_DoIP:      ["4", "0", "SC00000"]
+      UDS_Ethernet_DoIP_DOBT: ["4", "0", "SC00000"]
+
+sessions:
+  default:
+    id: 0x01
+  programming:
+    id: 0x02
+  extended:
+    id: 0x03
+
+access_patterns:
+  public:
+    sessions: any
+    security: none
+    authentication: none
+
+types:
+  u8_identical:
+    base: u8
+  u16_identical:
+    base: u16
+  u32_identical:
+    base: u32
+  vin_17byte:
+    base: ascii
+    length: 17
+    encoding: "US-ASCII"
+  session_type:
+    base: u8
+
+dids:
+  0xF190:
+    name: "VINDataIdentifier"
+    param_name: "VIN"
+    description: "Vehicle Identification Number (safety-side read-only mirror)"
+    type: vin_17byte
+    access: public_read
+    readable: true
+    writable: false
+  0xF186:
+    name: "ActiveDiagnosticSessionDataIdentifier"
+    param_name: "EcuSessionType"
+    description: "Currently active diagnostic session"
+    type: session_type
+    access: public_read
+    readable: true
+    writable: false
+
+functional_classes:
+  - Session
+  - EcuReset
+  - Ident
+  - StandardDataTransfer
+  - DtcSetting
+  - FaultMem
+  - Safety
+
+services:
+  diagnosticSessionControl:
+    enabled: true
+    subfunctions:
+      default: 0x01
+      programming: 0x02
+      extended: 0x03
+    state_effects:
+      on_success:
+        session: from_request
+
+  ecuReset:
+    enabled: true
+    subfunctions:
+      hardReset: 0x01
+      softReset: 0x03
+    state_effects:
+      hardReset: { session: default, security: none }
+      softReset: { session: default, security: none }
+
+  readDataByIdentifier:
+    enabled: true
+    addressing_mode: physical
+
+  testerPresent:
+    enabled: true
+
+  clearDiagnosticInformation:
+    enabled: true
+
+  readDTCInformation:
+    enabled: true
+    subfunctions:
+      reportDTCByStatusMask: 0x02
+      reportDTCSnapshotRecordByDtcNumber: 0x04
+      reportDTCExtDataRecordByDtcNumber: 0x06
+
+  controlDTCSetting:
+    enabled: true
+    subfunctions:
+      on: 0x01
+      off: 0x02
+
+# Safety Controller does NOT host RoutineControl; motor self-test is CVC-only.
+#
+# DTCs -- live TMS570 minimum-UDS firmware currently returns exactly these 3.
+dtcs:
+  0x100001: { name: "100001", description: "SC bench firmware hardcoded DTC 1", severity: 2 }
+  0x100002: { name: "100002", description: "SC bench firmware hardcoded DTC 2", severity: 2 }
+  0x100003: { name: "100003", description: "SC bench firmware hardcoded DTC 3", severity: 2 }

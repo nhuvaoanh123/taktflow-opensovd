@@ -47,5 +47,5 @@ expected_components:
     name: sc
     href_suffix: /sovd/v1/components/sc
   - id: bcm
-    name: bcm
+    name: Body Control Module
     href_suffix: /sovd/v1/components/bcm

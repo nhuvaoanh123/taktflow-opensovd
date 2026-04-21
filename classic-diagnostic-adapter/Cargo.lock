@@ -493,6 +493,8 @@ dependencies = [
  "indexmap",
  "mime",
  "mockall",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "percent-encoding",
  "regex",
  "schemars",
@@ -505,6 +507,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "tracing-opentelemetry",
  "uuid",
 ]
 

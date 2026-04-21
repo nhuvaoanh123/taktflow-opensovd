@@ -18,7 +18,10 @@ path = "deploy/pi/cda-mdd"
 tester_address = "192.0.2.20"
 tester_subnet = "255.255.255.0"
 # Bench fallback when the Pi proxy does not answer VIR/VAM discovery on :13401.
-static_gateway_ip = "192.168.0.197"
+# Real IP must never be committed — set via local override only (see
+# ../../CLAUDE.md §"Never commit private data"). Replace the placeholder
+# below with the bench Pi IP before running on the bench.
+static_gateway_ip = "PI_BENCH_IP_HERE"
 # Bench proxy currently drops/mangles DoIP alive-check keepalives after routing activation.
 enable_alive_check = false
 

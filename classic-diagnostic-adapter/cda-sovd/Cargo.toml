@@ -82,7 +82,10 @@ tower-http = { workspace = true, features = [
 
 # logging
 tracing = { workspace = true }
+tracing-opentelemetry = { workspace = true }
 percent-encoding = { workspace = true }
+opentelemetry = { workspace = true, features = ["trace"] }
+opentelemetry_sdk = { workspace = true }
 
 [build-dependencies]
 cda-build = { workspace = true }

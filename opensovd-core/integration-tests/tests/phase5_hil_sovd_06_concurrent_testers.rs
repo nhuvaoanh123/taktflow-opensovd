@@ -21,7 +21,7 @@
 
 mod common;
 
-use std::{env, fs, net::SocketAddr, path::PathBuf, time::Duration};
+use std::{collections::BTreeMap, env, fs, net::SocketAddr, path::PathBuf, time::Duration};
 
 use common::override_pi_sovd_gate;
 use reqwest::StatusCode;
@@ -216,6 +216,7 @@ async fn run_tester_sequence(
     contract: FaultsCallContract,
     expected_components: Vec<String>,
     precondition: Precondition,
+    component_occurrences: BTreeMap<String, usize>,
 ) {
     for component in tester.components {
         assert_eq!(
@@ -261,14 +262,24 @@ async fn run_tester_sequence(
             .json()
             .await
             .unwrap_or_else(|e| panic!("{list_url} decode for {} failed: {e}", tester.name));
-        assert!(
-            !before.items.is_empty(),
-            "phase5 D7 precondition not satisfied for {} via {}: {} (owner: {})",
-            component.id,
-            tester.name,
-            precondition.reason,
-            precondition.owner
-        );
+        let overlap_count = component_occurrences
+            .get(&component.id)
+            .copied()
+            .unwrap_or(1);
+        if before.items.is_empty() {
+            assert!(
+                overlap_count > 1,
+                "phase5 D7 precondition not satisfied for {} via {}: {} (owner: {})",
+                component.id,
+                tester.name,
+                precondition.reason,
+                precondition.owner
+            );
+            eprintln!(
+                "phase5 D7 note: {} observed {} already empty after a concurrent peer clear",
+                tester.name, component.id
+            );
+        }
 
         let clear_url = format!("{base_url}{}", component.clear_path);
         let response = client
@@ -316,6 +327,53 @@ async fn run_tester_sequence(
     }
 }
 
+async fn verify_component_preconditions(
+    client: &reqwest::Client,
+    scenario: &Scenario,
+) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::<String, usize>::new();
+    let mut paths = BTreeMap::<String, String>::new();
+    for tester in &scenario.testers {
+        for component in &tester.components {
+            *counts.entry(component.id.clone()).or_insert(0) += 1;
+            paths
+                .entry(component.id.clone())
+                .or_insert_with(|| component.list_path.clone());
+        }
+    }
+
+    for (component_id, list_path) in &paths {
+        let list_url = format!("{}{}", scenario.gate.base_url, list_path);
+        let response = client
+            .get(&list_url)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("GET {list_url} precondition check failed: {e}"));
+        assert_eq!(
+            response.status(),
+            parse_status(
+                scenario.faults_call_contract.expect_list_status,
+                component_id,
+                "expect_list_status"
+            ),
+            "{list_url} should satisfy the D7 precondition check"
+        );
+        let before: ListOfFaults = response
+            .json()
+            .await
+            .unwrap_or_else(|e| panic!("{list_url} precondition decode failed: {e}"));
+        assert!(
+            !before.items.is_empty(),
+            "phase5 D7 precondition not satisfied for {} before concurrency: {} (owner: {})",
+            component_id,
+            scenario.precondition.reason,
+            scenario.precondition.owner
+        );
+    }
+
+    counts
+}
+
 #[tokio::test]
 async fn phase5_hil_sovd_06_concurrent_testers() {
     let scenario = match preflight().await {
@@ -349,6 +407,7 @@ async fn phase5_hil_sovd_06_concurrent_testers() {
         .build()
         .expect("reqwest client");
     verify_inventory(&inventory_client, &scenario).await;
+    let component_occurrences = verify_component_preconditions(&inventory_client, &scenario).await;
 
     let client_a = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
@@ -384,6 +443,8 @@ async fn phase5_hil_sovd_06_concurrent_testers() {
         owner: scenario.precondition.owner.clone(),
         reason: scenario.precondition.reason.clone(),
     };
+    let component_occurrences_a = component_occurrences.clone();
+    let component_occurrences_b = component_occurrences.clone();
 
     let base_url_a = scenario.gate.base_url.clone();
     let base_url_b = scenario.gate.base_url.clone();
@@ -396,6 +457,7 @@ async fn phase5_hil_sovd_06_concurrent_testers() {
             contract_a,
             expected_components_a,
             precondition_a,
+            component_occurrences_a,
         ),
         run_tester_sequence(
             client_b,
@@ -404,6 +466,7 @@ async fn phase5_hil_sovd_06_concurrent_testers() {
             contract_b,
             expected_components_b,
             precondition_b,
+            component_occurrences_b,
         ),
     );
 

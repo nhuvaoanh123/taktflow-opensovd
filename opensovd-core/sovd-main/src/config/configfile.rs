@@ -18,6 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 use sovd_dfm::DfmBackendConfig;
+use sovd_server::RateLimitConfig;
 use sovd_server::backends::cda::DEFAULT_CDA_PATH_PREFIX;
 
 /// Optional `[mqtt]` TOML section for the `fault-sink-mqtt` backend.
@@ -51,6 +52,114 @@ fn default_mqtt_bench_id() -> String {
     "sovd-hil".to_owned()
 }
 
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ServerTlsMode {
+    #[default]
+    Http,
+    Https,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct ServerTlsConfig {
+    #[serde(default)]
+    pub mode: ServerTlsMode,
+    #[serde(default = "default_tls_cert_path")]
+    pub cert_path: String,
+    #[serde(default = "default_tls_key_path")]
+    pub key_path: String,
+}
+
+fn default_tls_cert_path() -> String {
+    "certs/server.crt".to_owned()
+}
+
+fn default_tls_key_path() -> String {
+    "certs/server.key".to_owned()
+}
+
+impl Default for ServerTlsConfig {
+    fn default() -> Self {
+        Self {
+            mode: ServerTlsMode::default(),
+            cert_path: default_tls_cert_path(),
+            key_path: default_tls_key_path(),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+pub struct LoggingConfig {
+    #[serde(default)]
+    pub otel: OtelConfig,
+    #[serde(default)]
+    pub dlt: DltConfig,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct OtelConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_otel_endpoint")]
+    pub endpoint: String,
+    #[serde(default = "default_otel_service_name")]
+    pub service_name: String,
+}
+
+fn default_otel_endpoint() -> String {
+    "http://127.0.0.1:4317".to_owned()
+}
+
+fn default_otel_service_name() -> String {
+    "sovd-main".to_owned()
+}
+
+impl Default for OtelConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: default_otel_endpoint(),
+            service_name: default_otel_service_name(),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct DltConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_dlt_app_id")]
+    pub app_id: String,
+    #[serde(default = "default_dlt_app_description")]
+    pub app_description: String,
+}
+
+fn default_dlt_app_id() -> String {
+    "SOVD".to_owned()
+}
+
+fn default_dlt_app_description() -> String {
+    "OpenSOVD core local SIL".to_owned()
+}
+
+impl Default for DltConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            app_id: default_dlt_app_id(),
+            app_description: default_dlt_app_description(),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+pub struct BenchFaultInjectionConfig {
+    /// Enable the internal `PUT /__bench/components/{id}/faults` seed route
+    /// plus the matching override reset route.
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Configuration {
     pub server: ServerConfig,
@@ -76,11 +185,24 @@ pub struct Configuration {
     /// Optional CDA-backed forwards registered at startup.
     #[serde(default, rename = "cda_forward")]
     pub cda_forwards: Vec<CdaForwardConfig>,
+    /// Bench-only deterministic fault seeding plane. Disabled by default so
+    /// non-bench deployments never expose the internal override routes.
+    #[serde(default)]
+    pub bench_fault_injection: BenchFaultInjectionConfig,
     /// Optional MQTT backend configuration. When present **and** the
     /// `fault-sink-mqtt` Cargo feature is enabled, `MqttFaultSink` is
     /// registered as a fault-sink alongside the DFM.
     #[serde(default)]
     pub mqtt: Option<MqttConfig>,
+    /// Shared logging and tracing configuration for the local SIL runtime.
+    /// `[logging.otel]` and `[logging.dlt]` stay disabled by default until
+    /// Phase 6 enables them for specific slices.
+    #[serde(default)]
+    pub logging: LoggingConfig,
+    /// Optional per-client-IP request limiting for the local HTTP surface.
+    /// Disabled by default; Phase 6 enables it via TOML for SIL hardening.
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -114,6 +236,8 @@ pub struct ServerConfig {
     pub port: u16,
     #[serde(default)]
     pub mode: ServerMode,
+    #[serde(default)]
+    pub tls: ServerTlsConfig,
 }
 
 /// Which axum `Router` [`sovd-main`](crate) mounts at startup.
@@ -133,15 +257,19 @@ impl Default for Configuration {
     fn default() -> Self {
         Configuration {
             server: ServerConfig {
-                address: "0.0.0.0".to_owned(),
+                address: "127.0.0.1".to_owned(),
                 port: 20002,
                 mode: ServerMode::default(),
+                tls: ServerTlsConfig::default(),
             },
             backend: DfmBackendConfig::default(),
             dfm_component_id: default_dfm_component_id(),
             local_demo_components: default_local_demo_components(),
             cda_forwards: Vec::new(),
+            bench_fault_injection: BenchFaultInjectionConfig::default(),
             mqtt: None,
+            logging: LoggingConfig::default(),
+            rate_limit: RateLimitConfig::default(),
         }
     }
 }

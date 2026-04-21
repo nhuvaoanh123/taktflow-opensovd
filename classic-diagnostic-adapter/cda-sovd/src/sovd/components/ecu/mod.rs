@@ -37,6 +37,7 @@ use crate::{
     },
 };
 
+pub(crate) mod catalog;
 pub(crate) mod configurations;
 pub(crate) mod data;
 pub(crate) mod faults;

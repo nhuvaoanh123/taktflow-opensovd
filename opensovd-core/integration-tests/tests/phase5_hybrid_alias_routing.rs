@@ -189,10 +189,7 @@ async fn phase5_hybrid_alias_routing_keeps_external_ids_and_uses_remote_aliases(
     let server = Arc::new(
         InMemoryServer::new_with_demo_components(["bcm"]).expect("build BCM-only local surface"),
     );
-    for (local_component_id, remote_component_id) in [
-        ("cvc", "cvc00000"),
-        ("sc", "sc00000"),
-    ] {
+    for (local_component_id, remote_component_id) in [("cvc", "cvc00000"), ("sc", "sc00000")] {
         let backend = CdaBackend::new_with_remote_component_and_path_prefix(
             ComponentId::new(local_component_id),
             ComponentId::new(remote_component_id),
@@ -220,11 +217,7 @@ async fn phase5_hybrid_alias_routing_keeps_external_ids_and_uses_remote_aliases(
     // list_entities returns in alphabetical order (bcm, cvc, sc).
     assert_eq!(
         ids,
-        vec![
-            "bcm".to_owned(),
-            "cvc".to_owned(),
-            "sc".to_owned(),
-        ]
+        vec!["bcm".to_owned(), "cvc".to_owned(), "sc".to_owned(),]
     );
 
     let response = client

@@ -39,11 +39,10 @@ use futures_util::{SinkExt as _, StreamExt as _};
 use rumqttc::{AsyncClient, MqttOptions, QoS};
 use rumqttd::{Broker, Config as RumqttdConfig, ConnectionSettings, RouterConfig, ServerSettings};
 use tokio_tungstenite::tungstenite::{
-    Message,
-    client::IntoClientRequest as _,
-    handshake::client::Response as HandshakeResponse,
+    Message, client::IntoClientRequest as _, handshake::client::Response as HandshakeResponse,
 };
 use ws_bridge::Config;
+use ws_bridge::config::{DltConfig, LoggingConfig};
 
 const TOKEN: &str = "test-token-sekret-xyz";
 
@@ -111,6 +110,14 @@ async fn start_bridge(mqtt_port: u16) -> ws_bridge::Server {
         sub_topic: "vehicle/#".to_owned(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         token: TOKEN.to_owned(),
+        logging: LoggingConfig {
+            filter_directive: "info".to_owned(),
+            dlt: DltConfig {
+                enabled: false,
+                app_id: "WSBR".to_owned(),
+                app_description: "OpenSOVD ws-bridge".to_owned(),
+            },
+        },
     };
     // Shutdown future is `pending<()>()` so the bridge runs until
     // the test process exits.
@@ -165,8 +172,7 @@ async fn ws_client_receives_mqtt_publish() {
         while let Some(msg) = ws_stream.next().await {
             let msg = msg.expect("ws read");
             if let Message::Text(txt) = msg {
-                let v: serde_json::Value =
-                    serde_json::from_str(&txt).expect("frame must be JSON");
+                let v: serde_json::Value = serde_json::from_str(&txt).expect("frame must be JSON");
                 if v.get("topic").and_then(|x| x.as_str()) == Some("vehicle/dtc/new") {
                     return v;
                 }

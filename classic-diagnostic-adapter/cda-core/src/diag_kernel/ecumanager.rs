@@ -4866,6 +4866,7 @@ fn process_coded_constants(
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
     use std::vec;
 
     use cda_database::datatypes::{
@@ -4876,7 +4877,7 @@ mod tests {
             TransmissionMode,
         },
     };
-    use cda_interfaces::{EcuManager, Protocol, UDS_ID_RESPONSE_BITMASK};
+    use cda_interfaces::{DiagCommType, EcuManager, Protocol, UDS_ID_RESPONSE_BITMASK};
     use cda_plugin_security::DefaultSecurityPluginData;
     use flatbuffers::WIPOffset;
     use serde_json::json;
@@ -5800,6 +5801,84 @@ mod tests {
             sid,
             dtc_code,
         )
+    }
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repo root")
+    }
+
+    fn canonical_sc_mdd_db() -> datatypes::DiagnosticDatabase {
+        let mdd_path = repo_root()
+            .join("opensovd-core")
+            .join("deploy")
+            .join("pi")
+            .join("cda-mdd")
+            .join("SC00000.mdd");
+        let (_ecu_name, blob) =
+            cda_database::load_ecudata(&mdd_path.display().to_string()).expect("load SC00000.mdd");
+        datatypes::DiagnosticDatabase::new_from_bytes(
+            mdd_path.display().to_string(),
+            blob,
+            cda_interfaces::datatypes::FlatbBufConfig::default(),
+        )
+        .expect("load canonical SC database from MDD")
+    }
+
+    fn legacy_faultmem_service_db() -> datatypes::DiagnosticDatabase {
+        let mut builder = EcuDataBuilder::new();
+        let protocol = builder.create_protocol(Protocol::DoIp.value(), None, None, None);
+        let compu_identical =
+            builder.create_compu_method(datatypes::CompuCategory::Identical, None, None);
+        let bool_diag_type = builder.create_diag_coded_type_standard_length(1, DataType::UInt32);
+        let dtc_diag_type = builder.create_diag_coded_type_standard_length(24, DataType::UInt32);
+        let diag_comm = builder.create_diag_comm(DiagCommParams {
+            short_name: "FaultMem_ReportDTCByStatusMask",
+            long_name: Some("Report DTC By Status Mask"),
+            protocols: Some(vec![protocol]),
+            ..Default::default()
+        });
+        let bool_dop =
+            builder.create_regular_normal_dop("true_false_dop", bool_diag_type, compu_identical);
+        let dtc_dop = builder.create_regular_normal_dop("dtc_dop", dtc_diag_type, compu_identical);
+
+        let mut request_params = vec![
+            builder.create_coded_const_param("SID_RQ", "25", 0, 0, 8, DataType::UInt32),
+            builder.create_coded_const_param("SubFunction", "2", 1, 0, 8, DataType::UInt32),
+        ];
+        for bit in 0..8 {
+            request_params.push(builder.create_value_param("statusBit", bool_dop, 2, bit));
+        }
+        let request = builder.create_request(Some(request_params), None);
+
+        let record_params = vec![
+            builder.create_value_param("Dtc", dtc_dop, 0, 0),
+            builder.create_value_param("statusBit", bool_dop, 3, 0),
+        ];
+        let record = builder.create_structure(Some(record_params), None, true);
+        let record_field = builder.create_end_of_pdu_field_dop(0, None, Some(record));
+
+        let mut response_params = vec![
+            builder.create_coded_const_param("SID_PR", "89", 0, 0, 8, DataType::UInt32),
+            builder.create_coded_const_param("SubFunction_PR", "2", 1, 0, 8, DataType::UInt32),
+        ];
+        for bit in 0..8 {
+            response_params.push(builder.create_value_param("statusBit", bool_dop, 2, bit));
+        }
+        response_params.push(builder.create_value_param("DTCAndStatusRecord", record_field, 3, 0));
+        let response = builder.create_response(ResponseType::Positive, Some(response_params), None);
+        let service = builder.create_diag_service(DiagServiceParams {
+            diag_comm: Some(diag_comm),
+            request: Some(request),
+            pos_responses: vec![response],
+            neg_responses: vec![],
+            addressing: *Addressing::FUNCTIONAL_OR_PHYSICAL,
+            transmission_mode: *TransmissionMode::SEND_AND_RECEIVE,
+            ..Default::default()
+        });
+        finish_db!(builder, protocol, vec![service])
     }
 
     /// Creates an ECU manager configured for variant detection testing.
@@ -8541,5 +8620,36 @@ mod tests {
             }
             other => panic!("Expected NotFound error, got: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn phase5_sc_faultmem_legacy_builder_maps_subfunction_response() {
+        let ecu_manager = new_ecu_manager(legacy_faultmem_service_db());
+        let service =
+            cda_interfaces::DiagComm::new("FaultMem_ReportDTCByStatusMask", DiagCommType::Faults);
+
+        assert_uds_conversion_succeeds(&ecu_manager, &service, vec![0x59, 0x02]).await;
+    }
+
+    #[tokio::test]
+    async fn phase5_sc_faultmem_yaml_converter_maps_wire_payload() {
+        let ecu_manager = new_ecu_manager(canonical_sc_mdd_db());
+        let service =
+            cda_interfaces::DiagComm::new("FaultMem_ReportDTCByStatusMask", DiagCommType::Faults);
+
+        let result = ecu_manager
+            .convert_from_uds(
+                &service,
+                &create_payload(vec![
+                    0x59, 0x02, 0xFF, 0x10, 0x00, 0x01, 0x09, 0x10, 0x00, 0x02, 0x04, 0x10, 0x00,
+                    0x03, 0x09,
+                ]),
+                true,
+            )
+            .await;
+        assert!(
+            result.is_ok(),
+            "canonical SC payload failed to map: {result:?}"
+        );
     }
 }

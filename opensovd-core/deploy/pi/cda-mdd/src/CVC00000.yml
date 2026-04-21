@@ -1,0 +1,275 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Taktflow (Phase 5 bench authoring)
+#
+# CVC00000 - Central Vehicle Controller, Phase 5 bench ECU
+# =========================================================
+# Authoritative source-of-truth YAML for the CVC00000 CDA database.
+# Run `cargo run -p xtask -- yaml-to-mdd` (or diag-converter directly)
+# to regenerate CVC00000.mdd and CVC00000.odx-d alongside this file.
+#
+# Shape follows the `opensovd.cda.diagdesc/v1` schema used by
+# github.com/bburda42dot/diag-converter; FLXC1000.yml in that repo is
+# the reference template.
+
+schema: "opensovd.cda.diagdesc/v1"
+
+# -----------------------------------------------------------------------------
+# METADATA
+# -----------------------------------------------------------------------------
+meta:
+  author: "Taktflow bench"
+  domain: "Phase5"
+  created: "2026-04-20"
+  revision: "1.0.0"
+  description: "CVC (Central Vehicle Controller) — STM32G474RE bench ECU, DoIP logical 0x0001"
+  tags: [taktflow, phase5, cvc, stm32g4, bench]
+
+# -----------------------------------------------------------------------------
+# ECU DEFINITION
+# -----------------------------------------------------------------------------
+ecu:
+  id: "CVC00000"
+  name: "CVC00000"
+  protocols:
+    doip:
+      protocol_short_name: "UDSonDoIP"
+      is_default: true
+  default_addressing_mode: physical
+  addressing:
+    doip:
+      ip: "PI_BENCH_IP_HERE"          # Pi bench proxy IP — see CLAUDE.md §"Never commit private data"; substitute locally before generation
+      port: 13400
+      logical_address: 0x0001         # CVC per Phase 5 topology
+      functional_address: 0xFFFF
+
+# -----------------------------------------------------------------------------
+# COMPARAMS — DoIP communication parameters for Phase 5 bench
+# Matches what xtask's build_phase5_diag_blob emits for ComParams.
+# -----------------------------------------------------------------------------
+comparams:
+  CP_DoIPLogicalGatewayAddress:
+    param_class: COM
+    usage: ECU_COMM
+    dop: { base_type: u32, min: 0, max: 65535 }
+    values:
+      UDS_Ethernet_DoIP: "1"
+      UDS_Ethernet_DoIP_DOBT: "1"
+
+  CP_DoIPLogicalFunctionalAddress:
+    param_class: COM
+    usage: ECU_COMM
+    dop: { base_type: u32, min: 0, max: 65535 }
+    values:
+      UDS_Ethernet_DoIP: "65535"
+      UDS_Ethernet_DoIP_DOBT: "65535"
+
+  CP_UniqueRespIdTable:
+    cptype: complex
+    param_class: UNIQUE_ID
+    usage: ECU_COMM
+    children:
+      - name: CP_DoIPLogicalEcuAddress
+        param_class: UNIQUE_ID
+        dop: { base_type: u32, min: 0, max: 65535 }
+      - name: CP_DoIPSecondaryLogicalECUResponseAddress
+        param_class: UNIQUE_ID
+        dop: { base_type: u32, min: 0, max: 65535 }
+      - name: CP_ECULayerShortName
+        param_class: UNIQUE_ID
+        dop: { base_type: string }
+    values:
+      UDS_Ethernet_DoIP:       ["1", "0", "CVC00000"]
+      UDS_Ethernet_DoIP_DOBT:  ["1", "0", "CVC00000"]
+
+# -----------------------------------------------------------------------------
+# SESSIONS
+# -----------------------------------------------------------------------------
+sessions:
+  default:
+    id: 0x01
+  programming:
+    id: 0x02
+    allowed_sessions: [extended, programming]
+  extended:
+    id: 0x03
+    allowed_sessions: [extended, programming]
+
+# -----------------------------------------------------------------------------
+# ACCESS PATTERNS
+# -----------------------------------------------------------------------------
+access_patterns:
+  public:
+    sessions: any
+    security: none
+    authentication: none
+  extended_session:
+    sessions: [extended, programming]
+    security: none
+    authentication: none
+
+# -----------------------------------------------------------------------------
+# TYPES
+# -----------------------------------------------------------------------------
+types:
+  u8_identical:
+    base: u8
+  u16_identical:
+    base: u16
+  u32_identical:
+    base: u32
+  uint24_identical:
+    base: u32
+    bits: 24
+  vin_17byte:
+    base: ascii
+    length: 17
+    encoding: "US-ASCII"
+  session_type:
+    base: u8
+
+# -----------------------------------------------------------------------------
+# DIDs — Data Identifiers
+# -----------------------------------------------------------------------------
+dids:
+  # 0xF190 — Vehicle Identification Number (writable per ADR-0011)
+  0xF190:
+    name: "VINDataIdentifier"
+    param_name: "VIN"
+    description: "Vehicle Identification Number"
+    type: vin_17byte
+    access: public_read
+    readable: true
+    writable: true
+  # 0xF186 — Active Diagnostic Session
+  0xF186:
+    name: "ActiveDiagnosticSessionDataIdentifier"
+    param_name: "EcuSessionType"
+    description: "Currently active diagnostic session"
+    type: session_type
+    access: public_read
+    readable: true
+    writable: false
+
+# -----------------------------------------------------------------------------
+# FUNCTIONAL CLASSES
+# -----------------------------------------------------------------------------
+functional_classes:
+  - Session
+  - EcuReset
+  - Ident
+  - StandardDataTransfer
+  - DtcSetting
+  - FaultMem
+  - Motor
+
+# -----------------------------------------------------------------------------
+# SERVICES
+# Standard UDS services the CVC bench firmware supports.
+# -----------------------------------------------------------------------------
+services:
+  # 0x10 — DiagnosticSessionControl
+  diagnosticSessionControl:
+    enabled: true
+    subfunctions:
+      default: 0x01
+      programming: 0x02
+      extended: 0x03
+    state_effects:
+      on_success:
+        session: from_request
+
+  # 0x11 — ECUReset
+  ecuReset:
+    enabled: true
+    subfunctions:
+      hardReset: 0x01
+      softReset: 0x03
+    state_effects:
+      hardReset: { session: default, security: none }
+      softReset: { session: default, security: none }
+
+  # 0x22 — ReadDataByIdentifier
+  readDataByIdentifier:
+    enabled: true
+    addressing_mode: physical
+
+  # 0x2E — WriteDataByIdentifier
+  writeDataByIdentifier:
+    enabled: true
+    addressing_mode: physical
+
+  # 0x3E — TesterPresent
+  testerPresent:
+    enabled: true
+
+  # 0x14 — ClearDiagnosticInformation
+  clearDiagnosticInformation:
+    enabled: true
+
+  # 0x19 — ReadDTCInformation
+  readDTCInformation:
+    enabled: true
+    subfunctions:
+      reportDTCByStatusMask: 0x02
+      reportDTCSnapshotRecordByDtcNumber: 0x04
+      reportDTCExtDataRecordByDtcNumber: 0x06
+
+  # 0x85 — ControlDTCSetting
+  controlDTCSetting:
+    enabled: true
+    subfunctions:
+      on: 0x01
+      off: 0x02
+
+  # 0x31 — RoutineControl (for motor self-test)
+  routineControl:
+    enabled: true
+
+# -----------------------------------------------------------------------------
+# ROUTINES — 0x31 RoutineControl routines
+# -----------------------------------------------------------------------------
+routines:
+  0x0000:
+    name: motor_self_test
+    description: "CVC motor self-test — drives motor through defined current/temp profile and reports result"
+    access: public
+    operations: [start, stop, result]
+
+# -----------------------------------------------------------------------------
+# DTCs — Diagnostic Trouble Codes
+# Phase 5 bench DTC taxonomy, shared family between CVC and SC. Severity:
+#   2 = safety-relevant (warning + action)
+#   1 = informational warning only
+# Source of truth mirrored from xtask PHASE5_DTC_RECORDS (2026-04-20 snapshot).
+# -----------------------------------------------------------------------------
+dtcs:
+  # 0xC001xx — Pedal sensor family
+  0xC00100: { name: C00100, description: "Pedal Sensor Plausibility Failure", severity: 2 }
+  0xC00200: { name: C00200, description: "Pedal Sensor 1 Communication Loss", severity: 2 }
+  0xC00300: { name: C00300, description: "Pedal Sensor 2 Communication Loss", severity: 2 }
+  0xC00400: { name: C00400, description: "Both Pedal Sensors Failed", severity: 2 }
+  # 0xC101xx — CAN / E2E family (historical FZC/RZC references retained for trace continuity)
+  0xC10100: { name: C10100, description: "CAN Rx Timeout (FZC Lost CVC)", severity: 2 }
+  0xC10200: { name: C10200, description: "CAN Rx Timeout (RZC Lost CVC)", severity: 2 }
+  0xC10300: { name: C10300, description: "Can Bus Off", severity: 2 }
+  0xC10400: { name: C10400, description: "E2E CRC Error On Safety Message", severity: 2 }
+  0xC10500: { name: C10500, description: "E2E Alive Counter Error", severity: 2 }
+  # 0xC201xx — Motor family (primary)
+  0xC20100: { name: C20100, description: "Motor Overcurrent", severity: 2 }
+  0xC20200: { name: C20200, description: "Motor Overtemperature", severity: 2 }
+  0xC20300: { name: C20300, description: "Motor Overtemperature Warning", severity: 1 }
+  # 0xC200xx — Motor family (alternate ids retained from bench history)
+  0xC20001: { name: C20001, description: "Motor Overcurrent", severity: 2 }
+  0xC20002: { name: C20002, description: "Motor Overtemperature", severity: 2 }
+  0xC20004: { name: C20004, description: "Battery Low", severity: 1 }
+  # 0xC300xx — Perception / steering family
+  0xC30001: { name: C30001, description: "Lidar Blocked", severity: 1 }
+  0xC30002: { name: C30002, description: "Steering Lost", severity: 2 }
+  0xC30100: { name: C30100, description: "Steering Angle Sensor Failure", severity: 2 }
+  0xC30200: { name: C30200, description: "Steering Servo Jammed", severity: 2 }
+  0xC30300: { name: C30300, description: "Lidar Sensor Failure", severity: 1 }
+  # 0xC40100 — Safety assertion
+  0xC40100: { name: C40100, description: "E-Stop Activated", severity: 2 }
+  # 0xC501xx — Mode/supervision family
+  0xC50100: { name: C50100, description: "WdgM Supervision Expired", severity: 2 }
+  0xC50200: { name: C50200, description: "BswM Mode Transition Failure", severity: 2 }

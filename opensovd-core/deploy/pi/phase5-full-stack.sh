@@ -34,7 +34,7 @@
 #   5. Normalise CRLF -> LF on shell scripts (same CRLF stripping
 #      pattern as install-ecu-sim.sh)
 #   6. Verify sovd-main answers GET /sovd/v1/components on
-#      $PI_HTTP_HOST:21002
+#      127.0.0.1:21002 via SSH on the Pi
 #   7. If OBSERVER_NGINX_ENABLED=1: build/rsync ws-bridge, install its
 #      systemd unit, rsync nginx assets + dashboard bundle, provision
 #      observer certs, compose up nginx, and verify authenticated HTTPS
@@ -50,7 +50,7 @@
 #   - Performance envelope D10
 #
 # Port plan (per phase-5-line-a.md):
-#   sovd-main      0.0.0.0:21002  on Pi
+#   sovd-main      127.0.0.1:21002 on Pi
 #   ecu-sim         :13400        on Pi (pre-existing, install-ecu-sim.sh)
 #   proxy           :13401        on Pi (this script if bin resolvable)
 #
@@ -80,12 +80,18 @@ SOVD_CONFIG_FILE=${SOVD_CONFIG_FILE:-$DEPLOY_DIR/opensovd-pi.toml}
 CARGO_BUILD_BACKEND=${CARGO_BUILD_BACKEND:-auto}
 PHASE5_CDA_BASE_URL=${PHASE5_CDA_BASE_URL:-}
 PHASE5_CDA_PLACEHOLDER=${PHASE5_CDA_PLACEHOLDER:-http://198.51.100.10:20002}
-# Phase 2 Line B proxy binary. The Line B repo lives as a sibling
-# workspace (taktflow-embedded-production) per phase-2-line-b.md;
-# override PROXY_BIN if your layout differs. If the path does not
-# resolve we skip the proxy rsync - it is an optional dependency for
-# D1, NOT a hard prerequisite.
-PROXY_BIN=${PROXY_BIN:-$REPO_ROOT/../../taktflow-embedded-production/posix/build/taktflow-can-doip-proxy}
+# Phase 2 Line B proxy executable. Prefer the repo-side replacement
+# proxy first; fall back to the older Line B sibling workspace artifact
+# only if the local script is absent.
+DEFAULT_PROXY_BIN=$REPO_ROOT/../gateway/can_to_doip_proxy/taktflow-can-doip-proxy
+LEGACY_PROXY_BIN=$REPO_ROOT/../../taktflow-embedded-production/posix/build/taktflow-can-doip-proxy
+if [ -z "${PROXY_BIN:-}" ]; then
+    if [ -x "$DEFAULT_PROXY_BIN" ]; then
+        PROXY_BIN=$DEFAULT_PROXY_BIN
+    else
+        PROXY_BIN=$LEGACY_PROXY_BIN
+    fi
+fi
 OBSERVER_NGINX_ENABLED=${OBSERVER_NGINX_ENABLED:-0}
 OBSERVER_OBSERVABILITY_ENABLED=${OBSERVER_OBSERVABILITY_ENABLED:-0}
 OBSERVER_DASHBOARD_DIR=${OBSERVER_DASHBOARD_DIR:-$REPO_ROOT/../dashboard/build}
@@ -95,6 +101,9 @@ WS_BRIDGE_INTERNAL_TOKEN=${WS_BRIDGE_INTERNAL_TOKEN:-}
 WS_BRIDGE_MQTT_URL=${WS_BRIDGE_MQTT_URL:-mqtt://127.0.0.1:1883}
 WS_BRIDGE_BIND_ADDR=${WS_BRIDGE_BIND_ADDR:-127.0.0.1:8082}
 WS_BRIDGE_SUB_TOPIC=${WS_BRIDGE_SUB_TOPIC:-vehicle/#}
+WS_BRIDGE_DLT_ENABLED=${WS_BRIDGE_DLT_ENABLED:-false}
+WS_BRIDGE_DLT_APP_ID=${WS_BRIDGE_DLT_APP_ID:-WSBR}
+WS_BRIDGE_DLT_APP_DESCRIPTION=${WS_BRIDGE_DLT_APP_DESCRIPTION:-OpenSOVD ws-bridge}
 WS_BRIDGE_LOG=${WS_BRIDGE_LOG:-info}
 GRAFANA_UPSTREAM=${GRAFANA_UPSTREAM:-127.0.0.1:3000}
 PROVISION_OBSERVER_CERTS=${PROVISION_OBSERVER_CERTS:-1}
@@ -182,6 +191,9 @@ WS_BRIDGE_MQTT_URL=$WS_BRIDGE_MQTT_URL
 WS_BRIDGE_BIND_ADDR=$WS_BRIDGE_BIND_ADDR
 WS_BRIDGE_SUB_TOPIC=$WS_BRIDGE_SUB_TOPIC
 WS_BRIDGE_TOKEN=$WS_BRIDGE_INTERNAL_TOKEN
+WS_BRIDGE_DLT_ENABLED=$WS_BRIDGE_DLT_ENABLED
+WS_BRIDGE_DLT_APP_ID=$WS_BRIDGE_DLT_APP_ID
+WS_BRIDGE_DLT_APP_DESCRIPTION=$WS_BRIDGE_DLT_APP_DESCRIPTION
 RUST_LOG=$WS_BRIDGE_LOG
 EOF
 
@@ -354,10 +366,10 @@ ssh "$PI" 'sudo systemctl --no-pager status sovd-main.service || true'
 
 # Give axum a moment to bind the socket after enable --now.
 sleep 2
-if curl -fsS --max-time 5 "http://$PI_HTTP_HOST:21002/sovd/v1/components" >/dev/null; then
-    log "sovd-main answering GET /sovd/v1/components on $PI_HTTP_HOST:21002 - D1 green"
+if ssh "$PI" "curl -fsS --max-time 5 http://127.0.0.1:21002/sovd/v1/components >/dev/null"; then
+    log "sovd-main answering GET /sovd/v1/components on 127.0.0.1:21002 via SSH - D1 green"
 else
-    err "sovd-main is NOT answering on $PI_HTTP_HOST:21002"
+    err "sovd-main is NOT answering on 127.0.0.1:21002 via SSH"
     err "check 'journalctl -u sovd-main.service -n 100' on $PI"
     exit 2
 fi

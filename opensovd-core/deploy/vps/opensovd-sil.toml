@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+
+dfm_component_id = "dfm"
+local_demo_components = ["bcm", "cvc", "sc"]
+
+[server]
+address = "0.0.0.0"
+port = 20002
+
+[server.tls]
+mode = "https"
+cert_path = "/etc/opensovd/tls/server.crt"
+key_path = "/etc/opensovd/tls/server.key"
+
+[backend]
+sqlite_path = "/var/lib/opensovd/dfm.db"
+
+[[cda_forward]]
+component_id = "flxc1000"
+base_url = "http://cda:20002"
+path_prefix = "vehicle/v15"
+
+[[cda_forward]]
+component_id = "flxcng1000"
+base_url = "http://cda:20002"
+path_prefix = "vehicle/v15"
+
+[mqtt]
+broker_host = "mosquitto"
+broker_port = 1883
+topic = "vehicle/dtc/new"
+bench_id = "sovd-sil-vps"
+
+[logging.otel]
+enabled = false

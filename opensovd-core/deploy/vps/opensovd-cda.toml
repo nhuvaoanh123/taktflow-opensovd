@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+
+[database]
+path = "/app/odx"
+
+[doip]
+tester_address = "172.42.0.10"
+tester_subnet = "255.255.0.0"
+
+[logging.otel]
+enabled = false

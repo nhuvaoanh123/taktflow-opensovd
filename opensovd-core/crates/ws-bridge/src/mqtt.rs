@@ -230,7 +230,10 @@ mod tests {
     #[test]
     fn encode_relay_frame_wraps_json_payload() {
         let frame = encode_relay_frame("vehicle/dtc/new", br#"{"dtc":"P0A1F"}"#).unwrap();
-        assert_eq!(frame, r#"{"topic":"vehicle/dtc/new","payload":{"dtc":"P0A1F"}}"#);
+        assert_eq!(
+            frame,
+            r#"{"topic":"vehicle/dtc/new","payload":{"dtc":"P0A1F"}}"#
+        );
     }
 
     #[test]

@@ -27,6 +27,7 @@
 	import UC18GatewayRouting from '$lib/widgets/UC18GatewayRouting.svelte';
 	import UC19Historical from '$lib/widgets/UC19Historical.svelte';
 	import UC20ConcurrentTesters from '$lib/widgets/UC20ConcurrentTesters.svelte';
+	import UC21MlInference from '$lib/widgets/UC21MlInference.svelte';
 
 	let selectedEcu = $state<EcuId>('cvc');
 	let selectedDtc = $state<DtcEntry | null>(null);
@@ -194,6 +195,13 @@
 					UC10 - Live DID Reads @ 1 Hz (FR-3.3)
 				</p>
 				<UC10LiveDidReads componentId={selectedEcu} />
+			</div>
+
+			<div>
+				<p class="mb-1 text-[10px] font-semibold uppercase text-muted-foreground">
+					UP3-06 - ML Inference Scaffold (ADR-0028, ADR-0029)
+				</p>
+				<UC21MlInference componentId={selectedEcu} />
 			</div>
 		</div>
 

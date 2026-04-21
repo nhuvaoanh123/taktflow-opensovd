@@ -45,7 +45,9 @@ use std::{
 
 use sovd_interfaces::{
     ComponentId, SovdError,
-    extras::observer::{AuditEntry as ObserverAuditEntry, AuditLog, BackendRoute, BackendRoutes, SessionStatus},
+    extras::observer::{
+        AuditEntry as ObserverAuditEntry, AuditLog, BackendRoute, BackendRoutes, SessionStatus,
+    },
     spec::{
         component::{DiscoveredEntities, EntityCapabilities, EntityReference},
         data::{Datas, ReadValue, ValueMetadata},
@@ -111,6 +113,74 @@ impl ComponentState {
     }
 }
 
+/// Bench-only injected fault list that can temporarily shadow the live
+/// component/backend view for deterministic HIL fault seeding.
+#[derive(Debug, Clone, Default)]
+struct BenchFaultOverride {
+    faults: Vec<Fault>,
+    fault_environments: HashMap<String, serde_json::Value>,
+}
+
+impl BenchFaultOverride {
+    fn from_faults(faults: Vec<Fault>) -> Self {
+        Self {
+            faults,
+            fault_environments: HashMap::new(),
+        }
+    }
+
+    fn list_faults(&self, filter: &FaultFilter) -> ListOfFaults {
+        let items = self
+            .faults
+            .iter()
+            .filter(|fault| matches_filter(fault, filter))
+            .cloned()
+            .collect();
+        ListOfFaults {
+            items,
+            total: None,
+            next_page: None,
+            schema: None,
+            extras: None,
+        }
+    }
+
+    fn get_fault(&self, code: &str) -> Result<FaultDetails> {
+        let fault = self
+            .faults
+            .iter()
+            .find(|fault| fault.code == code)
+            .cloned()
+            .ok_or_else(|| SovdError::NotFound {
+                entity: format!("fault \"{code}\""),
+            })?;
+        Ok(FaultDetails {
+            item: fault,
+            environment_data: self.fault_environments.get(code).cloned(),
+            errors: None,
+            schema: None,
+            extras: None,
+        })
+    }
+
+    fn clear_all_faults(&mut self) {
+        self.faults.clear();
+        self.fault_environments.clear();
+    }
+
+    fn clear_fault(&mut self, code: &str) -> Result<()> {
+        let before = self.faults.len();
+        self.faults.retain(|fault| fault.code != code);
+        if self.faults.len() == before {
+            return Err(SovdError::NotFound {
+                entity: format!("fault \"{code}\""),
+            });
+        }
+        self.fault_environments.remove(code);
+        Ok(())
+    }
+}
+
 /// Multi-component in-memory SOVD demo store with optional forward backends.
 ///
 /// Construct with [`InMemoryServer::new_with_demo_data`] to get the three
@@ -131,8 +201,10 @@ impl ComponentState {
 pub struct InMemoryServer {
     components: Arc<RwLock<HashMap<ComponentId, ComponentState>>>,
     forwards: Arc<RwLock<HashMap<ComponentId, Arc<dyn SovdBackend + Send + Sync>>>>,
+    fault_overrides: Arc<RwLock<HashMap<ComponentId, BenchFaultOverride>>>,
     observer_session: Arc<RwLock<SessionStatus>>,
     observer_audit: Arc<RwLock<VecDeque<ObserverAuditEntry>>>,
+    bench_fault_injection_enabled: bool,
 }
 
 // Manual Debug impl because `dyn SovdBackend` is not `Debug`.
@@ -141,8 +213,13 @@ impl std::fmt::Debug for InMemoryServer {
         f.debug_struct("InMemoryServer")
             .field("components", &"<async>")
             .field("forwards", &"<async>")
+            .field("fault_overrides", &"<async>")
             .field("observer_session", &"<async>")
             .field("observer_audit", &"<async>")
+            .field(
+                "bench_fault_injection_enabled",
+                &self.bench_fault_injection_enabled,
+            )
             .finish()
     }
 }
@@ -155,8 +232,10 @@ impl InMemoryServer {
         Self {
             components: Arc::new(RwLock::new(HashMap::new())),
             forwards: Arc::new(RwLock::new(HashMap::new())),
+            fault_overrides: Arc::new(RwLock::new(HashMap::new())),
             observer_session: Arc::new(RwLock::new(default_observer_session())),
             observer_audit: Arc::new(RwLock::new(VecDeque::new())),
+            bench_fault_injection_enabled: false,
         }
     }
 
@@ -213,9 +292,24 @@ impl InMemoryServer {
         Ok(Self {
             components: Arc::new(RwLock::new(components)),
             forwards: Arc::new(RwLock::new(HashMap::new())),
+            fault_overrides: Arc::new(RwLock::new(HashMap::new())),
             observer_session: Arc::new(RwLock::new(default_observer_session())),
             observer_audit: Arc::new(RwLock::new(VecDeque::new())),
+            bench_fault_injection_enabled: false,
         })
+    }
+
+    /// Enable or disable the bench-only fault-injection shadow plane.
+    #[must_use]
+    pub fn with_bench_fault_injection_enabled(mut self, enabled: bool) -> Self {
+        self.bench_fault_injection_enabled = enabled;
+        self
+    }
+
+    /// Returns whether the internal bench fault-injection routes are enabled.
+    #[must_use]
+    pub fn bench_fault_injection_enabled(&self) -> bool {
+        self.bench_fault_injection_enabled
     }
 
     /// Register a forward backend for `component`. Any subsequent SOVD
@@ -254,6 +348,69 @@ impl InMemoryServer {
         component: &ComponentId,
     ) -> Option<Arc<dyn SovdBackend + Send + Sync>> {
         self.forwards.read().await.get(component).cloned()
+    }
+
+    async fn has_local_component(&self, component: &ComponentId) -> bool {
+        self.components.read().await.contains_key(component)
+    }
+
+    async fn component_exists(&self, component: &ComponentId) -> bool {
+        self.has_local_component(component).await || self.has_forward(component).await
+    }
+
+    async fn fault_override(&self, component: &ComponentId) -> Option<BenchFaultOverride> {
+        self.fault_overrides.read().await.get(component).cloned()
+    }
+
+    /// Seed a deterministic bench-only fault override for `component`.
+    ///
+    /// While the override exists, normal `GET/DELETE .../faults` routes
+    /// operate on this injected list instead of the local demo or forward
+    /// backend. Use [`reset_bench_fault_override`](Self::reset_bench_fault_override)
+    /// to return to pass-through mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SovdError::NotFound`] if `component` is not registered
+    /// locally or as a forward backend.
+    pub async fn seed_bench_fault_override(
+        &self,
+        component: &ComponentId,
+        faults: Vec<Fault>,
+    ) -> Result<ListOfFaults> {
+        if !self.component_exists(component).await {
+            return Err(SovdError::NotFound {
+                entity: format!("component \"{component}\""),
+            });
+        }
+        let response = ListOfFaults {
+            items: faults.clone(),
+            total: None,
+            next_page: None,
+            schema: None,
+            extras: None,
+        };
+        self.fault_overrides
+            .write()
+            .await
+            .insert(component.clone(), BenchFaultOverride::from_faults(faults));
+        Ok(response)
+    }
+
+    /// Remove the bench-only fault override for `component`, restoring the
+    /// normal local/forward backend view.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SovdError::NotFound`] if `component` is unknown.
+    pub async fn reset_bench_fault_override(&self, component: &ComponentId) -> Result<()> {
+        if !self.component_exists(component).await {
+            return Err(SovdError::NotFound {
+                entity: format!("component \"{component}\""),
+            });
+        }
+        self.fault_overrides.write().await.remove(component);
+        Ok(())
     }
 
     /// Return a per-component [`SovdServer`] view for `component`.
@@ -416,6 +573,9 @@ impl InMemoryServer {
         component: &ComponentId,
         filter: FaultFilter,
     ) -> Result<ListOfFaults> {
+        if let Some(override_state) = self.fault_override(component).await {
+            return Ok(override_state.list_faults(&filter));
+        }
         if let Some(backend) = self.forward(component).await {
             return backend.list_faults(filter).await;
         }
@@ -431,6 +591,13 @@ impl InMemoryServer {
     ///
     /// Returns [`SovdError::NotFound`] if no backend handles `component`.
     pub async fn dispatch_clear_all_faults(&self, component: &ComponentId) -> Result<()> {
+        {
+            let mut overrides = self.fault_overrides.write().await;
+            if let Some(override_state) = overrides.get_mut(component) {
+                override_state.clear_all_faults();
+                return Ok(());
+            }
+        }
         if let Some(backend) = self.forward(component).await {
             return backend.clear_all_faults().await;
         }
@@ -445,6 +612,12 @@ impl InMemoryServer {
     /// Returns [`SovdError::NotFound`] if no backend handles `component`
     /// or the code is unknown.
     pub async fn dispatch_clear_fault(&self, component: &ComponentId, code: &str) -> Result<()> {
+        {
+            let mut overrides = self.fault_overrides.write().await;
+            if let Some(override_state) = overrides.get_mut(component) {
+                return override_state.clear_fault(code);
+            }
+        }
         if let Some(backend) = self.forward(component).await {
             return backend.clear_fault(code).await;
         }
@@ -503,6 +676,9 @@ impl InMemoryServer {
         component: &ComponentId,
         code: &str,
     ) -> Result<FaultDetails> {
+        if let Some(override_state) = self.fault_override(component).await {
+            return override_state.get_fault(code);
+        }
         if let Some(backend) = self.forward(component).await {
             return backend.get_fault(code).await;
         }
@@ -994,7 +1170,10 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn default_backend_address(kind: sovd_interfaces::traits::backend::BackendKind, component: &ComponentId) -> String {
+fn default_backend_address(
+    kind: sovd_interfaces::traits::backend::BackendKind,
+    component: &ComponentId,
+) -> String {
     match kind {
         sovd_interfaces::traits::backend::BackendKind::Dfm => {
             format!("local://dfm/{component}")
@@ -1105,7 +1284,11 @@ fn demo_component_state(id: &str) -> Option<ComponentState> {
                 2,
                 "active",
             )],
-            &[demo_op("safe_state_check", "Safe-state supervisor check", false)],
+            &[demo_op(
+                "safe_state_check",
+                "Safe-state supervisor check",
+                false,
+            )],
             &[("hw_revision", serde_json::json!("TMS570LC43x-B"))],
         )),
         "bcm" => Some(demo_component(
@@ -1338,6 +1521,72 @@ mod tests {
         assert_eq!(first.address, "local://sovd-main/bcm");
         assert_eq!(first.protocol, "sovd");
         assert!(first.reachable);
+    }
+
+    #[tokio::test]
+    async fn bench_fault_override_shadows_local_component_until_reset() {
+        let server = InMemoryServer::new_with_demo_data().with_bench_fault_injection_enabled(true);
+        let component = ComponentId::new("cvc");
+
+        let baseline = server
+            .dispatch_list_faults(&component, FaultFilter::all())
+            .await
+            .expect("baseline faults");
+        assert_eq!(baseline.items.len(), 2);
+
+        server
+            .seed_bench_fault_override(
+                &component,
+                vec![demo_fault(
+                    "TFC100",
+                    "Bench injected clearable fault",
+                    2,
+                    "active",
+                )],
+            )
+            .await
+            .expect("seed override");
+
+        let overridden = server
+            .dispatch_list_faults(&component, FaultFilter::all())
+            .await
+            .expect("overridden faults");
+        assert_eq!(overridden.items.len(), 1);
+        assert_eq!(overridden.items[0].code, "TFC100");
+
+        server
+            .dispatch_clear_all_faults(&component)
+            .await
+            .expect("clear injected faults");
+        let cleared = server
+            .dispatch_list_faults(&component, FaultFilter::all())
+            .await
+            .expect("cleared faults");
+        assert!(cleared.items.is_empty());
+
+        server
+            .reset_bench_fault_override(&component)
+            .await
+            .expect("reset override");
+        let restored = server
+            .dispatch_list_faults(&component, FaultFilter::all())
+            .await
+            .expect("restored faults");
+        assert_eq!(restored.items.len(), baseline.items.len());
+        assert!(restored.items.iter().any(|fault| fault.code == "P0A1F"));
+    }
+
+    #[tokio::test]
+    async fn bench_fault_override_rejects_unknown_component() {
+        let server = InMemoryServer::new_with_demo_components(["bcm"]).expect("build");
+        let err = server
+            .seed_bench_fault_override(
+                &ComponentId::new("nope"),
+                vec![demo_fault("TFX404", "missing", 2, "active")],
+            )
+            .await
+            .expect_err("unknown component should fail");
+        assert!(matches!(err, SovdError::NotFound { .. }));
     }
 
     #[test]

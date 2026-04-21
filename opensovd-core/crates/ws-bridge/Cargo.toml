@@ -29,16 +29,20 @@ path = "src/main.rs"
 name = "ws_bridge"
 path = "src/lib.rs"
 
+[features]
+default = []
+dlt-tracing = ["sovd-tracing/dlt-tracing"]
+
 [dependencies]
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+sovd-tracing = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal"] }
 axum = { workspace = true, features = ["http1", "tokio", "query", "ws"] }
 tower-http = { workspace = true, features = ["trace"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 rumqttc = { workspace = true }
 futures-util = { workspace = true }
 

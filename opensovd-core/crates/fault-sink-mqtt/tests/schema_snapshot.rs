@@ -46,8 +46,7 @@ fn cvc_error_record() -> FaultRecord {
 /// This is the shape the cloud bridge and AWS `IoT` Core consumers expect.
 #[test]
 fn canonical_cvc_error_payload() {
-    let bytes =
-        encode_record_at(&cvc_error_record(), "sovd-hil", fixed_now()).expect("encode");
+    let bytes = encode_record_at(&cvc_error_record(), "sovd-hil", fixed_now()).expect("encode");
     let msg: WireDtcMessage = serde_json::from_slice(&bytes).expect("decode");
     let pretty = serde_json::to_string_pretty(&msg).expect("pretty");
     insta::assert_snapshot!("canonical_cvc_error_payload", pretty);

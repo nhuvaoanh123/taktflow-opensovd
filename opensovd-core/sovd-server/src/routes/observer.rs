@@ -85,9 +85,7 @@ pub async fn audit(
     ),
     tag = "observer-extras"
 )]
-pub async fn gateway_backends(
-    State(server): State<Arc<InMemoryServer>>,
-) -> Json<BackendRoutes> {
+pub async fn gateway_backends(State(server): State<Arc<InMemoryServer>>) -> Json<BackendRoutes> {
     Json(server.backend_routes().await)
 }
 
@@ -218,35 +216,42 @@ fn classify_request(method: &Method, path: &str) -> Option<ObservedRequest> {
                 session_security_level: 0,
             })
         }
-        ["components", _component, "operations"] if method == Method::GET => Some(ObservedRequest {
-            action: "LIST_OPERATIONS",
-            target: component.to_owned(),
-            touch_session: true,
-            session_level: "extended",
-            session_security_level: 0,
-        }),
-        ["components", _component, "operations", operation_id, "executions"]
-            if method == Method::POST =>
-        {
+        ["components", _component, "operations"] if method == Method::GET => {
             Some(ObservedRequest {
-                action: "START_EXECUTION",
-                target: format!("{component}:{operation_id}"),
-                touch_session: true,
-                session_level: "programming",
-                session_security_level: 2,
-            })
-        }
-        ["components", _component, "operations", operation_id, "executions", _execution_id]
-            if method == Method::GET =>
-        {
-            Some(ObservedRequest {
-                action: "EXECUTION_STATUS",
-                target: format!("{component}:{operation_id}"),
+                action: "LIST_OPERATIONS",
+                target: component.to_owned(),
                 touch_session: true,
                 session_level: "extended",
                 session_security_level: 0,
             })
         }
+        [
+            "components",
+            _component,
+            "operations",
+            operation_id,
+            "executions",
+        ] if method == Method::POST => Some(ObservedRequest {
+            action: "START_EXECUTION",
+            target: format!("{component}:{operation_id}"),
+            touch_session: true,
+            session_level: "programming",
+            session_security_level: 2,
+        }),
+        [
+            "components",
+            _component,
+            "operations",
+            operation_id,
+            "executions",
+            _execution_id,
+        ] if method == Method::GET => Some(ObservedRequest {
+            action: "EXECUTION_STATUS",
+            target: format!("{component}:{operation_id}"),
+            touch_session: true,
+            session_level: "extended",
+            session_security_level: 0,
+        }),
         _ => None,
     }
 }
@@ -263,7 +268,12 @@ fn bearer_present(headers: &HeaderMap) -> bool {
     headers
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .map(|value| value.trim_start().to_ascii_lowercase().starts_with("bearer "))
+        .map(|value| {
+            value
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("bearer ")
+        })
         .unwrap_or(false)
 }
 

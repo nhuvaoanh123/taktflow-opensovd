@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# Upstream Phase 3 SIL scenario skeleton â€” ISO/DIS 17978-1.2 compliance slice.
+#
+# Disabled until the gap-analysis ledger from `docs/compliance/` names a
+# concrete clause subset that is stable enough to gate in CI.
+
+name: sil_sovd_iso_17978_1_2_compliance
+disabled: true
+reason: >-
+  Enable when the clause subset from
+  `docs/compliance/iso-17978-1-2-gap-analysis.md` is promoted from
+  skeleton to executable checks with settled evidence expectations.
+
+baseline:
+  gap_analysis: docs/compliance/iso-17978-1-2-gap-analysis.md
+  current_wire_contract: opensovd-core/sovd-server/openapi.yaml
+  ml_surface: /sovd/v1/components/cvc/operations/ml-inference/executions
+
+checks:
+  - id: iso-17978-1-2-ml-signed-load
+    description: >-
+      Verify that the ML inference path refuses unsigned model artifacts
+      and accepts the signed reference artifact from the SIL harness.
+    evidence_from:
+      - opensovd-core/sovd-ml/tests/model_loading.rs
+      - opensovd-core/sovd-ml/models/README.md
+
+  - id: iso-17978-1-2-observer-surface
+    description: >-
+      Verify that the observer dashboard renders the ML inference result
+      from the standard SOVD request path or falls back explicitly.
+    evidence_from:
+      - dashboard/src/lib/widgets/UC21MlInference.svelte
+      - dashboard/src/lib/api/sovdClient.ts
+
+  - id: iso-17978-1-2-audit-hook
+    description: >-
+      Verify that future model-load and rollback outcomes have a clear
+      insertion point in the audit/compliance story before the slice is
+      promoted from scaffold to gate.
+    evidence_from:
+      - docs/adr/ADR-0029-ml-model-signing-rollback.md
+      - docs/compliance/iso-17978-1-2-gap-analysis.md
+
+ci_note:
+  future_gate_workflow: .github/workflows/upstream-phase-3-scenarios.yml
+  promotion_rule: >-
+    When the clause subset is executable, extend the workflow job named
+    `phase-3-scenario-skeletons` with real harness execution rather than
+    introducing a separate CI entry point.

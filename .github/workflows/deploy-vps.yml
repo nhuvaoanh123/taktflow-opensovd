@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: Apache-2.0
+# Auto-deploy engineering spec HTML and observer dashboard to the public VPS
+# (sovd.taktflow-systems.com) on every push to main.
+#
+# Required repository secrets (set in GitHub repo settings):
+#   VPS_HOST         — VPS host or IP. Must never be committed in plain text.
+#   VPS_DEPLOY_KEY   — private SSH key whose public half is in the VPS
+#                      root@$VPS_HOST:/root/.ssh/authorized_keys
+#   VPS_HOST_KEY     — output of `ssh-keyscan $VPS_HOST` (prevents MITM)
+#
+# The VPS serves:
+#   /opt/taktflow-systems/taktflow-systems/spec-root/      — engineering spec
+#   /opt/taktflow-systems/taktflow-systems/dashboard-root/ — observer dashboard
+
+name: Deploy VPS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ENGINEERING-SPECIFICATION.html'
+      - 'dashboard/**'
+      - '.github/workflows/deploy-vps.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Build dashboard for VPS topology
+        working-directory: dashboard
+        env:
+          VITE_SOVD_BASE: ''
+          SOVD_BASE_PATH: /dashboard
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          test -d build
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_HOST_KEY }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy engineering spec
+        run: |
+          scp -i ~/.ssh/id_ed25519 ENGINEERING-SPECIFICATION.html \
+            root@${{ secrets.VPS_HOST }}:/opt/taktflow-systems/taktflow-systems/spec-root/index.html
+
+      - name: Deploy dashboard
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/id_ed25519" \
+            dashboard/build/ \
+            root@${{ secrets.VPS_HOST }}:/opt/taktflow-systems/taktflow-systems/dashboard-root/
+
+      - name: Smoke check
+        run: |
+          set -e
+          curl -fsS -o /dev/null https://sovd.taktflow-systems.com/sovd/
+          curl -fsS -o /dev/null https://sovd.taktflow-systems.com/dashboard/
+          curl -fsS https://sovd.taktflow-systems.com/sovd/v1/health | grep -q '"status":"ok"'

@@ -13,6 +13,7 @@ import type {
 	GatewayHealth,
 	GatewayHealthProbe,
 	LiveDid,
+	MlInferenceResult,
 	RoutineEntry,
 	RoutineStatus,
 	SessionInfo,
@@ -68,7 +69,9 @@ type StartExecutionAsyncResponse = {
 };
 
 type ExecutionStatusResponse = {
+	id?: string | null;
 	status?: string | null;
+	result?: Record<string, unknown> | null;
 	error?: Array<{
 		title?: string;
 		message?: string;
@@ -88,6 +91,12 @@ type DatasResponse = {
 type ReadValueResponse = {
 	id?: string;
 	data?: unknown;
+};
+
+type MlInferenceStartResponse = {
+	id?: string | null;
+	status?: string | null;
+	result?: Record<string, unknown> | null;
 };
 
 type BackendHealthResponse = {
@@ -475,6 +484,49 @@ function mapGatewayProtocol(value: string | null | undefined): GatewayBackend['p
 	}
 }
 
+function inferencePredictionFromValue(value: unknown): MlInferenceResult['prediction'] {
+	switch (String(value ?? '').toLowerCase()) {
+		case 'warning':
+			return 'warning';
+		case 'critical':
+			return 'critical';
+		default:
+			return 'normal';
+	}
+}
+
+function mlInferencePath(componentId: EcuId): string {
+	return `/sovd/v1/components/${componentId}/operations/ml-inference/executions`;
+}
+
+function mapMlInferenceResult(
+	componentId: EcuId,
+	result: Record<string, unknown> | null | undefined
+): MlInferenceResult {
+	const fallback = cannedMlInference(componentId);
+	const confidence =
+		typeof result?.confidence === 'number' && Number.isFinite(result.confidence)
+			? result.confidence
+			: fallback.confidence;
+	const source = extractStringValue(result?.source)?.toLowerCase();
+	const status = extractStringValue(result?.status)?.toLowerCase();
+
+	return {
+		component: componentId,
+		modelName: extractStringValue(result?.model_name) ?? fallback.modelName,
+		modelVersion: extractStringValue(result?.model_version) ?? fallback.modelVersion,
+		prediction: inferencePredictionFromValue(result?.prediction ?? fallback.prediction),
+		confidence,
+		fingerprint: extractStringValue(result?.fingerprint) ?? fallback.fingerprint,
+		updatedAt: extractStringValue(result?.updated_at) ?? fallback.updatedAt,
+		source: source === 'live' ? 'live' : fallback.source,
+		status:
+			status === 'running' || status === 'failed' || status === 'completed'
+				? status
+				: fallback.status
+	};
+}
+
 export async function listComponents(): Promise<SovdComponent[]> {
 	try {
 		const discovered = await fetchJson<DiscoveredEntitiesResponse>('/sovd/v1/components');
@@ -668,6 +720,44 @@ export async function readDid(componentId: EcuId): Promise<LiveDid> {
 	} catch {
 		return fallback;
 	}
+}
+
+export async function runMlInference(componentId: EcuId): Promise<MlInferenceResult> {
+	try {
+		const start = await fetchJson<MlInferenceStartResponse>(mlInferencePath(componentId), {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				mode: 'single-shot',
+				component_id: componentId
+			})
+		});
+
+		if (isRecord(start.result)) {
+			return mapMlInferenceResult(componentId, {
+				...start.result,
+				status: start.status ?? start.result.status ?? 'completed',
+				source: 'live'
+			});
+		}
+
+		if (start.id) {
+			const polled = await fetchJson<ExecutionStatusResponse>(
+				`${mlInferencePath(componentId)}/${encodeURIComponent(start.id)}`
+			);
+			return mapMlInferenceResult(componentId, {
+				...(isRecord(polled.result) ? polled.result : {}),
+				status: polled.status ?? 'completed',
+				source: 'live'
+			});
+		}
+	} catch {
+		// Demo-safe fallback when the future ML route is not mounted yet.
+	}
+
+	return cannedMlInference(componentId);
 }
 
 export async function getSession(): Promise<SessionInfo> {
@@ -927,3 +1017,17 @@ export const CANNED_AUDIT: AuditEntry[] = [
 	{ timestamp: '2026-04-17T09:35:12Z', actor: 'tester-02', action: 'CLEAR_FAULTS', target: 'bcm', result: 'denied' },
 	{ timestamp: '2026-04-17T09:10:00Z', actor: 'tester-01', action: 'SESSION_CREATE', target: 'default', result: 'ok' }
 ];
+
+export function cannedMlInference(componentId: EcuId): MlInferenceResult {
+	return {
+		component: componentId,
+		modelName: 'reference-fault-predictor',
+		modelVersion: '1.0.0-rc1',
+		prediction: componentId === 'cvc' ? 'warning' : 'normal',
+		confidence: componentId === 'cvc' ? 0.82 : 0.94,
+		fingerprint: 'sha256:7b0f1b5f2b8c2a7e8d4d0f9c3f6b1a22',
+		updatedAt: new Date().toISOString(),
+		source: 'stub',
+		status: 'completed'
+	};
+}

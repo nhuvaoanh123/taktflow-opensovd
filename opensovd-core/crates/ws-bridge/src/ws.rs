@@ -34,6 +34,7 @@ use axum::{
         Query, State,
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
+    http::Request,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
@@ -41,6 +42,7 @@ use axum::{
 use futures_util::{SinkExt as _, StreamExt as _};
 use serde::Deserialize;
 use tokio::sync::broadcast;
+use tower_http::trace::{DefaultOnResponse, MakeSpan, TraceLayer};
 
 use crate::{Event, metrics::Metrics};
 
@@ -55,6 +57,20 @@ pub struct AppState {
     pub metrics: Arc<Metrics>,
 }
 
+#[derive(Clone, Default)]
+struct WsBridgeRequestSpan;
+
+impl<B> MakeSpan<B> for WsBridgeRequestSpan {
+    fn make_span(&mut self, request: &Request<B>) -> tracing::Span {
+        tracing::info_span!(
+            "http.request",
+            dlt_context = "WSBR",
+            method = %request.method(),
+            path = request.uri().path(),
+        )
+    }
+}
+
 /// Build the axum router.
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -62,6 +78,11 @@ pub fn router(state: AppState) -> Router {
         .route("/metrics", get(metrics_handler))
         .route("/ws", get(ws_upgrade))
         .with_state(state)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(WsBridgeRequestSpan)
+                .on_response(DefaultOnResponse::new().level(tracing::Level::INFO)),
+        )
 }
 
 async fn healthz() -> impl IntoResponse {
@@ -148,7 +169,11 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     loop {
         match rx.recv().await {
             Ok(event) => {
-                if sink.send(Message::Text(event.json_frame.into())).await.is_err() {
+                if sink
+                    .send(Message::Text(event.json_frame.into()))
+                    .await
+                    .is_err()
+                {
                     // Client hung up — exit cleanly.
                     break;
                 }
@@ -158,9 +183,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 state.metrics.inc_dropped_lagged();
                 let close = CloseFrame {
                     code: 1011,
-                    reason: axum::extract::ws::Utf8Bytes::from_static(
-                        "broadcast lagged",
-                    ),
+                    reason: axum::extract::ws::Utf8Bytes::from_static("broadcast lagged"),
                 };
                 let _ = sink.send(Message::Close(Some(close))).await;
                 break;

@@ -26,8 +26,15 @@
 //! (`cvc/fzc/rzc`) toward the hybrid topology needed by the Phase 5
 //! bench without breaking the older route tests.
 
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+    sync::Arc,
+};
 
+use axum::http::Request;
+use axum::middleware::from_fn_with_state;
+use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
 use opcycle_taktflow::TaktflowOperationCycle;
 use sovd_db_sqlite::SqliteSovdDb;
@@ -36,14 +43,16 @@ use sovd_interfaces::{
     ComponentId, SovdBackend,
     traits::{fault_sink::FaultSink, operation_cycle::OperationCycle, sovd_db::SovdDb},
 };
-use sovd_server::{CdaBackend, InMemoryServer};
+use sovd_server::{CdaBackend, InMemoryServer, RateLimiter};
+use tower_http::trace::{DefaultOnResponse, MakeSpan, TraceLayer};
 use url::Url;
 
-use crate::config::configfile::{CdaForwardConfig, Configuration, ServerMode};
 #[cfg(feature = "fault-sink-mqtt")]
 use crate::config::configfile::MqttConfig;
+use crate::config::configfile::{CdaForwardConfig, Configuration, ServerMode, ServerTlsMode};
 
 mod config;
+mod tracing_setup;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -96,6 +105,27 @@ impl AppArgs {
             }
         }
     }
+}
+
+#[derive(Clone, Default)]
+struct SovdRequestSpan;
+
+impl<B> MakeSpan<B> for SovdRequestSpan {
+    fn make_span(&mut self, request: &Request<B>) -> tracing::Span {
+        let correlation_id = sovd_server::correlation::resolve_correlation_id(request.headers());
+
+        tracing::info_span!(
+            "http.request",
+            dlt_context = "SOVD",
+            method = %request.method(),
+            path = request.uri().path(),
+            correlation_id = %correlation_id,
+        )
+    }
+}
+
+fn request_tracing_enabled(config: &Configuration) -> bool {
+    config.logging.dlt.enabled || config.logging.otel.enabled
 }
 
 async fn build_dfm(
@@ -236,9 +266,10 @@ async fn build_in_memory_server(
     config: &Configuration,
 ) -> Result<AssembledServer, Box<dyn std::error::Error>> {
     validate_component_topology(config)?;
-    let server = Arc::new(InMemoryServer::new_with_demo_components(
-        &config.local_demo_components,
-    )?);
+    let server = Arc::new(
+        InMemoryServer::new_with_demo_components(&config.local_demo_components)?
+            .with_bench_fault_injection_enabled(config.bench_fault_injection.enabled),
+    );
 
     let mut dfm_arc: Option<Arc<Dfm>> = None;
     if let Some(component_id) = configured_dfm_component_id(config) {
@@ -323,10 +354,98 @@ fn assemble_fault_sink(
     Some(dfm as Arc<dyn FaultSink>)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResolvedServerTransport {
+    Http,
+    Https,
+}
+
+fn is_loopback_address(address: &str) -> bool {
+    let trimmed = address.trim();
+    if trimmed.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    trimmed.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
+fn resolve_server_transport(
+    config: &Configuration,
+) -> Result<ResolvedServerTransport, Box<dyn std::error::Error>> {
+    match config.server.tls.mode {
+        ServerTlsMode::Https => Ok(ResolvedServerTransport::Https),
+        ServerTlsMode::Http => {
+            if is_loopback_address(&config.server.address) {
+                return Ok(ResolvedServerTransport::Http);
+            }
+            #[cfg(feature = "insecure-http-fallback")]
+            {
+                tracing::warn!(
+                    address = %config.server.address,
+                    "Running plain HTTP on a non-loopback interface via insecure-http-fallback"
+                );
+                Ok(ResolvedServerTransport::Http)
+            }
+            #[cfg(not(feature = "insecure-http-fallback"))]
+            {
+                Err(format!(
+                    "server.tls.mode = \"http\" is only allowed on loopback addresses unless sovd-main is built with --features insecure-http-fallback (address: {})",
+                    config.server.address
+                )
+                .into())
+            }
+        }
+    }
+}
+
+fn install_rustls_provider() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
+async fn serve_app(
+    config: &Configuration,
+    app: axum::Router,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let addr: SocketAddr = format!("{}:{}", config.server.address, config.server.port).parse()?;
+    match resolve_server_transport(config)? {
+        ResolvedServerTransport::Http => {
+            let listener = tokio::net::TcpListener::bind(addr).await?;
+            tracing::info!(
+                transport = "http",
+                "OpenSOVD core listening on {}:{}",
+                config.server.address,
+                config.server.port
+            );
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await?;
+        }
+        ResolvedServerTransport::Https => {
+            install_rustls_provider();
+            let tls_config = RustlsConfig::from_pem_file(
+                &config.server.tls.cert_path,
+                &config.server.tls.key_path,
+            )
+            .await?;
+            tracing::info!(
+                transport = "https",
+                cert_path = %config.server.tls.cert_path,
+                key_path = %config.server.tls.key_path,
+                "OpenSOVD core listening on {}:{}",
+                config.server.address,
+                config.server.port
+            );
+            axum_server::bind_rustls(addr, tls_config)
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+                .await?;
+        }
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
-
     let args = AppArgs::parse();
     let config_file = args.config_file.clone();
     let mut config = config::load_config(config_file.as_deref()).unwrap_or_else(|e| {
@@ -336,6 +455,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     args.update_config(&mut config);
+    let _tracing_guard = tracing_setup::init(&config.logging)?;
+
+    if config.logging.dlt.enabled {
+        tracing::info!(
+            app_id = %config.logging.dlt.app_id,
+            app_description = %config.logging.dlt.app_description,
+            "DLT tracing enabled for local SIL"
+        );
+    }
+
+    if config.logging.otel.enabled {
+        tracing::info!(
+            endpoint = %config.logging.otel.endpoint,
+            service_name = %config.logging.otel.service_name,
+            "OTLP tracing enabled for local SIL"
+        );
+    }
 
     let (app, dfm_for_fanout) = match config.server.mode {
         ServerMode::InMemory => {
@@ -343,6 +479,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 local_demo_components = ?config.local_demo_components,
                 dfm_component_id = ?configured_dfm_component_id(&config),
                 cda_forward_count = config.cda_forwards.len(),
+                bench_fault_injection = config.bench_fault_injection.enabled,
                 "Booting InMemoryServer with configured local demo surface and forwards"
             );
             let assembled = build_in_memory_server(&config).await?;
@@ -373,20 +510,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.mqtt.as_ref(),
     );
 
-    let addr: SocketAddr = format!("{}:{}", config.server.address, config.server.port).parse()?;
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let app = if config.rate_limit.enabled {
+        tracing::info!(
+            requests_per_second = config.rate_limit.requests_per_second,
+            window_seconds = config.rate_limit.window_seconds,
+            "Per-client-IP rate limiting enabled for the local SOVD surface"
+        );
+        let limiter = Arc::new(RateLimiter::new(config.rate_limit.clone()));
+        app.layer(from_fn_with_state(
+            limiter,
+            sovd_server::rate_limit::middleware,
+        ))
+    } else {
+        app
+    };
 
-    tracing::info!(
-        "OpenSOVD core listening on {}:{}",
-        config.server.address,
-        config.server.port
-    );
-    axum::serve(listener, app).await?;
+    let app = if request_tracing_enabled(&config) {
+        app.layer(
+            TraceLayer::new_for_http()
+                .make_span_with(SovdRequestSpan)
+                .on_response(DefaultOnResponse::new().level(tracing::Level::INFO)),
+        )
+    } else {
+        app
+    };
+
+    serve_app(&config, app).await?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::PathBuf};
+
+    use rcgen::generate_simple_self_signed;
+    use tempfile::TempDir;
     use tokio::net::TcpListener;
 
     use super::*;
@@ -407,6 +565,20 @@ mod tests {
         (base_url, handle)
     }
 
+    fn write_test_tls_material() -> (TempDir, PathBuf, PathBuf) {
+        let dir = TempDir::new().expect("tempdir");
+        let certified =
+            generate_simple_self_signed(vec!["localhost".to_owned(), "127.0.0.1".to_owned()])
+                .expect("self-signed cert");
+        let cert_pem = certified.cert.pem();
+        let key_pem = certified.signing_key.serialize_pem();
+        let cert_path = dir.path().join("server.crt");
+        let key_path = dir.path().join("server.key");
+        fs::write(&cert_path, cert_pem.as_bytes()).expect("write cert");
+        fs::write(&key_path, key_pem.as_bytes()).expect("write key");
+        (dir, cert_path, key_path)
+    }
+
     #[tokio::test]
     async fn build_in_memory_server_supports_bcm_local_plus_cda_forward() {
         // 3-ECU bench per ADR-0023: bcm is the virtual/local surface;
@@ -424,7 +596,10 @@ mod tests {
                 base_url: base_url.to_string(),
                 path_prefix: "sovd/v1".to_owned(),
             }],
+            bench_fault_injection: defaults.bench_fault_injection,
             mqtt: None,
+            logging: defaults.logging,
+            rate_limit: defaults.rate_limit,
         };
 
         let assembled = build_in_memory_server(&config)
@@ -467,6 +642,7 @@ mod tests {
             .await
             .expect("local bcm faults");
         assert!(bcm_faults.items.is_empty());
+        assert!(!server.bench_fault_injection_enabled());
 
         handle.abort();
     }
@@ -486,7 +662,10 @@ mod tests {
                 base_url: base_url.to_string(),
                 path_prefix: "sovd/v1".to_owned(),
             }],
+            bench_fault_injection: defaults.bench_fault_injection,
             mqtt: None,
+            logging: defaults.logging,
+            rate_limit: defaults.rate_limit,
         };
 
         let err = build_in_memory_server(&config)
@@ -498,5 +677,58 @@ mod tests {
             "{err}"
         );
         handle.abort();
+    }
+
+    #[test]
+    fn resolve_server_transport_allows_loopback_http() {
+        let mut config = crate::config::default_config();
+        config.server.address = "127.0.0.1".to_owned();
+        config.server.tls.mode = ServerTlsMode::Http;
+        assert_eq!(
+            resolve_server_transport(&config).expect("loopback http"),
+            ResolvedServerTransport::Http
+        );
+    }
+
+    #[test]
+    fn resolve_server_transport_allows_https_anywhere() {
+        let mut config = crate::config::default_config();
+        config.server.address = "0.0.0.0".to_owned();
+        config.server.tls.mode = ServerTlsMode::Https;
+        assert_eq!(
+            resolve_server_transport(&config).expect("https"),
+            ResolvedServerTransport::Https
+        );
+    }
+
+    #[cfg(not(feature = "insecure-http-fallback"))]
+    #[test]
+    fn resolve_server_transport_rejects_non_loopback_http_without_feature() {
+        let mut config = crate::config::default_config();
+        config.server.address = "0.0.0.0".to_owned();
+        config.server.tls.mode = ServerTlsMode::Http;
+        let err = resolve_server_transport(&config).expect_err("non-loopback http must fail");
+        assert!(err.to_string().contains("insecure-http-fallback"), "{err}");
+    }
+
+    #[cfg(feature = "insecure-http-fallback")]
+    #[test]
+    fn resolve_server_transport_allows_non_loopback_http_with_feature() {
+        let mut config = crate::config::default_config();
+        config.server.address = "0.0.0.0".to_owned();
+        config.server.tls.mode = ServerTlsMode::Http;
+        assert_eq!(
+            resolve_server_transport(&config).expect("feature-gated http"),
+            ResolvedServerTransport::Http
+        );
+    }
+
+    #[tokio::test]
+    async fn rustls_config_loads_generated_pem_files() {
+        let (_dir, cert_path, key_path) = write_test_tls_material();
+        install_rustls_provider();
+        RustlsConfig::from_pem_file(&cert_path, &key_path)
+            .await
+            .expect("load rustls config");
     }
 }

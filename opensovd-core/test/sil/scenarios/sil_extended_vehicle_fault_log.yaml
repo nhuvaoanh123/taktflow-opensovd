@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# Upstream Phase 2 SIL scenario skeleton - Extended Vehicle fault-log flow.
+#
+# Disabled until `sovd-extended-vehicle` mounts the REST catalog and
+# fault-log routes in SIL and publishes the ADR-0027 MQTT event topic.
+
+name: sil_extended_vehicle_fault_log
+scenario_class: event_flow
+disabled: true
+reason: >-
+  Enable when `sovd-extended-vehicle` exposes the REST fault-log surface
+  under `/sovd/v1/extended/vehicle/*` in SIL and publishes
+  `sovd/extended-vehicle/fault-log/new` on the local MQTT bus.
+
+topology:
+  description: >-
+    Local SIL flow. Tester talks to `sovd-main`; the
+    `sovd-extended-vehicle` adapter serves the ISO-20078-shaped
+    fault-log view over REST and mirrors new entries on the MQTT topic
+    root from ADR-0027.
+
+  test_client:
+    host: 127.0.0.1
+    process: integration-tests (cargo test, local SIL)
+  sovd_main:
+    host: 127.0.0.1
+    port: 21002
+  extended_vehicle_adapter:
+    crate: opensovd-core/sovd-extended-vehicle
+    config: opensovd-core/sovd-extended-vehicle/config/extended-vehicle.toml
+  mqtt_bus:
+    host: 127.0.0.1
+    port: 1883
+    topic_root: sovd/extended-vehicle/
+
+contracts:
+  rest_root: /sovd/v1/extended/vehicle
+  fault_log_endpoint: /sovd/v1/extended/vehicle/fault-log
+  publish_topic: sovd/extended-vehicle/fault-log/new
+
+calls:
+  - name: extended_vehicle_catalog
+    method: GET
+    path: /sovd/v1/extended/vehicle/
+    expect_status: 200
+    expect_contains_item: fault-log
+
+  - name: read_fault_log
+    method: GET
+    path: /sovd/v1/extended/vehicle/fault-log
+    expect_status: 200
+    expect_type: extended_vehicle.fault_log_list
+
+  - name: subscribe_fault_log_new
+    protocol: MQTT
+    action: SUBSCRIBE
+    topic: sovd/extended-vehicle/fault-log/new
+    expect_payload_contains: fault_log_id
+
+evidence:
+  - the Extended Vehicle catalog advertises the fault-log item
+  - the REST fault-log view returns the ADR-0027-shaped list contract
+  - the MQTT publish topic emits fault-log identifiers for new entries

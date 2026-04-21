@@ -1,0 +1,11 @@
+schema_version: 1
+vss_version: v5.0
+mappings:
+  - path: Vehicle.OBD.DTCList
+    method: GET
+    endpoint: /sovd/v1/components/{id}/faults
+    direction: read
+    notes: >-
+      First slice from ADR-0026. `{id}` is resolved from an OEM-supplied
+      VSS-to-component map. The native SOVD read defaults to status mask
+      `0x08` (confirmed) unless the caller overrides it.

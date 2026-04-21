@@ -33,3 +33,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 utoipa = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+serde_yaml = "0.9"

@@ -1,0 +1,60 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://eclipse-opensovd.dev/schemas/semantic/vss-map.schema.yaml"
+title: "OpenSOVD semantic VSS mapping schema"
+description: >
+  Contract for semantic mapping files that bind a selected COVESA VSS path
+  to an existing OpenSOVD REST endpoint. Future domain-specific mapping files
+  extend this directory by adding more `*.schema.yaml` documents alongside
+  this first slice.
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - vss_version
+  - mappings
+properties:
+  schema_version:
+    type: integer
+    minimum: 1
+    description: Monotonic version for the local semantic schema contract.
+  vss_version:
+    type: string
+    minLength: 1
+    description: Pinned VSS release validated by the mapping file.
+  mappings:
+    type: array
+    minItems: 1
+    description: Declared VSS-to-SOVD bindings.
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - method
+        - endpoint
+        - direction
+      properties:
+        path:
+          type: string
+          pattern: "^Vehicle\\."
+          description: Fully qualified VSS path.
+        method:
+          type: string
+          enum:
+            - GET
+            - POST
+            - PUT
+          description: Native OpenSOVD HTTP method used for this mapping.
+        endpoint:
+          type: string
+          pattern: "^/sovd/v1/"
+          description: Native OpenSOVD endpoint path.
+        direction:
+          type: string
+          enum:
+            - read
+            - write
+          description: Whether the VSS leaf is a read-only sensor or a write-capable actuator.
+        notes:
+          type: string
+          description: Optional translation note preserved with the mapping row.

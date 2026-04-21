@@ -20,6 +20,13 @@ Cross-references used throughout:
 - ADR-SCORE = `H:\taktflow-opensovd\opensovd\docs\design\adr\001-adr-score-interface.md`
 - CORE-ARCH = `H:\taktflow-opensovd\opensovd-core\ARCHITECTURE.md`
 
+> **Scope qualifier (2026-04-20).** This document describes the *target*
+> architecture OpenSOVD is designed to fit into, including ASIL allocations
+> and safety boundaries. The firmware used on the Taktflow bench is a
+> portfolio prototype and is not ASIL-qualified. ASIL labels on diagrams
+> apply to the intended integration context, not to this repo's working
+> fixture.
+
 ---
 
 ## 1. Introduction and Goals

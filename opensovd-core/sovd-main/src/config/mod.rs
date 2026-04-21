@@ -62,19 +62,35 @@ mod tests {
         providers::{Format, Serialized, Toml},
     };
 
-    use super::configfile::Configuration;
+    use super::configfile::{Configuration, ServerTlsMode};
 
     #[test]
     fn defaults_use_port_20002() {
         let config = Configuration::default();
-        assert_eq!(config.server.address, "0.0.0.0");
+        assert_eq!(config.server.address, "127.0.0.1");
         assert_eq!(config.server.port, 20002);
+        assert_eq!(config.server.tls.mode, ServerTlsMode::Http);
+        assert_eq!(config.server.tls.cert_path, "certs/server.crt");
+        assert_eq!(config.server.tls.key_path, "certs/server.key");
         assert_eq!(
             config.local_demo_components,
             vec!["cvc".to_owned(), "sc".to_owned(), "bcm".to_owned()]
         );
         assert_eq!(config.dfm_component_id.as_deref(), Some("dfm"));
         assert!(config.cda_forwards.is_empty());
+        assert!(!config.bench_fault_injection.enabled);
+        assert!(!config.logging.otel.enabled);
+        assert_eq!(config.logging.otel.endpoint, "http://127.0.0.1:4317");
+        assert_eq!(config.logging.otel.service_name, "sovd-main");
+        assert!(!config.logging.dlt.enabled);
+        assert_eq!(config.logging.dlt.app_id, "SOVD");
+        assert_eq!(
+            config.logging.dlt.app_description,
+            "OpenSOVD core local SIL"
+        );
+        assert!(!config.rate_limit.enabled);
+        assert_eq!(config.rate_limit.requests_per_second, 20);
+        assert_eq!(config.rate_limit.window_seconds, 1);
     }
 
     #[test]
@@ -83,12 +99,20 @@ mod tests {
 [server]
 address = "127.0.0.1"
 port = 20004
+
+[server.tls]
+mode = "https"
+cert_path = "/tmp/server.crt"
+key_path = "/tmp/server.key"
 "#;
         let figment = Figment::from(Serialized::defaults(Configuration::default()))
             .merge(Toml::string(config_str));
         let config: Configuration = figment.extract()?;
         assert_eq!(config.server.address, "127.0.0.1");
         assert_eq!(config.server.port, 20004);
+        assert_eq!(config.server.tls.mode, ServerTlsMode::Https);
+        assert_eq!(config.server.tls.cert_path, "/tmp/server.crt");
+        assert_eq!(config.server.tls.key_path, "/tmp/server.key");
         Ok(())
     }
 
@@ -97,6 +121,9 @@ port = 20004
         let config_str = r#"
 dfm_component_id = ""
 local_demo_components = ["bcm"]
+
+[bench_fault_injection]
+enabled = true
 
 [[cda_forward]]
 component_id = "cvc"
@@ -109,6 +136,7 @@ path_prefix = "vehicle/v15"
         let config: Configuration = figment.extract()?;
         assert_eq!(config.dfm_component_id.as_deref(), Some(""));
         assert_eq!(config.local_demo_components, vec!["bcm".to_owned()]);
+        assert!(config.bench_fault_injection.enabled);
         assert_eq!(config.cda_forwards.len(), 1);
         let first = config
             .cda_forwards
@@ -118,6 +146,60 @@ path_prefix = "vehicle/v15"
         assert_eq!(first.remote_component_id.as_deref(), Some("cvc00000"));
         assert_eq!(first.base_url, "http://127.0.0.1:20002");
         assert_eq!(first.path_prefix, "vehicle/v15");
+        Ok(())
+    }
+
+    #[test]
+    fn toml_parses_rate_limit_overrides() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[rate_limit]
+enabled = true
+requests_per_second = 7
+window_seconds = 2
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        assert!(config.rate_limit.enabled);
+        assert_eq!(config.rate_limit.requests_per_second, 7);
+        assert_eq!(config.rate_limit.window_seconds, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn toml_parses_otel_overrides() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[logging.otel]
+enabled = true
+endpoint = "http://127.0.0.1:4317"
+service_name = "sovd-main-local"
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        assert!(config.logging.otel.enabled);
+        assert_eq!(config.logging.otel.endpoint, "http://127.0.0.1:4317");
+        assert_eq!(config.logging.otel.service_name, "sovd-main-local");
+        Ok(())
+    }
+
+    #[test]
+    fn toml_parses_dlt_overrides() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[logging.dlt]
+enabled = true
+app_id = "SOVD"
+app_description = "OpenSOVD core DLT smoke"
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        assert!(config.logging.dlt.enabled);
+        assert_eq!(config.logging.dlt.app_id, "SOVD");
+        assert_eq!(
+            config.logging.dlt.app_description,
+            "OpenSOVD core DLT smoke"
+        );
         Ok(())
     }
 
@@ -135,6 +217,7 @@ path_prefix = "vehicle/v15"
         assert_eq!(config.dfm_component_id.as_deref(), Some(""));
         // 3-ECU bench per ADR-0023: BCM local, CVC+SC forwarded to CDA.
         assert_eq!(config.local_demo_components, vec!["bcm".to_owned()]);
+        assert!(config.bench_fault_injection.enabled);
         assert_eq!(config.cda_forwards.len(), 2);
         assert_eq!(
             config

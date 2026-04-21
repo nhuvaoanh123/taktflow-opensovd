@@ -43,6 +43,8 @@ Domain-specific terms used in taktflow-opensovd documentation and source code.
 | Term | Definition |
 |------|-----------|
 | **Fault Library** | The API boundary between QM (SOVD) and ASIL-D (firmware) domains. Implemented as a C shim on embedded targets and a Rust crate on POSIX. |
+| **FaultShim** | Plan-text noun from ADR-0002 for the embedded C reporter. In code this is the AUTOSAR-style **`Dem`** module in the embedded-production repo (`firmware/bsw/services/Dem/`) — same artifact, different name. Read-only reference snapshot at [`docs/reference/embedded-fault-reporter/`](reference/embedded-fault-reporter/). Sessions that cannot find `FaultShim*.c` should look for `Dem.c`. |
+| **Dem** | AUTOSAR Classic Diagnostic Event Manager. Our embedded implementation of the FaultShim contract; runs on every ECU, exposes `Dem_Init` / `Dem_ReportErrorStatus` / `Dem_GetEventStatus` / `Dem_ClearAllDTCs` / `Dem_MainFunction`, emits CAN 0x500 DTC_Broadcast, persists occurrence counters via NvM. |
 | **FaultSink** | Trait defining fault ingestion transport. Implementations: Unix socket (default), LoLa shared-memory (S-CORE). |
 | **Operation cycle** | Lifecycle concept from UDS. Faults are associated with the operation cycle during which they were detected. DFM uses this for fault aging and clear logic. |
 | **SovdBackend** | Core trait for SOVD service implementations. The server routes requests to backend trait objects. |

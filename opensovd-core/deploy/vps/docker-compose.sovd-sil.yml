@@ -1,0 +1,161 @@
+services:
+  sovd-main:
+    image: taktflow/sovd-main:vps-local
+    container_name: taktflow_sovd_main
+    restart: unless-stopped
+    networks:
+      - default
+    expose:
+      - "20002"
+    volumes:
+      - ./opensovd-sil.toml:/etc/opensovd-sil.toml:ro
+      - sovd_db_data:/var/lib/opensovd
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:20002/sovd/v1/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  ecu-sim:
+    image: taktflow/cda-ecu-sim:vps-local
+    container_name: taktflow_ecu_sim
+    restart: unless-stopped
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    environment:
+      USE_MULTIPLE_IPS: "true"
+      SIM_NETWORK_INTERFACE: eth0
+    networks:
+      - default
+    expose:
+      - "8181"
+      - "13400"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8181/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+
+  cda:
+    image: taktflow/opensovd-cda:vps-local
+    container_name: taktflow_cda
+    restart: unless-stopped
+    networks:
+      - default
+    expose:
+      - "20002"
+    volumes:
+      - ./cda-odx:/app/odx:ro
+      - ./opensovd-cda.toml:/app/opensovd-cda.toml:ro
+    environment:
+      RUST_LOG: info
+      CDA_CONFIG_FILE: /app/opensovd-cda.toml
+    command: ["-d", "/app/odx"]
+    depends_on:
+      ecu-sim:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:20002/vehicle/v15/components >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: taktflow_mosquitto
+    restart: unless-stopped
+    networks:
+      - default
+    expose:
+      - "1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -C 1 -t '$$SYS/broker/version' -W 3 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  ws-bridge:
+    image: taktflow/ws-bridge:vps-local
+    container_name: taktflow_ws_bridge
+    restart: unless-stopped
+    networks:
+      - default
+    expose:
+      - "8082"
+    environment:
+      WS_BRIDGE_MQTT_URL: mqtt://mosquitto:1883
+      WS_BRIDGE_BIND_ADDR: 0.0.0.0:8082
+      WS_BRIDGE_SUB_TOPIC: vehicle/#
+      WS_BRIDGE_TOKEN: ${WS_BRIDGE_TOKEN:-stage1-vps-static-token}
+      WS_BRIDGE_DLT_ENABLED: "${WS_BRIDGE_DLT_ENABLED:-false}"
+      WS_BRIDGE_DLT_APP_ID: "${WS_BRIDGE_DLT_APP_ID:-WSBR}"
+      WS_BRIDGE_DLT_APP_DESCRIPTION: "${WS_BRIDGE_DLT_APP_DESCRIPTION:-OpenSOVD ws-bridge}"
+      RUST_LOG: "${WS_BRIDGE_LOG:-info}"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8082/healthz >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    container_name: taktflow_prometheus
+    restart: unless-stopped
+    networks:
+      - default
+    expose:
+      - "9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.listen-address=0.0.0.0:9090
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      ws-bridge:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    container_name: taktflow_grafana
+    restart: unless-stopped
+    networks:
+      - default
+    expose:
+      - "3000"
+    volumes:
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_started
+
+networks:
+  default:
+    name: taktflow-systems_default
+    external: true
+
+volumes:
+  grafana_data:
+  mosquitto_data:
+  mosquitto_log:
+  prometheus_data:
+  sovd_db_data:

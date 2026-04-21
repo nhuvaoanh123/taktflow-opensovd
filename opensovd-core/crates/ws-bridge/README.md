@@ -45,6 +45,10 @@ from its own broadcast receiver. Slow clients get closed with WS code
 | `WS_BRIDGE_BIND_ADDR`  | `127.0.0.1:8082`         | HTTP listener.                                |
 | `WS_BRIDGE_SUB_TOPIC`  | `vehicle/#`              | MQTT topic filter.                            |
 | `WS_BRIDGE_TOKEN`      | -- (required)            | Bearer token for `/ws?token=...`. Unset -> exit. |
+| `RUST_LOG`             | `info`                   | Shared tracing filter directive.              |
+| `WS_BRIDGE_DLT_ENABLED`| `false`                  | Enable the DLT sink (requires `--features dlt-tracing`). |
+| `WS_BRIDGE_DLT_APP_ID` | `WSBR`                   | DLT application id.                           |
+| `WS_BRIDGE_DLT_APP_DESCRIPTION` | `OpenSOVD ws-bridge` | DLT application description.             |
 
 ## Run
 
@@ -54,6 +58,9 @@ cargo run -p ws-bridge
 # then, from a browser console:
 # new WebSocket(`ws://127.0.0.1:8082/ws?token=${token}`)
 ```
+
+For Phase 6 DLT output, build with `cargo run -p ws-bridge --features dlt-tracing`
+and set `WS_BRIDGE_DLT_ENABLED=true`.
 
 ## Security
 

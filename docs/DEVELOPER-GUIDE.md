@@ -99,7 +99,7 @@ cargo run -p sovd-main -- --backend sqlite
 
 Verify:
 ```bash
-curl http://127.0.0.1:21002/sovd/v1/components
+curl http://127.0.0.1:20002/sovd/v1/components
 ```
 
 ### Local SIL with CDA + ECU simulator

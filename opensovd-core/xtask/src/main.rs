@@ -40,6 +40,7 @@ use cda_database::{
 use cda_interfaces::datatypes::{ComParamValue, FlatbBufConfig};
 use clap::{Parser, Subcommand};
 use prost::Message;
+use tracing::Level;
 use utoipa::OpenApi;
 
 #[derive(Parser, Debug)]
@@ -65,22 +66,138 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// Regenerate Phase 5 MDD + ODX from the authoritative YAML sources under
+    /// `opensovd-core/deploy/pi/cda-mdd/src/` using the vendored diag-converter
+    /// at `<monolith-root>/diag-converter/`. This is the preferred pipeline;
+    /// `phase5-cda-mdds` (Rust EcuDataBuilder) stays around only as a legacy
+    /// bench-compat escape hatch.
+    Phase5YamlToMdd {
+        /// Check that the committed .mdd / .odx match regeneration instead
+        /// of rewriting them. Used in CI staleness gates.
+        #[arg(long)]
+        check: bool,
+    },
+}
+
+fn init_tracing() -> Result<sovd_tracing::TracingGuard, Box<dyn std::error::Error>> {
+    let dlt_enabled = match std::env::var("XTASK_DLT_ENABLED") {
+        Ok(raw) => parse_bool_flag(raw.trim())
+            .ok_or_else(|| format!("XTASK_DLT_ENABLED has unsupported boolean value `{raw}`"))?,
+        Err(_) => false,
+    };
+
+    let config = sovd_tracing::TracingConfig {
+        filter_directive: std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_owned()),
+        dlt: sovd_tracing::DltConfig {
+            enabled: dlt_enabled,
+            app_id: std::env::var("XTASK_DLT_APP_ID").unwrap_or_else(|_| "XTSK".to_owned()),
+            app_description: std::env::var("XTASK_DLT_APP_DESCRIPTION")
+                .unwrap_or_else(|_| "OpenSOVD xtask".to_owned()),
+        },
+        otel: sovd_tracing::OtelConfig::default(),
+    };
+
+    sovd_tracing::init(&config)
+}
+
+fn parse_bool_flag(value: &str) -> Option<bool> {
+    match value {
+        value
+            if value.eq_ignore_ascii_case("1")
+                || value.eq_ignore_ascii_case("true")
+                || value.eq_ignore_ascii_case("yes")
+                || value.eq_ignore_ascii_case("on") =>
+        {
+            Some(true)
+        }
+        value
+            if value.eq_ignore_ascii_case("0")
+                || value.eq_ignore_ascii_case("false")
+                || value.eq_ignore_ascii_case("no")
+                || value.eq_ignore_ascii_case("off") =>
+        {
+            Some(false)
+        }
+        _ => None,
+    }
 }
 
 fn main() -> std::process::ExitCode {
+    let _tracing_guard = match init_tracing() {
+        Ok(guard) => guard,
+        Err(e) => {
+            eprintln!("xtask tracing init failed: {e}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+
     let cli = Cli::parse();
+    tracing::event!(Level::INFO, command = ?cli.command, "xtask command starting");
+
     match cli.command {
         Command::OpenapiDump { check } => match openapi_dump(check) {
-            Ok(()) => std::process::ExitCode::SUCCESS,
+            Ok(()) => {
+                tracing::event!(
+                    Level::INFO,
+                    command = "openapi-dump",
+                    check,
+                    "xtask command completed"
+                );
+                std::process::ExitCode::SUCCESS
+            }
             Err(e) => {
+                tracing::event!(
+                    Level::ERROR,
+                    command = "openapi-dump",
+                    check,
+                    error = %e,
+                    "xtask command failed"
+                );
                 eprintln!("xtask openapi-dump failed: {e}");
                 std::process::ExitCode::FAILURE
             }
         },
         Command::Phase5CdaMdds { check } => match phase5_cda_mdds(check) {
-            Ok(()) => std::process::ExitCode::SUCCESS,
+            Ok(()) => {
+                tracing::event!(
+                    Level::INFO,
+                    command = "phase5-cda-mdds",
+                    check,
+                    "xtask command completed"
+                );
+                std::process::ExitCode::SUCCESS
+            }
             Err(e) => {
+                tracing::event!(
+                    Level::ERROR,
+                    command = "phase5-cda-mdds",
+                    check,
+                    error = %e,
+                    "xtask command failed"
+                );
                 eprintln!("xtask phase5-cda-mdds failed: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        },
+        Command::Phase5YamlToMdd { check } => match phase5_yaml_to_mdd(check) {
+            Ok(()) => {
+                tracing::event!(
+                    Level::INFO,
+                    command = "phase5-yaml-to-mdd",
+                    check,
+                    "xtask command completed"
+                );
+                std::process::ExitCode::SUCCESS
+            }
+            Err(e) => {
+                tracing::event!(
+                    Level::ERROR,
+                    command = "phase5-yaml-to-mdd",
+                    check,
+                    error = %e,
+                    "xtask command failed"
+                );
+                eprintln!("xtask phase5-yaml-to-mdd failed: {e}");
                 std::process::ExitCode::FAILURE
             }
         },
@@ -123,6 +240,7 @@ struct Phase5MddSpec {
     remote_component_id_upper: &'static str,
     logical_address_decimal: &'static str,
     include_motor_self_test: bool,
+    dtc_records: &'static [(u32, &'static str, &'static str, u32)],
 }
 
 const PHASE5_FUNCTIONAL_ADDRESS: &str = "65535";
@@ -134,21 +252,18 @@ const PHASE5_MDD_SPECS: &[Phase5MddSpec] = &[
     Phase5MddSpec {
         remote_component_id_upper: "CVC00000",
         logical_address_decimal: "0001",
-        include_motor_self_test: false,
-    },
-    Phase5MddSpec {
-        remote_component_id_upper: "FZC00000",
-        logical_address_decimal: "0002",
-        include_motor_self_test: false,
-    },
-    Phase5MddSpec {
-        remote_component_id_upper: "RZC00000",
-        logical_address_decimal: "0003",
         include_motor_self_test: true,
+        dtc_records: PHASE5_CVC_DTC_RECORDS,
+    },
+    Phase5MddSpec {
+        remote_component_id_upper: "SC00000",
+        logical_address_decimal: "0004",
+        include_motor_self_test: false,
+        dtc_records: PHASE5_SC_DTC_RECORDS,
     },
 ];
 
-const PHASE5_DTC_RECORDS: &[(u32, &str, &str, u32)] = &[
+const PHASE5_CVC_DTC_RECORDS: &[(u32, &str, &str, u32)] = &[
     (0xC00100, "C00100", "Pedal Sensor Plausibility Failure", 2),
     (0xC00200, "C00200", "Pedal Sensor 1 Communication Loss", 2),
     (0xC00300, "C00300", "Pedal Sensor 2 Communication Loss", 2),
@@ -172,6 +287,12 @@ const PHASE5_DTC_RECORDS: &[(u32, &str, &str, u32)] = &[
     (0xC40100, "C40100", "E-Stop Activated", 2),
     (0xC50100, "C50100", "WdgM Supervision Expired", 2),
     (0xC50200, "C50200", "BswM Mode Transition Failure", 2),
+];
+
+const PHASE5_SC_DTC_RECORDS: &[(u32, &str, &str, u32)] = &[
+    (0x100001, "100001", "SC bench firmware hardcoded DTC 1", 2),
+    (0x100002, "100002", "SC bench firmware hardcoded DTC 2", 2),
+    (0x100003, "100003", "SC bench firmware hardcoded DTC 3", 2),
 ];
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -467,7 +588,8 @@ fn build_phase5_diag_blob(spec: &Phase5MddSpec) -> Result<Vec<u8>, Box<dyn std::
 
     let fault_mem_class = builder.create_funct_class("FaultMem");
 
-    let dtcs = PHASE5_DTC_RECORDS
+    let dtcs = spec
+        .dtc_records
         .iter()
         .map(|(code, display_code, fault_name, severity)| {
             builder.create_dtc(*code, Some(display_code), Some(fault_name), *severity)
@@ -912,4 +1034,119 @@ fn phase5_template_mdd_license_path() -> PathBuf {
 
 fn phase5_output_dir() -> PathBuf {
     workspace_root().join("deploy").join("pi").join("cda-mdd")
+}
+
+fn phase5_yaml_dir() -> PathBuf {
+    phase5_output_dir().join("src")
+}
+
+fn diag_converter_manifest() -> PathBuf {
+    workspace_root()
+        .parent()
+        .expect("outer workspace root")
+        .join("diag-converter")
+        .join("Cargo.toml")
+}
+
+/// Phase 5 ECUs whose MDD / ODX are regenerated from YAML.
+///
+const PHASE5_YAML_ECUS: &[&str] = &["CVC00000", "SC00000"];
+
+fn phase5_yaml_to_mdd(check: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let manifest = diag_converter_manifest();
+    if !manifest.exists() {
+        return Err(format!(
+            "vendored diag-converter not found at {}; see diag-converter/UPSTREAM.md",
+            manifest.display()
+        )
+        .into());
+    }
+
+    let yaml_dir = phase5_yaml_dir();
+    let output_dir = phase5_output_dir();
+
+    if !check {
+        fs::create_dir_all(&output_dir)?;
+    }
+
+    for ecu in PHASE5_YAML_ECUS {
+        let yaml = yaml_dir.join(format!("{ecu}.yml"));
+        if !yaml.exists() {
+            return Err(format!("YAML source missing: {}", yaml.display()).into());
+        }
+        let committed_mdd = output_dir.join(format!("{ecu}.mdd"));
+        let committed_odx = output_dir.join(format!("{ecu}.odx"));
+
+        if check {
+            let tmp_mdd = tempfile::Builder::new()
+                .prefix(ecu)
+                .suffix(".mdd")
+                .tempfile()?;
+            let tmp_odx = tempfile::Builder::new()
+                .prefix(ecu)
+                .suffix(".odx")
+                .tempfile()?;
+
+            run_diag_converter(&manifest, &yaml, tmp_mdd.path())?;
+            run_diag_converter(&manifest, &yaml, tmp_odx.path())?;
+
+            let generated_mdd = fs::read(tmp_mdd.path())?;
+            let committed_mdd_bytes = fs::read(&committed_mdd)?;
+            if generated_mdd != committed_mdd_bytes {
+                return Err(format!(
+                    "{} is stale; rerun `cargo run -p xtask -- phase5-yaml-to-mdd`",
+                    committed_mdd.display()
+                )
+                .into());
+            }
+
+            let generated_odx = fs::read(tmp_odx.path())?;
+            let committed_odx_bytes = fs::read(&committed_odx)?;
+            if generated_odx != committed_odx_bytes {
+                return Err(format!(
+                    "{} is stale; rerun `cargo run -p xtask -- phase5-yaml-to-mdd`",
+                    committed_odx.display()
+                )
+                .into());
+            }
+        } else {
+            run_diag_converter(&manifest, &yaml, &committed_mdd)?;
+            run_diag_converter(&manifest, &yaml, &committed_odx)?;
+            eprintln!("wrote {}", committed_mdd.display());
+            eprintln!("wrote {}", committed_odx.display());
+        }
+    }
+
+    Ok(())
+}
+
+fn run_diag_converter(
+    manifest: &Path,
+    input: &Path,
+    output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let status = std::process::Command::new("cargo")
+        .arg("run")
+        .arg("--manifest-path")
+        .arg(manifest)
+        .arg("--release")
+        .arg("--quiet")
+        .arg("-p")
+        .arg("diag-converter")
+        .arg("--")
+        .arg("convert")
+        .arg(input)
+        .arg("-o")
+        .arg(output)
+        .status()?;
+    if !status.success() {
+        return Err(format!(
+            "diag-converter exited with status {} converting {} -> {}",
+            status,
+            input.display(),
+            output.display()
+        )
+        .into());
+    }
+    Ok(())
 }

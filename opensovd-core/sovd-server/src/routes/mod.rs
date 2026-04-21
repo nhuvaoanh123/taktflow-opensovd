@@ -39,12 +39,12 @@ use axum::{
 
 use crate::{InMemoryServer, auth::AuthConfig, correlation};
 
+pub mod bench;
 pub mod components;
 pub mod data;
 pub mod error;
 pub mod faults;
 pub mod health;
-pub mod bench;
 pub mod observer;
 pub mod operations;
 

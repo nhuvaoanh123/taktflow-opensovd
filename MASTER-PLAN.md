@@ -182,15 +182,21 @@ plus the four future-proofing extensions the project description names.
 
 ### 1.3 Out-Of-Scope
 
-- **Upstream contribution to Eclipse OpenSOVD.** Dropped
+- **Upstream code contribution to Eclipse OpenSOVD.** Dropped
   2026-04-20. Prior plans archived under
   [`docs/contribution/archive/`](docs/contribution/archive/),
   [`docs/upstream/archive/`](docs/upstream/archive/), and
   [`docs/adr/archive/`](docs/adr/archive/). No PR workflow, no ECA
-  signatures, no `opensovd/discussions` engagement. The
-  `opensovd-core/` tree stays an internal monorepo subdirectory. CDA
+  signatures, no committer seats pursued. The `opensovd-core/` tree
+  stays an internal monorepo subdirectory. CDA
   (`classic-diagnostic-adapter/`) remains vendored verbatim as a
-  read-only dependency.
+  read-only dependency. **In scope, however, is active upstream
+  tracking and design absorption** — recent examples: upstream ADR 001
+  (fault-lib as S-CORE↔OpenSOVD interface) framed Part II PROD-16
+  context, upstream design.md §"Diagnostic Library" was absorbed into
+  Part II PROD-17, upstream Rust lint proposal became ADR-0032, PR #7
+  ideas drive PROD-16.1–16.5. Engagement without authoring — the OEM
+  stays the authority, we stay the consumer who reads the room.
 - Taktflow-specific DBC files and codegen pipelines (proprietary vehicle
   signal definitions).
 - Embedded Dcm modifications on the safety-case-scoped ASIL-D firmware
@@ -890,7 +896,7 @@ Taktflow diverges from the S-CORE diagram, the divergence is the spec.
 
 | S-CORE box | Taktflow today | Status under OEM policy |
 |---|---|---|
-| Fault Library | [`fault-lib/`](fault-lib/) | aligned; no action |
+| Fault Library | [`fault-lib/`](fault-lib/) | aligned; vendored snapshot untouched but upstream direction **actively tracked** — upstream ADR 001 + PR #7 ideas drive Part II PROD-16 (see `MASTER-PLAN-PART-2-PRODUCTION-GRADE.md` §II.6.16). Our host-side fault path lives in [`opensovd-core/sovd-dfm/`](opensovd-core/sovd-dfm/); the vendored `fault-lib/` is kept for reference, not replacement. |
 | DFM | [`opensovd-core/sovd-dfm/`](opensovd-core/sovd-dfm/) | aligned; no action |
 | SOVD Server | [`opensovd-core/sovd-server/`](opensovd-core/sovd-server/) | aligned; no action |
 | SOVD Gateway | [`opensovd-core/sovd-gateway/`](opensovd-core/sovd-gateway/) | aligned; no action |
@@ -1199,7 +1205,7 @@ Historical. See §13.1. Exit: M3 — Fault inject → DFM ingest → SOVD GET
 Historical. See §13.1. Exit: M4 — 5 MVP use cases pass in Docker
 Compose; each crate in internal-review shape.
 
-### 7.6 P5 — E2E Demo + HIL On Physical Bench *(in progress)*
+### 7.6 P5 — E2E Demo + HIL On Physical Bench *(complete)*
 
 Entry: P4 Docker demo working.
 
@@ -1210,6 +1216,8 @@ Exit gates:
 - Pi HIL dashboard serves all 20 use-case widgets on bench LAN.
 - Stage 2 AWS uplink continues operating.
 - Demo video recorded.
+
+Status: complete 2026-04-21. All Phase 5 exit gates are satisfied.
 
 #### 7.6.1 P5 — VPS Tier (public SIL)
 
@@ -1248,14 +1256,14 @@ Exit gates:
 | P5-HIL-06 | done | live_bench | Run fault-injection + error-handling (`04`, `08`) | `cargo test -p integration-tests --test phase5_hil_sovd_04_can_busoff -- --nocapture` and `cargo test -p integration-tests --test phase5_hil_sovd_08_error_handling -- --nocapture` both passed live against Pi `<pi-bench-ip>:21002`; the Pi proxy now treats `TesterPresent 0x3E80` as a suppressed-response keepalive, `sovd-main` serves cached stale snapshots when the laptop CDA degrades, D9 falls back when `gs_usb` rejects `restart-ms`, and D5 now verifies real `can0` BUS-OFF plus stale/fresh `/faults` transitions honestly on the retained-state bench where `C10300` persists even after full-chip erase + reflash of the known-good CVC image |
 | P5-HIL-07 | done | live_bench | Run concurrency + scale (`06`, `07`) | Bench fault overrides seeded `cvc`, `sc`, and `bcm` for D7, and D7 now verifies per-component preconditions before concurrency while tolerating the real overlap where a peer tester clears `cvc` first; `cargo test -p integration-tests --test phase5_hil_sovd_06_concurrent_testers -- --nocapture` passed live against Pi `<pi-bench-ip>:21002`. The bench was then reseeded with a 53-fault CVC override, and `cargo test -p integration-tests --test phase5_hil_sovd_07_large_fault_list -- --nocapture` passed live with `total=53` and `next_page=2` on page 1 |
 | P5-HIL-08 | done | repo_only | Complete doip-codec PARTIAL migration | Fork pins match CDA revs; `cargo test --release` 17 passed / 0 failed |
-| P5-HIL-09 | partial | repo_only | Add MDD FlatBuffers emitter to `tools/odx-gen` | `--emit=mdd` produces output matching CDA `cda-database`; 6 byte-level round-trip tests pass |
+| P5-HIL-09 | done | repo_only | Add MDD FlatBuffers emitter to `tools/odx-gen` | Base `--emit=mdd` emitter landed; closed via P5-HIL-09b once variants + full round-trip were complete |
 | P5-HIL-09b | done | repo_only | Complete MDD emitter — variants + full round-trip | Generated Python bindings checked in; 5 structural round-trip tests pass |
 | P5-HIL-10 | done | repo_only | Install and document autonomous bench helpers | `mdd-ui` install + `tokio-console` attach steps recorded |
 | P5-HIL-11 | done | live_bench | Collect nightly-green proof, perf proof, demo video | Nightly-green proof captured in `H:\handoff\taktflow-opensovd\hil-proof-and-demo\artifacts\p5-hil-11-nightly-proof-20260420-210115.log` with all 8 HIL scenarios passing live against Pi `<pi-bench-ip>:21002`; fresh performance proof captured in [docs/bench/phase5-pi-perf-2026-04-20.md](docs/bench/phase5-pi-perf-2026-04-20.md) with avg `0.94 ms`, P99 `3.00 ms`, and max RSS `9.1 MiB`; short live demo capture archived as `H:\handoff\taktflow-opensovd\hil-proof-and-demo\artifacts\p5-hil-11-demo-20260420-210539.mp4` |
 
 ### 7.7 P6 — Hardening
 
-Entry: Phase 5 HIL green (M5 entry).
+Entry: Phase 5 complete (M5 entry reached 2026-04-21).
 
 Exit: M5 — physical HIL passes; public SIL live; demo recorded; HARA +
 FMEA approved; OTA demonstrable end-to-end on CVC.
@@ -1636,7 +1644,7 @@ pulled in.
 | P2 | 2026-06-30 (M2) | SOVD GET via CDA round-trips; Pi proxy reaches physical CVC |
 | P3 | 2026-08-15 (M3) | Fault inject → DFM → SOVD GET <100 ms in Docker |
 | P4 | 2026-10-15 (M4) | 5 MVP UCs pass in Docker Compose |
-| P5 | In progress | Targeted 2026-11-30 entry to M5; see §7.6 |
+| P5 | 2026-04-21 (M5 entry) | 8 HIL scenarios green; VPS + Pi perf baselines met; SIL + HIL dashboards live; Stage 2 AWS uplink operating; demo recorded |
 
 ### 13.2 Achievements Log (Verbatim)
 
@@ -1650,9 +1658,10 @@ pulled in.
   → SOVD GET round-trip <100 ms in Docker.
 - Phase 4 SOVD Server + Gateway complete — 5 MVP use cases pass in
   Docker Compose, every crate in internal-review shape.
-- Phase 5 Stage 1 in progress — fault-sink-mqtt + ws-bridge + observer
-  dashboard + observability wiring merged to main; Mosquitto kit still
-  isolated on `feat/mqtt-broker-deploy`.
+- Phase 5 complete — 8 HIL scenarios are green on the physical bench,
+  VPS + Pi performance baselines are captured, SIL + HIL dashboards are
+  live, the Stage 2 AWS uplink is operating, and demo evidence is
+  archived.
 - doip-codec evaluation spike complete — partial migration plan
   documented at [`docs/doip-codec-evaluation.md`](docs/doip-codec-evaluation.md).
 - ADR-0023 trimmed physical bench to 3 ECUs (CVC, SC, BCM); FZC/RZC

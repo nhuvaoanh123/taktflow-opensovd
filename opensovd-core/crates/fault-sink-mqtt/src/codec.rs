@@ -214,8 +214,7 @@ mod tests {
 
     #[test]
     fn bench_id_is_propagated() {
-        let bytes =
-            encode_record_at(&sample_record(), "my-bench-42", fixed_now()).expect("encode");
+        let bytes = encode_record_at(&sample_record(), "my-bench-42", fixed_now()).expect("encode");
         let msg: WireDtcMessage = serde_json::from_slice(&bytes).expect("decode");
         assert_eq!(msg.bench_id, "my-bench-42");
     }

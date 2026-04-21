@@ -16,7 +16,10 @@ use sovd_covesa::{first_mapping_for, load_contracts, schemas_dir_path};
 fn contract_files_live_in_the_expected_schema_directory() {
     let schemas_dir = schemas_dir_path();
 
-    assert!(schemas_dir.ends_with("sovd-covesa\\schemas") || schemas_dir.ends_with("sovd-covesa/schemas"));
+    assert!(
+        schemas_dir.ends_with("sovd-covesa\\schemas")
+            || schemas_dir.ends_with("sovd-covesa/schemas")
+    );
     assert!(schemas_dir.join("vss-version.yaml").exists());
     assert!(schemas_dir.join("vss-map.yaml").exists());
 }

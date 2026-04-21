@@ -135,10 +135,9 @@ fn validate_property(name: &str, property: &JsonSchemaProperty) {
     }
 
     if let Some(required) = &property.required {
-        let nested = property
-            .properties
-            .as_ref()
-            .unwrap_or_else(|| panic!("property {name} has required fields but no nested properties"));
+        let nested = property.properties.as_ref().unwrap_or_else(|| {
+            panic!("property {name} has required fields but no nested properties")
+        });
         for nested_name in required {
             assert!(
                 nested.contains_key(nested_name),
@@ -175,8 +174,7 @@ fn semantic_schema_files_validate() {
             .unwrap_or_else(|error| panic!("parse schema {display}: {error}"));
 
         assert_eq!(
-            schema.draft,
-            "https://json-schema.org/draft/2020-12/schema",
+            schema.draft, "https://json-schema.org/draft/2020-12/schema",
             "schema {display} must pin the JSON Schema draft"
         );
         assert!(

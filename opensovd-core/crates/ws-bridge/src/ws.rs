@@ -148,7 +148,11 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     loop {
         match rx.recv().await {
             Ok(event) => {
-                if sink.send(Message::Text(event.json_frame.into())).await.is_err() {
+                if sink
+                    .send(Message::Text(event.json_frame.into()))
+                    .await
+                    .is_err()
+                {
                     // Client hung up — exit cleanly.
                     break;
                 }
@@ -158,9 +162,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                 state.metrics.inc_dropped_lagged();
                 let close = CloseFrame {
                     code: 1011,
-                    reason: axum::extract::ws::Utf8Bytes::from_static(
-                        "broadcast lagged",
-                    ),
+                    reason: axum::extract::ws::Utf8Bytes::from_static("broadcast lagged"),
                 };
                 let _ = sink.send(Message::Close(Some(close))).await;
                 break;

@@ -78,13 +78,20 @@ fn load_scenario(file_name: &str) -> ScenarioDocument {
     let display = path.display();
     let raw = fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("read scenario {display}: {error}"));
-    serde_yaml::from_str(&raw)
-        .unwrap_or_else(|error| panic!("parse scenario {display}: {error}"))
+    serde_yaml::from_str(&raw).unwrap_or_else(|error| panic!("parse scenario {display}: {error}"))
 }
 
 fn assert_basics(doc: &ScenarioDocument) {
-    assert!(doc.disabled, "{} must stay disabled until implemented", doc.name);
-    assert!(!doc.reason.is_empty(), "{} must explain why it is disabled", doc.name);
+    assert!(
+        doc.disabled,
+        "{} must stay disabled until implemented",
+        doc.name
+    );
+    assert!(
+        !doc.reason.is_empty(),
+        "{} must explain why it is disabled",
+        doc.name
+    );
     assert!(
         !doc.topology.description.is_empty(),
         "{} must describe its topology",
@@ -96,7 +103,11 @@ fn assert_basics(doc: &ScenarioDocument) {
         doc.name
     );
     assert!(!doc.calls.is_empty(), "{} must declare calls", doc.name);
-    assert!(!doc.evidence.is_empty(), "{} must declare evidence", doc.name);
+    assert!(
+        !doc.evidence.is_empty(),
+        "{} must declare evidence",
+        doc.name
+    );
 }
 
 #[test]
@@ -114,7 +125,10 @@ fn phase2_scenario_contracts_exist_and_validate() {
         Some("Vehicle.OBD.DTCList")
     );
     assert_eq!(
-        covesa.contracts.get("translated_endpoint").map(String::as_str),
+        covesa
+            .contracts
+            .get("translated_endpoint")
+            .map(String::as_str),
         Some("/sovd/v1/components/cvc/faults")
     );
     assert!(
@@ -144,7 +158,10 @@ fn phase2_scenario_contracts_exist_and_validate() {
         Some("/sovd/v1/extended/vehicle/fault-log")
     );
     assert_eq!(
-        extended_vehicle.contracts.get("publish_topic").map(String::as_str),
+        extended_vehicle
+            .contracts
+            .get("publish_topic")
+            .map(String::as_str),
         Some("sovd/extended-vehicle/fault-log/new")
     );
     assert!(
@@ -177,7 +194,10 @@ fn phase2_scenario_contracts_exist_and_validate() {
 
 #[test]
 fn phase2_scenario_calls_have_a_transport_shape() {
-    for file_name in ["sil_covesa_dtc_list.yaml", "sil_extended_vehicle_fault_log.yaml"] {
+    for file_name in [
+        "sil_covesa_dtc_list.yaml",
+        "sil_extended_vehicle_fault_log.yaml",
+    ] {
         let doc = load_scenario(file_name);
         for call in &doc.calls {
             let http_shape = call.method.is_some()

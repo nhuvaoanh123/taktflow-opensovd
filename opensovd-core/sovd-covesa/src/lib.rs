@@ -130,7 +130,10 @@ pub fn load_contracts() -> Result<(VssVersionPin, VssMap), ContractLoadError> {
 
 pub fn first_mapping_for(path: &str) -> Result<Option<VssMapping>, ContractLoadError> {
     let (_, map) = load_contracts()?;
-    Ok(map.mappings.into_iter().find(|mapping| mapping.path == path))
+    Ok(map
+        .mappings
+        .into_iter()
+        .find(|mapping| mapping.path == path))
 }
 
 pub fn schemas_dir_path() -> std::path::PathBuf {

@@ -132,7 +132,9 @@ pub fn build_fault_log_publish(
         .iter()
         .any(|item| item == "fault-log")
     {
-        return Err(ExtendedVehicleError::DataItemDisabled("fault-log".to_string()));
+        return Err(ExtendedVehicleError::DataItemDisabled(
+            "fault-log".to_string(),
+        ));
     }
 
     let payload_json = serde_json::to_string_pretty(&json!({

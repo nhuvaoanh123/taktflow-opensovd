@@ -39,8 +39,7 @@ pub const REFERENCE_MODEL_RELATIVE_PATH: &str = "models/reference-fault-predicto
 pub const REFERENCE_SIGNATURE_RELATIVE_PATH: &str = "models/reference-fault-predictor.sig";
 
 /// Relative path reserved for the signed manifest that travels with the model.
-pub const REFERENCE_MANIFEST_RELATIVE_PATH: &str =
-    "models/reference-fault-predictor.manifest.yaml";
+pub const REFERENCE_MANIFEST_RELATIVE_PATH: &str = "models/reference-fault-predictor.manifest.yaml";
 
 /// Relative path reserved for layout notes and artifact provenance.
 pub const MODELS_README_RELATIVE_PATH: &str = "models/README.md";
@@ -146,25 +145,32 @@ fn verification_payload(model_bytes: &[u8], manifest_yaml: &str) -> Vec<u8> {
     payload
 }
 
-pub fn load_verified_model(bundle: &ModelBundlePaths<'_>) -> Result<LoadedModelBundle, ModelLoadError> {
+pub fn load_verified_model(
+    bundle: &ModelBundlePaths<'_>,
+) -> Result<LoadedModelBundle, ModelLoadError> {
     if !bundle.model.exists() {
         return Err(ModelLoadError::MissingModel(bundle.model.to_path_buf()));
     }
     if !bundle.manifest.exists() {
-        return Err(ModelLoadError::MissingManifest(bundle.manifest.to_path_buf()));
+        return Err(ModelLoadError::MissingManifest(
+            bundle.manifest.to_path_buf(),
+        ));
     }
     if !bundle.signature.exists() {
-        return Err(ModelLoadError::MissingSignature(bundle.signature.to_path_buf()));
+        return Err(ModelLoadError::MissingSignature(
+            bundle.signature.to_path_buf(),
+        ));
     }
 
     let model_bytes = fs::read(bundle.model).map_err(|source| ModelLoadError::Read {
         path: bundle.model.to_path_buf(),
         source,
     })?;
-    let manifest_raw = fs::read_to_string(bundle.manifest).map_err(|source| ModelLoadError::Read {
-        path: bundle.manifest.to_path_buf(),
-        source,
-    })?;
+    let manifest_raw =
+        fs::read_to_string(bundle.manifest).map_err(|source| ModelLoadError::Read {
+            path: bundle.manifest.to_path_buf(),
+            source,
+        })?;
     let manifest: ModelManifest =
         serde_yaml::from_str(&manifest_raw).map_err(|source| ModelLoadError::ParseManifest {
             path: bundle.manifest.to_path_buf(),

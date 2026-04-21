@@ -13,9 +13,9 @@
 use std::{fs, path::Path, process::Command};
 
 use sovd_ml::{
-    ML_INFERENCE_OPERATION_TEMPLATE, MODELS_README_RELATIVE_PATH, ModelBundlePaths,
-    ModelLoadError, ModelManifest, canonical_manifest_yaml, load_verified_model,
-    models_readme_path, reference_manifest_path, reference_model_path, reference_signature_path,
+    ML_INFERENCE_OPERATION_TEMPLATE, MODELS_README_RELATIVE_PATH, ModelBundlePaths, ModelLoadError,
+    ModelManifest, canonical_manifest_yaml, load_verified_model, models_readme_path,
+    reference_manifest_path, reference_model_path, reference_signature_path,
 };
 use tempfile::TempDir;
 
@@ -42,7 +42,13 @@ fn run_openssl(args: &[&str], workdir: &Path) {
     assert!(status.success(), "openssl command failed: {args:?}");
 }
 
-fn signed_fixture() -> (TempDir, std::path::PathBuf, std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+fn signed_fixture() -> (
+    TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+) {
     let temp = tempfile::tempdir().expect("temp dir");
     let root = temp.path();
     let ca_cert = root.join("ca.crt");
@@ -151,12 +157,20 @@ fn signed_fixture() -> (TempDir, std::path::PathBuf, std::path::PathBuf, std::pa
 
 #[test]
 fn pins_reference_model_signature_and_manifest_locations() {
-    assert!(reference_model_path().ends_with("sovd-ml\\models\\reference-fault-predictor.onnx")
-        || reference_model_path().ends_with("sovd-ml/models/reference-fault-predictor.onnx"));
-    assert!(reference_signature_path().ends_with("sovd-ml\\models\\reference-fault-predictor.sig")
-        || reference_signature_path().ends_with("sovd-ml/models/reference-fault-predictor.sig"));
-    assert!(reference_manifest_path().ends_with("sovd-ml\\models\\reference-fault-predictor.manifest.yaml")
-        || reference_manifest_path().ends_with("sovd-ml/models/reference-fault-predictor.manifest.yaml"));
+    assert!(
+        reference_model_path().ends_with("sovd-ml\\models\\reference-fault-predictor.onnx")
+            || reference_model_path().ends_with("sovd-ml/models/reference-fault-predictor.onnx")
+    );
+    assert!(
+        reference_signature_path().ends_with("sovd-ml\\models\\reference-fault-predictor.sig")
+            || reference_signature_path().ends_with("sovd-ml/models/reference-fault-predictor.sig")
+    );
+    assert!(
+        reference_manifest_path()
+            .ends_with("sovd-ml\\models\\reference-fault-predictor.manifest.yaml")
+            || reference_manifest_path()
+                .ends_with("sovd-ml/models/reference-fault-predictor.manifest.yaml")
+    );
     assert!(models_readme_path().exists());
     assert_eq!(MODELS_README_RELATIVE_PATH, "models/README.md");
     assert_eq!(

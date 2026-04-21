@@ -21,7 +21,12 @@ fn config_loads_and_pins_the_fault_log_rest_endpoint() {
 
     assert_eq!(rest_root(), "/sovd/v1/extended/vehicle");
     assert_eq!(fault_log_endpoint(), "/sovd/v1/extended/vehicle/fault-log");
-    assert!(config.enabled_data_items.iter().any(|item| item == "fault-log"));
+    assert!(
+        config
+            .enabled_data_items
+            .iter()
+            .any(|item| item == "fault-log")
+    );
 }
 
 #[test]
@@ -39,8 +44,20 @@ fn fault_log_event_publishes_to_the_adr_0027_topic_root() {
 
     assert_eq!(fault_log_new_topic(), "sovd/extended-vehicle/fault-log/new");
     assert_eq!(message.topic, "sovd/extended-vehicle/fault-log/new");
-    assert!(message.payload_json.contains("\"bench_id\": \"hil-bench-a\""));
-    assert!(message.payload_json.contains("\"vehicle_id\": \"taktflow-pilot-ev-001\""));
-    assert!(message.payload_json.contains("\"fault_log_id\": \"flt-2026-04-19-001\""));
+    assert!(
+        message
+            .payload_json
+            .contains("\"bench_id\": \"hil-bench-a\"")
+    );
+    assert!(
+        message
+            .payload_json
+            .contains("\"vehicle_id\": \"taktflow-pilot-ev-001\"")
+    );
+    assert!(
+        message
+            .payload_json
+            .contains("\"fault_log_id\": \"flt-2026-04-19-001\"")
+    );
     assert!(message.payload_json.contains("\"dtc\": \"P0A1F\""));
 }

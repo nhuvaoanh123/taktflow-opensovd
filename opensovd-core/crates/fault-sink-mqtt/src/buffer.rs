@@ -143,8 +143,16 @@ mod tests {
         buf.push(make_record(4));
         assert_eq!(buf.len(), 3);
         let drained = buf.drain();
-        assert_eq!(drained.first().expect("idx 0").id, FaultId(2), "oldest was dropped");
-        assert_eq!(drained.get(2).expect("idx 2").id, FaultId(4), "newest was kept");
+        assert_eq!(
+            drained.first().expect("idx 0").id,
+            FaultId(2),
+            "oldest was dropped"
+        );
+        assert_eq!(
+            drained.get(2).expect("idx 2").id,
+            FaultId(4),
+            "newest was kept"
+        );
     }
 
     #[test]

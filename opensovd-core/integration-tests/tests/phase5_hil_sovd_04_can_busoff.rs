@@ -466,7 +466,8 @@ async fn phase5_hil_sovd_04_can_busoff() {
         "D5 baseline must be fresh before injection; saw stale faults {:?}",
         describe_faults(&baseline)
     );
-    let baseline_marker_count = marker_fault_count(&baseline, &scenario.target.expected_fault_markers);
+    let baseline_marker_count =
+        marker_fault_count(&baseline, &scenario.target.expected_fault_markers);
     if baseline_marker_count > 0 {
         eprintln!(
             "phase5 D5 note: baseline already carries {} bus-off marker(s); continuing with retained-state bench verification",

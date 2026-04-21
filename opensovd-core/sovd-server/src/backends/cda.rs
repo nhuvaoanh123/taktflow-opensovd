@@ -1872,8 +1872,7 @@ mod tests {
         (url, calls, handle)
     }
 
-    async fn spin_up_toggleable_cda(
-    ) -> (
+    async fn spin_up_toggleable_cda() -> (
         Url,
         StdArc<AtomicU32>,
         StdArc<AtomicU32>,

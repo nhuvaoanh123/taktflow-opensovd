@@ -45,7 +45,9 @@ use std::{
 
 use sovd_interfaces::{
     ComponentId, SovdError,
-    extras::observer::{AuditEntry as ObserverAuditEntry, AuditLog, BackendRoute, BackendRoutes, SessionStatus},
+    extras::observer::{
+        AuditEntry as ObserverAuditEntry, AuditLog, BackendRoute, BackendRoutes, SessionStatus,
+    },
     spec::{
         component::{DiscoveredEntities, EntityCapabilities, EntityReference},
         data::{Datas, ReadValue, ValueMetadata},
@@ -1168,7 +1170,10 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn default_backend_address(kind: sovd_interfaces::traits::backend::BackendKind, component: &ComponentId) -> String {
+fn default_backend_address(
+    kind: sovd_interfaces::traits::backend::BackendKind,
+    component: &ComponentId,
+) -> String {
     match kind {
         sovd_interfaces::traits::backend::BackendKind::Dfm => {
             format!("local://dfm/{component}")
@@ -1279,7 +1284,11 @@ fn demo_component_state(id: &str) -> Option<ComponentState> {
                 2,
                 "active",
             )],
-            &[demo_op("safe_state_check", "Safe-state supervisor check", false)],
+            &[demo_op(
+                "safe_state_check",
+                "Safe-state supervisor check",
+                false,
+            )],
             &[("hw_revision", serde_json::json!("TMS570LC43x-B"))],
         )),
         "bcm" => Some(demo_component(

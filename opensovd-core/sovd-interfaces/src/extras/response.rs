@@ -158,15 +158,10 @@ mod tests {
 
     #[test]
     fn host_unreachable_typed_round_trip() {
-        let e = ResponseExtras::host_unreachable(vec![
-            ComponentId::new("cvc"),
-            ComponentId::new("sc"),
-        ]);
+        let e =
+            ResponseExtras::host_unreachable(vec![ComponentId::new("cvc"), ComponentId::new("sc")]);
         let typed = e.host_unreachable_typed();
-        assert_eq!(
-            typed,
-            vec![ComponentId::new("cvc"), ComponentId::new("sc")]
-        );
+        assert_eq!(typed, vec![ComponentId::new("cvc"), ComponentId::new("sc")]);
         assert!(e.stale);
     }
 }

@@ -72,11 +72,7 @@ pub(crate) async fn get<R: DiagServiceResponse, T: UdsEcu + Clone, U: FileManage
 ) -> Response {
     let plugin: DynamicPlugin = security_plugin;
 
-    let variant = uds
-        .get_variant(&ecu_name)
-        .await
-        .ok()
-        .and_then(|v| v.name);
+    let variant = uds.get_variant(&ecu_name).await.ok().and_then(|v| v.name);
 
     let data_items = match uds.get_components_data_info(&ecu_name, &plugin).await {
         Ok(items) => items,

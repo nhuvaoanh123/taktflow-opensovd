@@ -300,6 +300,7 @@ was dropped from scope on 2026-04-20; see <a href="MASTER-PLAN.md">MASTER-PLAN.m
   <li><a href="#s14">Professional Development Story</a></li>
   <li><a href="#s15">Related Documents</a></li>
   <li><a href="#s16">Revision History</a></li>
+  <li><a href="#s17">Part II &mdash; Production Roadmap</a></li>
 </ol>
 </details>
 
@@ -361,9 +362,9 @@ gates in <a href="MASTER-PLAN.md">MASTER-PLAN.md</a>).</p>
 <tr><td>Phase 6 &mdash; TLS everywhere, OTA, safety case delta, integrator guide</td><td><span class="badge badge-stub">Blocked on P5 HIL green</span></td><td>6 post-entry units (P6-01..06) in MASTER-PLAN; hardening gates track exit. Capabilities: TLS everywhere, DLT rollout, OTel rollout, HARA/FMEA approval, CVC OTA end-to-end, integrator guide finalization.</td></tr>
 <tr><td>Phase 7 &mdash; Semantic Interoperability + Extended Vehicle</td><td><span class="badge badge-scaffold">Scaffolded</span></td><td>ADRs landed: <a href="docs/adr/ADR-0026-covesa-semantic-api-mapping.md">ADR-0026 COVESA/VSS mapping</a> (7-row example table), <a href="docs/adr/ADR-0027-extended-vehicle-scope.md">ADR-0027 Extended Vehicle scope</a> (9 REST endpoints + 6 MQTT topics). Crates scaffolded: <code>sovd-covesa</code>, <code>sovd-extended-vehicle</code>; semantic schema harness at <code>sovd-interfaces/schemas/semantic/</code>; SIL scenario skeletons for VSS DTC list and EV fault log. Pending: HTTP-route mounting in <code>sovd-server</code>, actuator-write whitelist, full semantic schema set, MQTT publisher wiring.</td></tr>
 <tr><td>Phase 8 &mdash; Edge AI/ML Integration</td><td><span class="badge badge-scaffold">Scaffolded</span></td><td>ADRs landed: <a href="docs/adr/ADR-0028-edge-ml-fault-prediction.md">ADR-0028 Edge ML scope + lifecycle</a>, <a href="docs/adr/ADR-0029-ml-model-signing-rollback.md">ADR-0029 model signing + rollback</a> (CMS/X.509 reusing ADR-0025 PKI with distinct EKU). Crate scaffolded: <code>sovd-ml</code> with signed-model verify-before-load harness; dashboard widget <code>UC21MlInference.svelte</code>; disabled SIL scenario skeleton for ML inference. Pending: ML inference operation wired into <code>sovd-server</code>, hot-swap + rollback proven on Pi HIL, Edge Native deployment boundary.</td></tr>
-<tr><td>Phase 9 &mdash; Cybersecurity (ISO 21434) + Cert Lifecycle</td><td><span class="badge badge-stub">Planned</span></td><td>New phase introduced with the v3.0 master plan rewrite. Planned ADR-0032 (cybersecurity profile), ADR-0033 (cert lifecycle). TARA artifacts planned per surface (bench, SOVD server, CDA+DoIP, OTA); CAL assignment matrix; internal CA with offline root + online intermediate; automated rotation <code>expiry &minus; 30d</code>; CRL + OCSP stapling; OAuth2/OIDC bearer validator replacing scaffold; hybrid auth profile end-to-end.</td></tr>
-<tr><td>Phase 10 &mdash; Ecosystem Integration (pluggable backend, COVESA drift, ML artifact boundary)</td><td><span class="badge badge-stub">Planned</span></td><td>New phase. Planned ADR-0034 (pluggable backend compatibility interface). Taktflow backends kept pluggable behind a compatibility trait; periodic internal COVESA VSS spec-drift review; ML artifact delivery + observability boundary documented. No external engagement; compatibility is one-way.</td></tr>
-<tr><td>Phase 11 &mdash; Conformance + Documentation Maturity</td><td><span class="badge badge-stub">Planned</span></td><td>New phase. Planned ADR-0035 (ISO 17978 conformance subset). Conformance suites for ISO 17978, ISO 20078 (Extended Vehicle subset), and edge-case/interop. Integrator guide, OEM playbook, repair-shop workflow guide, example walkthroughs (OTA, predictive maintenance, repair-shop session), traceability matrix.</td></tr>
+<tr><td>Phase 9 &mdash; Cybersecurity (ISO 21434) + Cert Lifecycle</td><td><span class="badge badge-stub">Superseded by Part II (2026-04-21)</span></td><td>This phase's scope is absorbed into <a href="MASTER-PLAN-PART-2-PRODUCTION-GRADE.md">MASTER-PLAN-PART-2-PRODUCTION-GRADE.md</a>: TARA + CAL matrix + R155 evidence live in <strong>PROD-9</strong> (&sect;II.6.9 ISO 21434 + UNECE R155 evidence kit); internal CA + rotation + mTLS / OAuth2 live in <strong>PROD-5</strong> (&sect;II.6.5 tester-over-HTTP) and <strong>PROD-11</strong> (&sect;II.6.11 cloud bridge). The ADR numbers originally placeholdered here (0032, 0033) were reassigned in 2026-04-21: <a href="docs/adr/ADR-0032-rust-codestyle.md">ADR-0032</a> is Rust codestyle baseline, <a href="docs/adr/ADR-0033-composable-transport-layers.md">ADR-0033</a> is composable transport layers. Phase-9-branded work can continue under those PROD IDs; the Part I "Phase 9" row itself is retained only for historical traceability.</td></tr>
+<tr><td>Phase 10 &mdash; Ecosystem Integration (pluggable backend, COVESA drift, ML artifact boundary)</td><td><span class="badge badge-stub">Superseded by Part II (2026-04-21)</span></td><td>Pluggable-backend compatibility is already accepted as <a href="docs/adr/0016-pluggable-score-backends.md">ADR-0016</a> (trait seams with feature gates, standalone vs S-CORE defaults). Fault-library parity with upstream is tracked as <strong>PROD-16</strong> (&sect;II.6.16 Fault-lib feature parity) and Diagnostic Library app registration as <strong>PROD-17</strong> (&sect;II.6.17). The placeholder ADR number for this row (0034) was reassigned 2026-04-21 to <a href="docs/adr/ADR-0034-async-first-diagnostic-runtime.md">ADR-0034 async-first diagnostic runtime</a>. COVESA VSS drift review is captured in <strong>PROD-12</strong> (&sect;II.6.12) and <strong>PROD-15</strong> (&sect;II.6.15 upstream tracking cadence). No standalone Phase 10 ADR is planned.</td></tr>
+<tr><td>Phase 11 &mdash; Conformance + Documentation Maturity</td><td><span class="badge badge-stub">Partially superseded by Part II (2026-04-21)</span></td><td>Conformance-suite work (ISO 17978 subset, ISO 20078 Extended Vehicle subset, edge-case/interop) is now tracked under <strong>PROD-8</strong> (&sect;II.6.8 full SOVD 1.1 resource coverage) and <strong>PROD-10</strong> (&sect;II.6.10 ODX-driven conformance harness). Planned ADR-0035 (ISO 17978 conformance subset) remains the one open ADR number from the v3.0 rewrite and will land alongside PROD-10. Documentation-maturity scope &mdash; integrator guide, OEM playbook, repair-shop workflow guide, example walkthroughs (OTA, predictive maintenance, repair-shop session), traceability matrix &mdash; stays inside Part I Phase 11 (not duplicated in Part II).</td></tr>
 <tr><td>Upstream contribution to Eclipse OpenSOVD</td><td><span class="badge badge-stub">Dropped from scope (2026-04-20)</span></td><td>Internal decision D-01 of the v3.0 master plan. Prior contribution plans archived under <a href="docs/contribution/archive/">docs/contribution/archive/</a>, <a href="docs/upstream/archive/">docs/upstream/archive/</a>, and <a href="docs/adr/archive/">docs/adr/archive/</a>. The capability scope (all four Eclipse OpenSOVD in-scope buckets plus future-proofing extensions) is retained as an internal deliverable.</td></tr>
 </tbody>
 </table>
@@ -1520,11 +1521,13 @@ maturity story explicit.</p>
 <tr><td>SAFETY-CONCEPT.md</td><td>Safety boundary, failure containment, MISRA</td></tr>
 <tr><td>docs/security-concept.md</td><td>Security control model, route protection, auditability, and deferred hardening items</td></tr>
 <tr><td>TEST-STRATEGY.md</td><td>Test levels, CI pipeline, coverage</td></tr>
-<tr><td>TRADE-STUDIES.md</td><td>18 trade studies for every major decision</td></tr>
+<tr><td><a href="docs/TRADE-STUDIES.md">docs/TRADE-STUDIES.md</a></td><td>Legacy single-file record of trade studies TS-01 through TS-18 (programming language, HTTP framework, DFM persistence, fault wire format, auth, license, etc.)</td></tr>
+<tr><td><a href="docs/trade-studies/">docs/trade-studies/</a></td><td>Per-study folder for newer trade studies. Current: <a href="docs/trade-studies/TS-19-sovd-client-transport-stack.md">TS-19 sovd-client transport stack</a> (reqwest vs. hyper+tower, trait vs. concrete, industry-SDK evidence table). Convention documented in <a href="docs/trade-studies/README.md">docs/trade-studies/README.md</a>.</td></tr>
+<tr><td><a href="MASTER-PLAN-PART-2-PRODUCTION-GRADE.md">MASTER-PLAN-PART-2-PRODUCTION-GRADE.md</a></td><td>Part II of the master plan &mdash; production grade (M10 &rarr; in-vehicle release). 20 PROD capabilities (PROD-1 &hellip; PROD-20) covering automotive HPC port, fleet OTA, tester-over-HTTP auth, edge ML productization, ISO 21434 + R155 evidence, cloud bridge, AUTOSAR AP interop, Diagnostic &amp; Fault Libraries, and the sovd-client SDK. Open-question register Q-PROD-1 &hellip; Q-PROD-11b pending OEM answers. See &sect;17 below for the customer-facing summary.</td></tr>
 <tr><td>DEPLOYMENT-GUIDE.md</td><td>SIL/HIL/production deployment</td></tr>
 <tr><td>DEVELOPER-GUIDE.md</td><td>Build, run, and test instructions</td></tr>
 <tr><td>GLOSSARY.md</td><td>Domain terminology</td></tr>
-<tr><td>docs/adr/</td><td>31 accepted Architecture Decision Records (ADR-0001 &hellip; ADR-0031), 4 planned (ADR-0032 cybersecurity profile, ADR-0033 cert lifecycle, ADR-0034 S-CORE compat, ADR-0035 ISO 17978 conformance subset), 1 archived (<a href="docs/adr/archive/0007-build-first-contribute-later.md">ADR-0007</a>)</td></tr>
+<tr><td>docs/adr/</td><td>34 accepted Architecture Decision Records (ADR-0001 &hellip; ADR-0034). Three landed 2026-04-21: <a href="docs/adr/ADR-0032-rust-codestyle.md">ADR-0032 Rust codestyle baseline</a>, <a href="docs/adr/ADR-0033-composable-transport-layers.md">ADR-0033 composable transport layers</a>, <a href="docs/adr/ADR-0034-async-first-diagnostic-runtime.md">ADR-0034 async-first diagnostic runtime</a>. One still planned: ADR-0035 ISO 17978 conformance subset (pairs with PROD-10). One archived: <a href="docs/adr/archive/0007-build-first-contribute-later.md">ADR-0007</a>.</td></tr>
 </tbody>
 </table>
 
@@ -1547,9 +1550,83 @@ maturity story explicit.</p>
 <tr><td>1.8</td><td>2026-04-19</td><td>SOVD workstream</td><td>Progress snapshot: Phase 6 pre-work now complete (all 8 P6-PREP units done, including 06 local SIL DLT spike with feature-gated <code>[logging.dlt]</code> surface). P5-HIL-08 doip-codec fork migration closed in cross-repo <code>taktflow-embedded-production</code> (laptop commit <code>4a7457b5</code>); <code>proxy-doip</code> now pins the same theswiftfox revisions Eclipse CDA uses, with thin shims preserving <code>server.rs</code>. Added explicit closed row for each repo-only Phase 5 milestone.</td></tr>
 <tr><td>1.9</td><td>2026-04-19</td><td>SOVD workstream</td><td>Progress snapshot: P5-HIL-09 MDD FlatBuffers emitter landed as partial in <code>taktflow-embedded-production</code> laptop commit <code>b5a804aa</code>. Minimal emitter covers root <code>EcuData</code> fields with 6 byte-level round-trip tests; remainder split into <code>P5-HIL-09b</code> (80-table CDA schema with 10 unions and cyclic DOP/Param refs requires <code>flatc</code>-generated bindings beyond the 45-min slice budget).</td></tr>
 <tr><td>2.0</td><td>2026-04-19</td><td>SOVD workstream</td><td>Upstream Phase 2 + Phase 3 scaffolded. Four ADRs landed (ADR-0026 COVESA/VSS mapping, ADR-0027 Extended Vehicle scope + pub/sub, ADR-0028 Edge ML scope + lifecycle, ADR-0029 ML model signing + rollback), pilot OEM playbook skeleton, Phase 2 upstream discussion pack with 9 isolated open questions, and ISO/DIS 17978-1.2 compliance gap-analysis skeleton. 7 of 15 combined UP2+UP3 units closed; remaining 8 are crate scaffolds and scenario tests that unblock after Phase 6 complete.</td></tr>
+<tr><td>3.1</td><td>2026-04-21</td><td>SOVD workstream</td><td>Part II absorption + ADR number reconciliation. Three ADRs landed and superseded their v3.0 placeholder slots: <a href="docs/adr/ADR-0032-rust-codestyle.md">ADR-0032 = Rust codestyle baseline</a> (not cybersecurity profile); <a href="docs/adr/ADR-0033-composable-transport-layers.md">ADR-0033 = composable transport layers</a> (not cert lifecycle); <a href="docs/adr/ADR-0034-async-first-diagnostic-runtime.md">ADR-0034 = async-first diagnostic runtime</a> (not S-CORE backend compat). Only ADR-0035 (ISO 17978 conformance) remains planned, paired with PROD-10. &sect;1.1 Progress Snapshot: Phase 9 marked "Superseded by Part II" (scope flows to PROD-5 / PROD-9 / PROD-11); Phase 10 same ("Superseded by Part II" &mdash; pluggable-backend covered by ADR-0016 + PROD-16, COVESA drift by PROD-12 / PROD-15); Phase 11 "Partially superseded" (conformance work to PROD-8 / PROD-10; doc-maturity stays Part I). &sect;15 Related Documents updated: <code>docs/trade-studies/</code> folder with TS-19 sovd-client transport stack added; MASTER-PLAN-PART-2 pointer added. New &sect;17 "Part II &mdash; Production Roadmap" added for customer-facing summary of PROD-1 &hellip; PROD-20 + open-question register Q-PROD-1 &hellip; Q-PROD-11b. &sect;15 ADR count updated from "31 accepted / 4 planned" to "34 accepted / 1 planned / 1 archived".</td></tr>
 <tr><td>3.0</td><td>2026-04-20</td><td>SOVD workstream</td><td>Scope realignment release. Decision D-01 drops upstream contribution to Eclipse OpenSOVD; prior plans archived under <code>docs/contribution/archive/</code>, <code>docs/upstream/archive/</code>, <code>docs/adr/archive/</code> (ADR-0007 archived). Master plan rewritten (v3.0) in Vector-Informatik manual style with reference-time planning (phase- and milestone-relative anchors only, absolute dates preserved for past facts), all four Eclipse OpenSOVD in-scope capability buckets (Core SOVD, Security &amp; Compliance, Documentation &amp; Testing, Ecosystem Integration) and four future-proofing extensions (Semantic Interoperability, Edge AI/ML, Extended Vehicle, ISO 21434 + cert lifecycle) expanded into per-feature specifications. Introduced six new phases P6 through P11 with bounded execution units. New ADRs flagged as planned: ADR-0032 cybersecurity profile, ADR-0033 cert lifecycle, ADR-0034 S-CORE backend compatibility, ADR-0035 ISO 17978 conformance subset. This spec updated to match: progress-snapshot table rewritten to list phases P6/P7/P8/P9/P10/P11 explicitly, upstream-contribution row marked Dropped, design-principle wording updated, NFR-6.1 relabelled "CDA style parity", 1.2 repository-structure note rewritten.</td></tr>
 </tbody>
 </table>
+
+<hr>
+
+<!-- ================================================================== -->
+<h2 id="s17">17. Part II &mdash; Production Roadmap</h2>
+
+<p>Part I (sections 1&ndash;16 above, milestones M0&ndash;M10) covers the bench &rarr; conformance &rarr; docs-maturity path. Part II extends the plan to in-vehicle production release (M10 &rarr; M12) and lives in <a href="MASTER-PLAN-PART-2-PRODUCTION-GRADE.md">MASTER-PLAN-PART-2-PRODUCTION-GRADE.md</a> (Draft 0.7 as of 2026-04-21). The summary below is a customer-facing index of that document &mdash; the plan file is authoritative.</p>
+
+<h3>17.1 Milestones</h3>
+
+<table>
+<thead><tr><th>Milestone</th><th>Phase</th><th>Exit criterion</th></tr></thead>
+<tbody>
+<tr><td>M11 &mdash; First-vehicle drop</td><td>P12 &mdash; Vehicle HPC bring-up</td><td>Taktflow binary boots on target HPC in a prototype vehicle; <code>GET /sovd/v1/components</code> round-trips over in-vehicle Ethernet; CDA reads UDS from every legacy ECU; edge ML advisory end-to-end on target HPC.</td></tr>
+<tr><td>&mdash;</td><td>P13 &mdash; Production rails</td><td>Pilot VIN set OTA-rolled through the OEM backend; HTTP/2 live; cloud bridge operational; ISO 21434 + R155 evidence review-ready.</td></tr>
+<tr><td>M12 &mdash; Production release gate</td><td>P14 &mdash; Safety release + homologation</td><td>OEM production release gate passed; R155 + R156 evidence accepted; type-approval artifacts filed for target markets.</td></tr>
+</tbody>
+</table>
+
+<h3>17.2 Production capabilities (PROD-1 &hellip; PROD-20)</h3>
+
+<table>
+<thead><tr><th>ID</th><th>Capability</th><th>Anchor</th></tr></thead>
+<tbody>
+<tr><td>PROD-1</td><td>Automotive HPC target port</td><td>&sect;II.6.1</td></tr>
+<tr><td>PROD-2</td><td>Production packaging + release artifacts</td><td>&sect;II.6.2</td></tr>
+<tr><td>PROD-3</td><td>Safety partitioning integration contract</td><td>&sect;II.6.3</td></tr>
+<tr><td>PROD-4</td><td>Fleet OTA rails (Uptane-aligned, UNECE R156)</td><td>&sect;II.6.4</td></tr>
+<tr><td>PROD-5</td><td>Tester-over-HTTP production surface (OAuth2 / mTLS / scoped roles)</td><td>&sect;II.6.5</td></tr>
+<tr><td>PROD-6</td><td>Edge AI/ML productization</td><td>&sect;II.6.6</td></tr>
+<tr><td>PROD-7</td><td>HTTP/2 transport</td><td>&sect;II.6.7</td></tr>
+<tr><td>PROD-8</td><td>Full SOVD 1.1 resource coverage</td><td>&sect;II.6.8</td></tr>
+<tr><td>PROD-9</td><td>ISO 21434 + UNECE R155 evidence kit</td><td>&sect;II.6.9</td></tr>
+<tr><td>PROD-10</td><td>ODX-driven conformance harness (pairs with planned ADR-0035)</td><td>&sect;II.6.10</td></tr>
+<tr><td>PROD-11</td><td>Cloud bridge / fleet broker pattern</td><td>&sect;II.6.11</td></tr>
+<tr><td>PROD-12</td><td>Online capability description completeness</td><td>&sect;II.6.12</td></tr>
+<tr><td>PROD-13</td><td>ODX authoring loop-closure</td><td>&sect;II.6.13</td></tr>
+<tr><td>PROD-14</td><td>AUTOSAR AP <code>ara::diag</code> interop profile (differentiator)</td><td>&sect;II.6.14</td></tr>
+<tr><td>PROD-15</td><td>Upstream tracking + merge cadence</td><td>&sect;II.6.15</td></tr>
+<tr><td>PROD-16</td><td>Fault-lib feature parity (debounce / enabling conditions / aging / IPC retry)</td><td>&sect;II.6.16</td></tr>
+<tr><td>PROD-17</td><td>Diagnostic Library &mdash; framework-agnostic app registration (S-CORE &harr; OpenSOVD interface)</td><td>&sect;II.6.17</td></tr>
+<tr><td>PROD-18</td><td>Fault Library &mdash; framework-agnostic fault API for apps (with C FFI)</td><td>&sect;II.6.18</td></tr>
+<tr><td>PROD-19</td><td><code>sovd-client</code> typed SDK (hyper+tower, entity navigators, no domain trait; per <a href="docs/adr/ADR-0033-composable-transport-layers.md">ADR-0033</a> and <a href="docs/adr/ADR-0034-async-first-diagnostic-runtime.md">ADR-0034</a>)</td><td>&sect;II.6.19</td></tr>
+<tr><td>PROD-20</td><td>UDS &rarr; SOVD ingress proxy</td><td>&sect;II.6.20</td></tr>
+</tbody>
+</table>
+
+<h3>17.3 Open questions pending OEM answers (Q-PROD-*)</h3>
+
+<table>
+<thead><tr><th>ID</th><th>Question (short form)</th><th>Blocks</th></tr></thead>
+<tbody>
+<tr><td>Q-PROD-1</td><td>Production HPC target SoC + OS (NXP S32G / Renesas R-Car / Orin / Snapdragon Ride / EyeQ / Adaptive AUTOSAR on POSIX)</td><td>PROD-1/2/6, P12</td></tr>
+<tr><td>Q-PROD-2</td><td>Safety partitioning &mdash; QM-only with T1 wrapping, or OEM deliverable includes ASIL split</td><td>PROD-3, P12</td></tr>
+<tr><td>Q-PROD-3</td><td>Regulatory scope &mdash; UNECE R155 / R156 carried by Taktflow or by T1 / OEM</td><td>PROD-9</td></tr>
+<tr><td>Q-PROD-4</td><td>Fleet rollout model &mdash; Taktflow owns staged rollout or OEM routes OTA through existing platform</td><td>PROD-4, P13</td></tr>
+<tr><td>Q-PROD-5</td><td>Tester-over-HTTP scopes (OEM engineering / dealer / workshop / 3rd-party OBD / public API)</td><td>PROD-5, PROD-9</td></tr>
+<tr><td>Q-PROD-6</td><td>Cloud bridge pattern (reverse tunnel / broker mTLS / private APN / federated OEM VPN)</td><td>PROD-11, P13</td></tr>
+<tr><td>Q-PROD-7</td><td>ODX authoring tool target (Softing DTS.venice / Vector CANdelaStudio / internal)</td><td>PROD-13</td></tr>
+<tr><td>Q-PROD-8</td><td>Upstream tracking strategy (continuous merge / periodic re-vendor / mirror-fork / frozen fork)</td><td>PROD-15</td></tr>
+<tr><td>Q-PROD-9</td><td>ODX-converter production posture (CI-only JVM / JVM in vehicle / port to Rust)</td><td>PROD-13, P13</td></tr>
+<tr><td>Q-PROD-10c</td><td>Auth model (OAuth2 / mTLS / static token / mixed)</td><td>PROD-19, PROD-5</td></tr>
+<tr><td>Q-PROD-10d</td><td>Streaming transport (SSE / WebSocket)</td><td>PROD-19.3, PROD-10</td></tr>
+<tr><td>Q-PROD-10e</td><td><code>sovd-interfaces</code> as public crate (crates.io) &mdash; design-for-publication from start per user direction 2026-04-21</td><td>PROD-19</td></tr>
+<tr><td>Q-PROD-10f</td><td><code>SovdClient</code> trait fate (delete vs. retain as design doc). Non-blocking per <a href="docs/adr/ADR-0033-composable-transport-layers.md">ADR-0033</a>.</td><td>PROD-19.1</td></tr>
+<tr><td>Q-PROD-11</td><td>Upstream opensovd-core (<code>inc/liebherr</code> branch) posture &mdash; absorb as second vendored subtree, cherry-pick patterns, reference-only, or wait for upstream merge strategy</td><td>PROD-15/17/19</td></tr>
+<tr><td>Q-PROD-11b</td><td>Audit of the six presumed-vendored upstream dirs (<code>opensovd/</code>, <code>classic-diagnostic-adapter/</code>, <code>odx-converter/</code>, <code>uds2sovd-proxy/</code>, <code>cpp-bindings/</code>, <code>dlt-tracing-lib/</code>). Only <code>fault-lib/</code> confirmed vendored.</td><td>PROD-13/14, Part I &sect;5.1.5</td></tr>
+</tbody>
+</table>
+
+<h3>17.4 Design-OSS posture (2026-04-21)</h3>
+
+<p>Per user direction 2026-04-21, all design artifacts (ADRs, trade studies, plan sections) are authored publish-safe from the first draft. Upstream code contribution to Eclipse OpenSOVD stays dropped (Decision D-01, retained from v3.0); the design itself is genuinely open. The sovd-client SDK (<a href="MASTER-PLAN-PART-2-PRODUCTION-GRADE.md">PROD-19</a>) is the customer-facing Rust consumer API and is designed for external consumption from the start &mdash; the hyper+tower / entity-navigator / no-domain-trait shape matches what every mainstream production Rust SDK (AWS, Azure, GCP, Kubernetes, GitHub, sqlx) ships. Evidence and rationale: <a href="docs/trade-studies/TS-19-sovd-client-transport-stack.md">TS-19</a>.</p>
 
 <hr>
 <p style="text-align:center; color:var(--grey-700); font-size:0.85rem; margin-top:2rem;">

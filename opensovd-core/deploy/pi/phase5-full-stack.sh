@@ -34,7 +34,7 @@
 #   5. Normalise CRLF -> LF on shell scripts (same CRLF stripping
 #      pattern as install-ecu-sim.sh)
 #   6. Verify sovd-main answers GET /sovd/v1/components on
-#      $PI_HTTP_HOST:21002
+#      127.0.0.1:21002 via SSH on the Pi
 #   7. If OBSERVER_NGINX_ENABLED=1: build/rsync ws-bridge, install its
 #      systemd unit, rsync nginx assets + dashboard bundle, provision
 #      observer certs, compose up nginx, and verify authenticated HTTPS
@@ -50,7 +50,7 @@
 #   - Performance envelope D10
 #
 # Port plan (per phase-5-line-a.md):
-#   sovd-main      0.0.0.0:21002  on Pi
+#   sovd-main      127.0.0.1:21002 on Pi
 #   ecu-sim         :13400        on Pi (pre-existing, install-ecu-sim.sh)
 #   proxy           :13401        on Pi (this script if bin resolvable)
 #
@@ -360,10 +360,10 @@ ssh "$PI" 'sudo systemctl --no-pager status sovd-main.service || true'
 
 # Give axum a moment to bind the socket after enable --now.
 sleep 2
-if curl -fsS --max-time 5 "http://$PI_HTTP_HOST:21002/sovd/v1/components" >/dev/null; then
-    log "sovd-main answering GET /sovd/v1/components on $PI_HTTP_HOST:21002 - D1 green"
+if ssh "$PI" "curl -fsS --max-time 5 http://127.0.0.1:21002/sovd/v1/components >/dev/null"; then
+    log "sovd-main answering GET /sovd/v1/components on 127.0.0.1:21002 via SSH - D1 green"
 else
-    err "sovd-main is NOT answering on $PI_HTTP_HOST:21002"
+    err "sovd-main is NOT answering on 127.0.0.1:21002 via SSH"
     err "check 'journalctl -u sovd-main.service -n 100' on $PI"
     exit 2
 fi

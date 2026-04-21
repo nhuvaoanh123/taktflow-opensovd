@@ -34,6 +34,7 @@ score = [
 ]
 fault-sink-mqtt = ["dep:fault-sink-mqtt"]
 dlt-tracing = ["dep:tracing-dlt"]
+insecure-http-fallback = []
 
 [dependencies]
 sovd-server = { workspace = true }
@@ -58,6 +59,10 @@ opentelemetry = { workspace = true, features = ["trace"] }
 opentelemetry_sdk = { workspace = true, features = ["trace"] }
 opentelemetry-otlp = { workspace = true, features = ["grpc-tonic"] }
 tracing-dlt = { path = "../../dlt-tracing-lib/tracing-dlt", optional = true }
+axum-server = { version = "0.8.0", features = ["tls-rustls"] }
+rustls = { version = "0.23.38", default-features = false, features = ["aws-lc-rs"] }
 
 [dev-dependencies]
 console-subscriber = { workspace = true }
+rcgen = "0.14.7"
+tempfile = { workspace = true }

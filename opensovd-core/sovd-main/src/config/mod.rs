@@ -62,13 +62,16 @@ mod tests {
         providers::{Format, Serialized, Toml},
     };
 
-    use super::configfile::Configuration;
+    use super::configfile::{Configuration, ServerTlsMode};
 
     #[test]
     fn defaults_use_port_20002() {
         let config = Configuration::default();
-        assert_eq!(config.server.address, "0.0.0.0");
+        assert_eq!(config.server.address, "127.0.0.1");
         assert_eq!(config.server.port, 20002);
+        assert_eq!(config.server.tls.mode, ServerTlsMode::Http);
+        assert_eq!(config.server.tls.cert_path, "certs/server.crt");
+        assert_eq!(config.server.tls.key_path, "certs/server.key");
         assert_eq!(
             config.local_demo_components,
             vec!["cvc".to_owned(), "sc".to_owned(), "bcm".to_owned()]
@@ -96,12 +99,20 @@ mod tests {
 [server]
 address = "127.0.0.1"
 port = 20004
+
+[server.tls]
+mode = "https"
+cert_path = "/tmp/server.crt"
+key_path = "/tmp/server.key"
 "#;
         let figment = Figment::from(Serialized::defaults(Configuration::default()))
             .merge(Toml::string(config_str));
         let config: Configuration = figment.extract()?;
         assert_eq!(config.server.address, "127.0.0.1");
         assert_eq!(config.server.port, 20004);
+        assert_eq!(config.server.tls.mode, ServerTlsMode::Https);
+        assert_eq!(config.server.tls.cert_path, "/tmp/server.crt");
+        assert_eq!(config.server.tls.key_path, "/tmp/server.key");
         Ok(())
     }
 

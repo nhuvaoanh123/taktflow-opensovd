@@ -52,9 +52,11 @@ impl RemoteHost {
     /// Build a new remote host.
     ///
     /// `base_url` should be the SOVD REST root
-    /// (e.g. `http://127.0.0.1:9001/`). A trailing slash is
+    /// (e.g. `https://zone-a.example.com/`). A trailing slash is
     /// appended if missing so subsequent path joins behave
-    /// predictably.
+    /// predictably. Plain `http://` is accepted only for loopback hosts;
+    /// non-loopback HTTP requires building with the
+    /// `insecure-http-fallback` Cargo feature.
     ///
     /// # Errors
     ///
@@ -66,6 +68,7 @@ impl RemoteHost {
         components: Vec<ComponentId>,
     ) -> Result<Self> {
         let base_url = ensure_trailing_slash(base_url);
+        validate_remote_base_url(&base_url)?;
         let http = Client::builder()
             .build()
             .map_err(|e| SovdError::Internal(format!("RemoteHost: build reqwest client: {e}")))?;
@@ -87,9 +90,12 @@ impl RemoteHost {
         components: Vec<ComponentId>,
         http: Client,
     ) -> Self {
+        let base_url = ensure_trailing_slash(base_url);
+        validate_remote_base_url(&base_url)
+            .expect("RemoteHost::with_client called with invalid base_url");
         Self {
             name: name.into(),
-            base_url: ensure_trailing_slash(base_url),
+            base_url,
             http,
             components,
         }
@@ -113,6 +119,43 @@ fn ensure_trailing_slash(mut url: Url) -> Url {
         url.set_path(&format!("{path}/"));
     }
     url
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
+}
+
+fn validate_remote_base_url(url: &Url) -> Result<()> {
+    match url.scheme() {
+        "https" => Ok(()),
+        "http" => {
+            let is_loopback = url.host_str().is_some_and(is_loopback_host);
+            if is_loopback {
+                return Ok(());
+            }
+            #[cfg(feature = "insecure-http-fallback")]
+            {
+                tracing::warn!(
+                    base_url = %url,
+                    "Using insecure non-loopback HTTP for RemoteHost via insecure-http-fallback"
+                );
+                Ok(())
+            }
+            #[cfg(not(feature = "insecure-http-fallback"))]
+            {
+                Err(SovdError::InvalidRequest(format!(
+                    "RemoteHost requires https:// for non-loopback hosts (got {url}); build with --features insecure-http-fallback to allow this explicitly"
+                )))
+            }
+        }
+        scheme => Err(SovdError::InvalidRequest(format!(
+            "RemoteHost supports only http:// and https:// base URLs (got scheme {scheme:?})"
+        ))),
+    }
 }
 
 /// Map an HTTP status + error body into a [`SovdError`]. Used for
@@ -360,6 +403,36 @@ mod tests {
             map_http_error(StatusCode::BAD_REQUEST, "bad"),
             SovdError::Transport(_)
         ));
+    }
+
+    #[test]
+    fn validate_remote_base_url_allows_https() {
+        let url = Url::parse("https://example.com/sovd").unwrap();
+        validate_remote_base_url(&url).expect("https should be allowed");
+    }
+
+    #[test]
+    fn validate_remote_base_url_allows_loopback_http() {
+        let url = Url::parse("http://127.0.0.1:9001/").unwrap();
+        validate_remote_base_url(&url).expect("loopback http should be allowed");
+    }
+
+    #[cfg(not(feature = "insecure-http-fallback"))]
+    #[test]
+    fn validate_remote_base_url_rejects_non_loopback_http_without_feature() {
+        let url = Url::parse("http://198.51.100.10:9001/").unwrap();
+        let err = validate_remote_base_url(&url).expect_err("non-loopback http must fail");
+        assert!(
+            matches!(err, SovdError::InvalidRequest(ref message) if message.contains("insecure-http-fallback")),
+            "{err:?}"
+        );
+    }
+
+    #[cfg(feature = "insecure-http-fallback")]
+    #[test]
+    fn validate_remote_base_url_allows_non_loopback_http_with_feature() {
+        let url = Url::parse("http://198.51.100.10:9001/").unwrap();
+        validate_remote_base_url(&url).expect("feature-gated fallback should allow http");
     }
 
     // --- in-process mock SOVD server exercising the full wire path ------
@@ -632,7 +705,7 @@ mod tests {
     fn remote_host_name_and_components_accessors() {
         let host = RemoteHost::new(
             "accessor-test",
-            Url::parse("http://x/").unwrap(),
+            Url::parse("https://example.com/").unwrap(),
             vec![ComponentId::new("a"), ComponentId::new("b")],
         )
         .unwrap();
@@ -649,8 +722,12 @@ mod tests {
     #[test]
     fn remote_host_with_client_preserves_base_url() {
         let client = reqwest::Client::new();
-        let host =
-            RemoteHost::with_client("wc", Url::parse("http://example").unwrap(), vec![], client);
-        assert_eq!(host.base_url.as_str(), "http://example/");
+        let host = RemoteHost::with_client(
+            "wc",
+            Url::parse("https://example.com").unwrap(),
+            vec![],
+            client,
+        );
+        assert_eq!(host.base_url.as_str(), "https://example.com/");
     }
 }

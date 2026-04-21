@@ -8,6 +8,11 @@ local_demo_components = ["bcm", "cvc", "sc"]
 address = "0.0.0.0"
 port = 20002
 
+[server.tls]
+mode = "https"
+cert_path = "/etc/opensovd/tls/server.crt"
+key_path = "/etc/opensovd/tls/server.key"
+
 [backend]
 sqlite_path = "/var/lib/opensovd/dfm.db"
 

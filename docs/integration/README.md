@@ -145,7 +145,7 @@ cargo xtask openapi-dump --check
 ### Local server health
 
 ```bash
-curl http://127.0.0.1:21002/sovd/v1/components
+curl http://127.0.0.1:20002/sovd/v1/components
 ```
 
 Expected result: HTTP `200` with a JSON component list.

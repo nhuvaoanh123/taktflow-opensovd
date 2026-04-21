@@ -19,7 +19,7 @@ Line A follow-up work.
 
 | Service                    | Host                 | Port  | Source of truth |
 |----------------------------|----------------------|-------|------------------|
-| `sovd-main`                | `192.0.2.10`      | 21002 | `sovd-main.service` + `opensovd-pi.toml` |
+| `sovd-main`                | `127.0.0.1`         | 21002 | `sovd-main.service` + `opensovd-pi.toml` |
 | `ecu-sim`                  | `192.0.2.10`      | 13400 | `ecu-sim.service` (pre-existing) |
 | CAN-to-DoIP proxy (L-B)    | `192.0.2.10`      | 13401 | `taktflow-can-doip-proxy.service` |
 | CDA (dev host)             | `127.0.0.1`          | 20002 | phase-5-line-a.md |
@@ -108,10 +108,10 @@ That observer mode:
 - verifies authenticated HTTPS to `https://127.0.0.1/sovd/v1/components`
 - verifies unauthenticated HTTPS is rejected
 
-After deploy, verify:
+After deploy, verify from the dev host via SSH:
 
 ```bash
-curl http://192.0.2.10:21002/sovd/v1/components
+ssh bench-pi@192.0.2.10 "curl -fsS http://127.0.0.1:21002/sovd/v1/components"
 ```
 
 The response body is a `DiscoveredEntities` JSON structure with at
@@ -183,10 +183,12 @@ That unlocks deterministic HIL fault seeding under
 intentionally outside `/sovd/v1/*` so it does not become part of the
 public SOVD contract.
 
-Live operator flow for D3/D7/D8-style fault seeding:
+Live operator flow for D3/D7/D8-style fault seeding.
+Run this on the Pi shell (or through `ssh ... "..."`), because `sovd-main`
+is now loopback-bound behind nginx:
 
 ```bash
-PI_BASE=http://<pi-lan-ip>:21002
+PI_BASE=http://127.0.0.1:21002
 
 curl -fsS -X PUT "$PI_BASE/__bench/components/cvc/faults" \
   -H 'Content-Type: application/json' \

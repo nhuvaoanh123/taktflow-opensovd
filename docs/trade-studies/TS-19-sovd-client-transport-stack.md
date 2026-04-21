@@ -255,6 +255,12 @@ non-load-bearing and is deferred to the PROD-19.1 commit (tracked as
 
 - ADR-0033 (composable transport layers for production clients and
   IPC) — consumes this study.
+- ADR-0034 (async-first diagnostic runtime) — written 2026-04-21 to
+  close three documentation gaps this study noted but did not
+  resolve (runtime rationale, protocol 202-only flow, IPC latency
+  evaluation). Read in sequence: ADR-0034 for *why async at all*,
+  this study for *which async stack for the client*, ADR-0033 for
+  *how the stack composes*.
 - PROD-19 §II.6.19 (sovd-client typed SDK) — consumes this study and
   ADR-0033.
 - PROD-17 §II.6.17 (Diagnostic Library) — benefits from the

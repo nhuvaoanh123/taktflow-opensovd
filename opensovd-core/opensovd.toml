@@ -5,8 +5,11 @@
 # Run with: cargo run -p sovd-main -- --config-file opensovd.toml
 
 [server]
-address = "0.0.0.0"
+address = "127.0.0.1"
 port = 20002
+
+[server.tls]
+mode = "http"
 
 [logging.otel]
 enabled = false

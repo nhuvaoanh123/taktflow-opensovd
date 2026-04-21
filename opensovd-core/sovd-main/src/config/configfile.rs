@@ -52,6 +52,42 @@ fn default_mqtt_bench_id() -> String {
     "sovd-hil".to_owned()
 }
 
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ServerTlsMode {
+    #[default]
+    Http,
+    Https,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct ServerTlsConfig {
+    #[serde(default)]
+    pub mode: ServerTlsMode,
+    #[serde(default = "default_tls_cert_path")]
+    pub cert_path: String,
+    #[serde(default = "default_tls_key_path")]
+    pub key_path: String,
+}
+
+fn default_tls_cert_path() -> String {
+    "certs/server.crt".to_owned()
+}
+
+fn default_tls_key_path() -> String {
+    "certs/server.key".to_owned()
+}
+
+impl Default for ServerTlsConfig {
+    fn default() -> Self {
+        Self {
+            mode: ServerTlsMode::default(),
+            cert_path: default_tls_cert_path(),
+            key_path: default_tls_key_path(),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct LoggingConfig {
     #[serde(default)]
@@ -200,6 +236,8 @@ pub struct ServerConfig {
     pub port: u16,
     #[serde(default)]
     pub mode: ServerMode,
+    #[serde(default)]
+    pub tls: ServerTlsConfig,
 }
 
 /// Which axum `Router` [`sovd-main`](crate) mounts at startup.
@@ -219,9 +257,10 @@ impl Default for Configuration {
     fn default() -> Self {
         Configuration {
             server: ServerConfig {
-                address: "0.0.0.0".to_owned(),
+                address: "127.0.0.1".to_owned(),
                 port: 20002,
                 mode: ServerMode::default(),
+                tls: ServerTlsConfig::default(),
             },
             backend: DfmBackendConfig::default(),
             dfm_component_id: default_dfm_component_id(),

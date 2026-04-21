@@ -1284,7 +1284,7 @@ FMEA approved; OTA demonstrable end-to-end on CVC.
 
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
-| P6-01 | pending | repo_only | TLS defaults + feature-flagged fallback in server/gateway | Default TLS path wired; fallback behavior tested |
+| P6-01 | done | repo_only | TLS defaults + feature-flagged fallback in server/gateway | `sovd-main` now enforces HTTPS on non-loopback binds, `sovd-gateway::RemoteHost` defaults to HTTPS for non-loopback peers, and the `insecure-http-fallback` feature tests both explicit fallback paths |
 | P6-02 | pending | repo_only | Roll DLT tracing to every intended Rust binary | Correlation IDs propagate; per-binary coverage checklist |
 | P6-03 | pending | repo_only | Roll OpenTelemetry to production path | Traces cover main request path end-to-end |
 | P6-04 | pending | decision_doc | Complete safety approval package (HARA + FMEA) | Artifacts updated; sign-off target package review-ready |
@@ -1382,7 +1382,7 @@ changes.
 
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
-| P10-SCA-A1 | pending | repo_only | Wire `uds2sovd-proxy/` into `sovd-gateway` | Gateway route table includes a UDS ingress leg; UDS $22 / $2E / $31 from a test-tester translate to SOVD responses; integration test under `test/integration/uds2sovd/` green |
+| P10-SCA-A1 | **superseded by Part II PROD-20** (2026-04-21) | repo_only | ~~Wire `uds2sovd-proxy/` into `sovd-gateway`~~ — audit 2026-04-21 found the vendored [`uds2sovd-proxy/`](uds2sovd-proxy/) is empty scaffold (zero `.rs` files, byte-identical to upstream which is also just a Cargo.toml + README). The "crate exists, not wired" framing is stale. There is no code to wire; the work is design + implementation + wiring, reframed as a Part-II capability — see **PROD-20 UDS→SOVD ingress proxy** in `MASTER-PLAN-PART-2-PRODUCTION-GRADE.md` §II.6.20. | (moved — acceptance now lives in PROD-20 Verification) |
 | P10-SCA-A2 | pending | repo_only | Expose CVC OTA as SOVD `flash` routine | `/components/{id}/operations/flash` round-trips against the P6-05 CVC OTA handler; start / status / rollback all reachable via SOVD routine envelope; no regression on P6-05 OTA witness |
 | P10-SCA-D1 | pending | decision_doc | Record monolith-over-IPC-peers decision for Config / Auth / Crypto | Design memo lands at `docs/architecture/score-alignment-decisions.md`; memo captures the four OEM rationales in §5.4.4 (T1 onboarding cost, conformance surface, trait-seam fault isolation, reversibility) and names the future trait-seam extract as the reversibility path |
 
@@ -1622,7 +1622,7 @@ pulled in.
 | Fault IPC — Unix socket vs shared memory | Rust lead | P0.W2 | Decided — Unix socket, in prod |
 | DFM persistence — SQLite vs FlatBuffers | Architect | P0.W2 | Decided — SQLite via sqlx |
 | ODX schema — ASAM download vs community XSD (R3) | Embedded lead | P1.W2 | Open — default community XSD; decision owner due 2026-05-15 |
-| Auth model — OAuth2 / cert / both | Architect + security lead | G-AUTH-DECISION | Decided — ADR-0030 hybrid default; wiring pending P6-01 |
+| Auth model — OAuth2 / cert / both | Architect + security lead | G-AUTH-DECISION | Decided — ADR-0030 hybrid default; TLS/default transport wiring landed in P6-01, route auth layers still follow in later P6 work |
 | DoIP discovery on Pi — broadcast vs static | Pi engineer | — | Decided — ADR-0010 "both" |
 | Physical DoIP on STM32 — lwIP / NetX / never | Hardware lead | P5 | Deferred |
 | doip-codec Cargo pin — vendor vs git-rev | Rust lead | G-OTA-SCOPE | Default git-rev; confirmed during P5-HIL-08 |
@@ -1789,7 +1789,7 @@ pulled in.
   local-demo `bcm` surface still has no runtime fault-injection hook;
   no per-component clearable fault path exists yet.
 - Observer nginx overlay not yet live-verified on the Pi.
-- Auth model runtime wiring pending (P6-01, gated by G-AUTH-DECISION).
+- Auth model runtime wiring is partially landed: P6-01 closed the TLS/default-transport slice, while bearer + mTLS authorization layers still follow in later Phase 6 work.
 - Historical note: the next hardware-execution bullet is stale. Physical
   bench work is active now -- `P5-HIL-02` closed with a real ST-LINK
   CVC flash plus live CAN VIN smoke, and `P5-HIL-03` reached a

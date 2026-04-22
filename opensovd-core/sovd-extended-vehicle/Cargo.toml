@@ -25,9 +25,13 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+async-trait = { workspace = true }
 chrono = { workspace = true }
+rumqttc = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }
 toml = { workspace = true }
+tracing = { workspace = true }
 utoipa = { workspace = true }

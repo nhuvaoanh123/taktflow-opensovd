@@ -18,12 +18,15 @@
 //! stable path/topic constants, and DTOs in one place so OpenAPI
 //! generation and tests share the same contract.
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
 
+use async_trait::async_trait;
 use chrono::{SecondsFormat, Utc};
+use rumqttc::{AsyncClient, MqttOptions, QoS};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
+use tracing::warn;
 use utoipa::ToSchema;
 
 const CONFIG_DIR: &str = "config";
@@ -38,6 +41,8 @@ const STATE_TOPIC: &str = "sovd/extended-vehicle/state";
 const FAULT_LOG_NEW_TOPIC: &str = "sovd/extended-vehicle/fault-log/new";
 const ENERGY_TOPIC: &str = "sovd/extended-vehicle/energy";
 const SUBSCRIPTION_STATUS_TOPIC_ROOT: &str = "sovd/extended-vehicle/subscriptions";
+const CONTROL_ACK_TOPIC: &str = "sovd/extended-vehicle/control/ack";
+const CONTROL_SUBSCRIBE_TOPIC: &str = "sovd/extended-vehicle/control/subscribe";
 const SUPPORTED_DATA_ITEMS: [&str; 4] = ["vehicle-info", "state", "fault-log", "energy"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -190,6 +195,54 @@ pub struct CreateSubscriptionRequest {
     pub data_item: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ControlSubscribeCommand {
+    pub action: String,
+    pub data_item: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subscription_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ControlAckEvent {
+    pub action: String,
+    pub result: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subscription_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_item: Option<String>,
+    pub observed_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubscriptionStatusEvent {
+    pub subscription_id: String,
+    pub data_item: String,
+    pub lifecycle_state: String,
+    pub observed_at: String,
+    pub expires_at: String,
+    pub heartbeat_seconds: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtendedVehicleMqttConfig {
+    pub broker_host: String,
+    pub broker_port: u16,
+}
+
+#[async_trait]
+pub trait ExtendedVehiclePublisher: Send + Sync {
+    async fn publish(&self, messages: Vec<PublishMessage>);
+}
+
+#[derive(Debug, Clone)]
+pub struct MqttPublisher {
+    client: AsyncClient,
+}
+
 #[derive(Debug, Error)]
 pub enum ExtendedVehicleError {
     #[error("read {path}: {source}")]
@@ -315,6 +368,22 @@ pub fn topic_for_data_item(item: &str) -> Option<&'static str> {
     }
 }
 
+pub fn state_topic() -> &'static str {
+    STATE_TOPIC
+}
+
+pub fn energy_topic() -> &'static str {
+    ENERGY_TOPIC
+}
+
+pub fn control_ack_topic() -> &'static str {
+    CONTROL_ACK_TOPIC
+}
+
+pub fn control_subscribe_topic() -> &'static str {
+    CONTROL_SUBSCRIBE_TOPIC
+}
+
 pub fn subscription_status_topic(id: &str) -> String {
     format!("{SUBSCRIPTION_STATUS_TOPIC_ROOT}/{id}/status")
 }
@@ -327,19 +396,29 @@ pub fn fault_log_new_topic() -> &'static str {
     FAULT_LOG_NEW_TOPIC
 }
 
+pub fn build_state_publish(
+    config: &ExtendedVehicleConfig,
+    state: &VehicleState,
+) -> Result<PublishMessage, ExtendedVehicleError> {
+    ensure_enabled(config, "state")?;
+    Ok(PublishMessage {
+        topic: STATE_TOPIC.to_owned(),
+        payload_json: serde_json::to_string_pretty(&json!({
+            "bench_id": config.bench_id,
+            "vehicle_id": state.vehicle_id,
+            "ignition_class": state.ignition_class,
+            "motion_state": state.motion_state,
+            "high_voltage_active": state.high_voltage_active,
+            "observed_at": state.observed_at,
+        }))?,
+    })
+}
+
 pub fn build_fault_log_publish(
     config: &ExtendedVehicleConfig,
     event: &FaultLogEvent,
 ) -> Result<PublishMessage, ExtendedVehicleError> {
-    if !config
-        .enabled_data_items
-        .iter()
-        .any(|item| item == "fault-log")
-    {
-        return Err(ExtendedVehicleError::DataItemDisabled(
-            "fault-log".to_string(),
-        ));
-    }
+    ensure_enabled(config, "fault-log")?;
 
     let payload_json = serde_json::to_string_pretty(&json!({
         "bench_id": config.bench_id,
@@ -355,6 +434,106 @@ pub fn build_fault_log_publish(
         topic: FAULT_LOG_NEW_TOPIC.to_string(),
         payload_json,
     })
+}
+
+pub fn build_energy_publish(
+    config: &ExtendedVehicleConfig,
+    energy: &EnergyState,
+) -> Result<PublishMessage, ExtendedVehicleError> {
+    ensure_enabled(config, "energy")?;
+    Ok(PublishMessage {
+        topic: ENERGY_TOPIC.to_owned(),
+        payload_json: serde_json::to_string_pretty(&json!({
+            "bench_id": config.bench_id,
+            "vehicle_id": energy.vehicle_id,
+            "soc_percent": energy.soc_percent,
+            "soh_percent": energy.soh_percent,
+            "estimated_range_km": energy.estimated_range_km,
+            "battery_voltage_v": energy.battery_voltage_v,
+            "observed_at": energy.observed_at,
+        }))?,
+    })
+}
+
+pub fn build_subscription_status_publish(
+    config: &ExtendedVehicleConfig,
+    event: &SubscriptionStatusEvent,
+) -> Result<PublishMessage, ExtendedVehicleError> {
+    Ok(PublishMessage {
+        topic: subscription_status_topic(&event.subscription_id),
+        payload_json: serde_json::to_string_pretty(&json!({
+            "bench_id": config.bench_id,
+            "vehicle_id": config.vehicle_id,
+            "subscription_id": event.subscription_id,
+            "data_item": event.data_item,
+            "lifecycle_state": event.lifecycle_state,
+            "observed_at": event.observed_at,
+            "expires_at": event.expires_at,
+            "heartbeat_seconds": event.heartbeat_seconds,
+        }))?,
+    })
+}
+
+pub fn build_control_ack_publish(
+    config: &ExtendedVehicleConfig,
+    event: &ControlAckEvent,
+) -> Result<PublishMessage, ExtendedVehicleError> {
+    Ok(PublishMessage {
+        topic: CONTROL_ACK_TOPIC.to_owned(),
+        payload_json: serde_json::to_string_pretty(&json!({
+            "bench_id": config.bench_id,
+            "vehicle_id": config.vehicle_id,
+            "action": event.action,
+            "result": event.result,
+            "subscription_id": event.subscription_id,
+            "data_item": event.data_item,
+            "observed_at": event.observed_at,
+        }))?,
+    })
+}
+
+impl MqttPublisher {
+    #[must_use]
+    pub fn new(config: ExtendedVehicleMqttConfig) -> Self {
+        let client_id = format!("opensovd-extended-vehicle-{}", std::process::id());
+        let mut options = MqttOptions::new(client_id, &config.broker_host, config.broker_port);
+        options.set_keep_alive(Duration::from_secs(30));
+        let (client, mut event_loop) = AsyncClient::new(options, 64);
+        tokio::spawn(async move {
+            loop {
+                if let Err(error) = event_loop.poll().await {
+                    warn!(
+                        err = %error,
+                        broker_host = %config.broker_host,
+                        broker_port = config.broker_port,
+                        "extended vehicle MQTT event loop error"
+                    );
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+            }
+        });
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl ExtendedVehiclePublisher for MqttPublisher {
+    async fn publish(&self, messages: Vec<PublishMessage>) {
+        for message in messages {
+            if let Err(error) = self
+                .client
+                .publish(
+                    &message.topic,
+                    QoS::AtLeastOnce,
+                    false,
+                    message.payload_json,
+                )
+                .await
+            {
+                warn!(err = %error, topic = %message.topic, "extended vehicle MQTT publish failed");
+            }
+        }
+    }
 }
 
 pub fn now_rfc3339() -> String {

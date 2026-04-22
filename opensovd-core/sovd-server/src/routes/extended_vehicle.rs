@@ -23,16 +23,19 @@ use axum::{
 use chrono::{DateTime, FixedOffset};
 use serde::Deserialize;
 use sovd_extended_vehicle::{
-    CreateSubscriptionRequest, EnergyState, ExtendedVehicleCatalog, ExtendedVehicleConfig,
-    ExtendedVehicleSubscription, FaultLogDetail, FaultLogEntry, FaultLogList, FaultStatus,
-    SubscriptionRetention, SubscriptionsList, VehicleInfo, VehicleState, catalog_entries,
-    ensure_enabled, fault_log_endpoint, fault_log_id, load_config, now_rfc3339,
-    topic_for_data_item,
+    ControlAckEvent, CreateSubscriptionRequest, EnergyState, ExtendedVehicleCatalog,
+    ExtendedVehicleConfig, ExtendedVehiclePublisher, ExtendedVehicleSubscription, FaultLogDetail,
+    FaultLogEntry, FaultLogEvent, FaultLogList, FaultStatus, PublishMessage, SubscriptionRetention,
+    SubscriptionStatusEvent, SubscriptionsList, VehicleInfo, VehicleState,
+    build_control_ack_publish, build_energy_publish, build_fault_log_publish, build_state_publish,
+    build_subscription_status_publish, catalog_entries, ensure_enabled, fault_log_endpoint,
+    fault_log_id, load_config, now_rfc3339, topic_for_data_item,
 };
 use sovd_interfaces::{
     ComponentId, SovdError,
     spec::{error::GenericError, fault::FaultFilter},
 };
+use tokio::time::{Duration, sleep};
 
 use crate::{InMemoryServer, routes::error::ApiError};
 
@@ -110,15 +113,7 @@ pub async fn state(
     State(server): State<Arc<InMemoryServer>>,
 ) -> Result<Json<VehicleState>, ApiError> {
     let config = load_extended_vehicle_config()?;
-    require_enabled(&config, "state")?;
-    let soc = read_integer_data(&server, CVC_COMPONENT, "battery_soc").await?;
-    Ok(Json(VehicleState {
-        vehicle_id: config.vehicle_id,
-        ignition_class: "drive-ready".to_owned(),
-        motion_state: "parked".to_owned(),
-        high_voltage_active: soc > 0,
-        observed_at: now_rfc3339(),
-    }))
+    Ok(Json(build_current_vehicle_state(&server, &config).await?))
 }
 
 /// `GET /sovd/v1/extended/vehicle/fault-log` - aggregated confirmed DTCs
@@ -206,18 +201,7 @@ pub async fn energy(
     State(server): State<Arc<InMemoryServer>>,
 ) -> Result<Json<EnergyState>, ApiError> {
     let config = load_extended_vehicle_config()?;
-    require_enabled(&config, "energy")?;
-    let soc = read_integer_data(&server, CVC_COMPONENT, "battery_soc").await?;
-    let soh = read_integer_data(&server, CVC_COMPONENT, "battery_soh").await?;
-    let battery_voltage = read_voltage_data(&server, CVC_COMPONENT, "battery_voltage").await?;
-    Ok(Json(EnergyState {
-        vehicle_id: config.vehicle_id,
-        soc_percent: soc,
-        soh_percent: soh,
-        estimated_range_km: soc.saturating_mul(4),
-        battery_voltage_v: battery_voltage,
-        observed_at: now_rfc3339(),
-    }))
+    Ok(Json(build_current_energy_state(&server, &config).await?))
 }
 
 /// `GET /sovd/v1/extended/vehicle/subscriptions` - list active
@@ -270,6 +254,7 @@ pub async fn create_subscription(
     let created = server
         .create_extended_vehicle_subscription(&request.data_item, topic, retention_policy)
         .await;
+    publish_subscription_created(Arc::clone(&server), config.clone(), created.clone()).await?;
     Ok((StatusCode::CREATED, Json(created)))
 }
 
@@ -292,7 +277,9 @@ pub async fn delete_subscription(
     State(server): State<Arc<InMemoryServer>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    server.delete_extended_vehicle_subscription(&id).await?;
+    let config = load_extended_vehicle_config()?;
+    let deleted = server.delete_extended_vehicle_subscription(&id).await?;
+    publish_subscription_deleted(&server, &config, &deleted).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -322,6 +309,294 @@ fn subscription_topic_for_item(
             "extended vehicle item \"{item}\" does not support subscriptions"
         )))
     })
+}
+
+async fn publish_subscription_created(
+    server: Arc<InMemoryServer>,
+    config: ExtendedVehicleConfig,
+    created: ExtendedVehicleSubscription,
+) -> Result<(), ApiError> {
+    let mut messages = vec![
+        build_control_ack_message(&config, "create", "accepted", &created)?,
+        build_status_message(&config, &created, "active")?,
+    ];
+    match created.data_item.as_str() {
+        "state" => {
+            let state = build_current_vehicle_state(&server, &config).await?;
+            messages.push(build_state_publish(&config, &state).map_err(map_publish_error)?);
+        }
+        "energy" => {
+            let energy = build_current_energy_state(&server, &config).await?;
+            messages.push(build_energy_publish(&config, &energy).map_err(map_publish_error)?);
+        }
+        "fault-log" => {
+            messages.extend(build_current_fault_log_publishes(&server, &config).await?);
+        }
+        _ => {}
+    }
+    server.publish_extended_vehicle_messages(messages).await;
+    spawn_subscription_tasks(server, config, created).await?;
+    Ok(())
+}
+
+async fn publish_subscription_deleted(
+    server: &Arc<InMemoryServer>,
+    config: &ExtendedVehicleConfig,
+    deleted: &ExtendedVehicleSubscription,
+) -> Result<(), ApiError> {
+    server
+        .publish_extended_vehicle_messages(vec![
+            build_control_ack_message(config, "delete", "accepted", deleted)?,
+            build_status_message(config, deleted, "deleted")?,
+        ])
+        .await;
+    Ok(())
+}
+
+async fn spawn_subscription_tasks(
+    server: Arc<InMemoryServer>,
+    config: ExtendedVehicleConfig,
+    subscription: ExtendedVehicleSubscription,
+) -> Result<(), ApiError> {
+    let Some(publisher) = server.extended_vehicle_publisher() else {
+        return Ok(());
+    };
+
+    let subscription_id = subscription.id.clone();
+    let mut handles = vec![spawn_heartbeat_task(
+        Arc::clone(&publisher),
+        config.clone(),
+        subscription.clone(),
+    )];
+    match subscription.data_item.as_str() {
+        "state" => handles.push(spawn_state_task(
+            publisher,
+            Arc::clone(&server),
+            config,
+            subscription,
+        )),
+        "energy" => handles.push(spawn_energy_task(
+            publisher,
+            Arc::clone(&server),
+            config,
+            subscription,
+        )),
+        _ => {}
+    }
+    server
+        .register_extended_vehicle_tasks(&subscription_id, handles)
+        .await;
+    Ok(())
+}
+
+fn spawn_heartbeat_task(
+    publisher: Arc<dyn ExtendedVehiclePublisher>,
+    config: ExtendedVehicleConfig,
+    subscription: ExtendedVehicleSubscription,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        publish_status_lifecycle_message(&publisher, &config, &subscription, "heartbeat").await;
+        let heartbeat_seconds = subscription.retention_policy.heartbeat_seconds.max(1);
+        loop {
+            sleep(Duration::from_secs(heartbeat_seconds)).await;
+            publish_status_lifecycle_message(&publisher, &config, &subscription, "heartbeat").await;
+        }
+    })
+}
+
+fn spawn_state_task(
+    publisher: Arc<dyn ExtendedVehiclePublisher>,
+    server: Arc<InMemoryServer>,
+    config: ExtendedVehicleConfig,
+    subscription: ExtendedVehicleSubscription,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let hz = config.publish_rate_limits.state_hz_max.max(1);
+        let period_ms = (1000 / hz).max(1);
+        loop {
+            sleep(Duration::from_millis(period_ms)).await;
+            if server
+                .extended_vehicle_subscription(&subscription.id)
+                .await
+                .is_none()
+            {
+                break;
+            }
+            match build_current_vehicle_state(&server, &config).await {
+                Ok(state) => {
+                    if let Ok(message) = build_state_publish(&config, &state) {
+                        publisher.publish(vec![message]).await;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+}
+
+fn spawn_energy_task(
+    publisher: Arc<dyn ExtendedVehiclePublisher>,
+    server: Arc<InMemoryServer>,
+    config: ExtendedVehicleConfig,
+    subscription: ExtendedVehicleSubscription,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let period_seconds = config.publish_rate_limits.energy_period_seconds.max(1);
+        loop {
+            sleep(Duration::from_secs(period_seconds)).await;
+            if server
+                .extended_vehicle_subscription(&subscription.id)
+                .await
+                .is_none()
+            {
+                break;
+            }
+            match build_current_energy_state(&server, &config).await {
+                Ok(energy) => {
+                    if let Ok(message) = build_energy_publish(&config, &energy) {
+                        publisher.publish(vec![message]).await;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+}
+
+async fn publish_status_lifecycle_message(
+    publisher: &Arc<dyn ExtendedVehiclePublisher>,
+    config: &ExtendedVehicleConfig,
+    subscription: &ExtendedVehicleSubscription,
+    lifecycle_state: &str,
+) {
+    match build_subscription_status_publish(
+        config,
+        &SubscriptionStatusEvent {
+            subscription_id: subscription.id.clone(),
+            data_item: subscription.data_item.clone(),
+            lifecycle_state: lifecycle_state.to_owned(),
+            observed_at: now_rfc3339(),
+            expires_at: subscription.expires_at.clone(),
+            heartbeat_seconds: subscription.retention_policy.heartbeat_seconds,
+        },
+    ) {
+        Ok(message) => publisher.publish(vec![message]).await,
+        Err(_) => {}
+    }
+}
+
+fn build_control_ack_message(
+    config: &ExtendedVehicleConfig,
+    action: &str,
+    result: &str,
+    subscription: &ExtendedVehicleSubscription,
+) -> Result<PublishMessage, ApiError> {
+    build_control_ack_publish(
+        config,
+        &ControlAckEvent {
+            action: action.to_owned(),
+            result: result.to_owned(),
+            subscription_id: Some(subscription.id.clone()),
+            data_item: Some(subscription.data_item.clone()),
+            observed_at: now_rfc3339(),
+        },
+    )
+    .map_err(map_publish_error)
+}
+
+fn build_status_message(
+    config: &ExtendedVehicleConfig,
+    subscription: &ExtendedVehicleSubscription,
+    lifecycle_state: &str,
+) -> Result<PublishMessage, ApiError> {
+    build_subscription_status_publish(
+        config,
+        &SubscriptionStatusEvent {
+            subscription_id: subscription.id.clone(),
+            data_item: subscription.data_item.clone(),
+            lifecycle_state: lifecycle_state.to_owned(),
+            observed_at: now_rfc3339(),
+            expires_at: subscription.expires_at.clone(),
+            heartbeat_seconds: subscription.retention_policy.heartbeat_seconds,
+        },
+    )
+    .map_err(map_publish_error)
+}
+
+async fn build_current_vehicle_state(
+    server: &Arc<InMemoryServer>,
+    config: &ExtendedVehicleConfig,
+) -> Result<VehicleState, ApiError> {
+    require_enabled(config, "state")?;
+    let soc = read_integer_data(server, CVC_COMPONENT, "battery_soc").await?;
+    Ok(VehicleState {
+        vehicle_id: config.vehicle_id.clone(),
+        ignition_class: "drive-ready".to_owned(),
+        motion_state: "parked".to_owned(),
+        high_voltage_active: soc > 0,
+        observed_at: now_rfc3339(),
+    })
+}
+
+async fn build_current_energy_state(
+    server: &Arc<InMemoryServer>,
+    config: &ExtendedVehicleConfig,
+) -> Result<EnergyState, ApiError> {
+    require_enabled(config, "energy")?;
+    let soc = read_integer_data(server, CVC_COMPONENT, "battery_soc").await?;
+    let soh = read_integer_data(server, CVC_COMPONENT, "battery_soh").await?;
+    let battery_voltage = read_voltage_data(server, CVC_COMPONENT, "battery_voltage").await?;
+    Ok(EnergyState {
+        vehicle_id: config.vehicle_id.clone(),
+        soc_percent: soc,
+        soh_percent: soh,
+        estimated_range_km: soc.saturating_mul(4),
+        battery_voltage_v: battery_voltage,
+        observed_at: now_rfc3339(),
+    })
+}
+
+async fn build_current_fault_log_publishes(
+    server: &Arc<InMemoryServer>,
+    config: &ExtendedVehicleConfig,
+) -> Result<Vec<PublishMessage>, ApiError> {
+    let events = build_current_fault_log_events(server).await?;
+    events
+        .iter()
+        .map(|event| build_fault_log_publish(config, event).map_err(map_publish_error))
+        .collect()
+}
+
+async fn build_current_fault_log_events(
+    server: &Arc<InMemoryServer>,
+) -> Result<Vec<FaultLogEvent>, ApiError> {
+    Ok(collect_fault_log_details(server)
+        .await?
+        .into_iter()
+        .map(|detail| {
+            let FaultLogEntry {
+                log_id,
+                component_id,
+                dtc,
+                lifecycle_state,
+                observed_at,
+                ..
+            } = detail.item;
+            FaultLogEvent {
+                fault_log_id: log_id,
+                component_id,
+                dtc,
+                lifecycle_state,
+                observed_at,
+            }
+        })
+        .collect())
+}
+
+fn map_publish_error(error: sovd_extended_vehicle::ExtendedVehicleError) -> ApiError {
+    ApiError::from(SovdError::Internal(format!(
+        "extended vehicle publish payload build failed: {error}"
+    )))
 }
 
 async fn read_string_data(

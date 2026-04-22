@@ -45,7 +45,8 @@ use std::{
 
 use chrono::{Duration, SecondsFormat, Utc};
 use sovd_extended_vehicle::{
-    ExtendedVehicleSubscription, SubscriptionRetention, subscription_status_topic,
+    ExtendedVehiclePublisher, ExtendedVehicleSubscription, PublishMessage, SubscriptionRetention,
+    subscription_status_topic,
 };
 use sovd_interfaces::{
     ComponentId, SovdError,
@@ -70,6 +71,7 @@ use sovd_interfaces::{
     types::error::Result,
 };
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 /// Base URI used when building demo `href` fields. Kept relative so the
@@ -209,6 +211,8 @@ pub struct InMemoryServer {
     forwards: Arc<RwLock<HashMap<ComponentId, Arc<dyn SovdBackend + Send + Sync>>>>,
     fault_overrides: Arc<RwLock<HashMap<ComponentId, BenchFaultOverride>>>,
     extended_vehicle_subscriptions: Arc<RwLock<HashMap<String, ExtendedVehicleSubscription>>>,
+    extended_vehicle_publisher: Option<Arc<dyn ExtendedVehiclePublisher>>,
+    extended_vehicle_tasks: Arc<RwLock<HashMap<String, Vec<JoinHandle<()>>>>>,
     observer_session: Arc<RwLock<SessionStatus>>,
     observer_audit: Arc<RwLock<VecDeque<ObserverAuditEntry>>>,
     bench_fault_injection_enabled: bool,
@@ -222,6 +226,11 @@ impl std::fmt::Debug for InMemoryServer {
             .field("forwards", &"<async>")
             .field("fault_overrides", &"<async>")
             .field("extended_vehicle_subscriptions", &"<async>")
+            .field(
+                "extended_vehicle_publisher",
+                &self.extended_vehicle_publisher.is_some(),
+            )
+            .field("extended_vehicle_tasks", &"<async>")
             .field("observer_session", &"<async>")
             .field("observer_audit", &"<async>")
             .field(
@@ -242,6 +251,8 @@ impl InMemoryServer {
             forwards: Arc::new(RwLock::new(HashMap::new())),
             fault_overrides: Arc::new(RwLock::new(HashMap::new())),
             extended_vehicle_subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            extended_vehicle_publisher: None,
+            extended_vehicle_tasks: Arc::new(RwLock::new(HashMap::new())),
             observer_session: Arc::new(RwLock::new(default_observer_session())),
             observer_audit: Arc::new(RwLock::new(VecDeque::new())),
             bench_fault_injection_enabled: false,
@@ -303,6 +314,8 @@ impl InMemoryServer {
             forwards: Arc::new(RwLock::new(HashMap::new())),
             fault_overrides: Arc::new(RwLock::new(HashMap::new())),
             extended_vehicle_subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            extended_vehicle_publisher: None,
+            extended_vehicle_tasks: Arc::new(RwLock::new(HashMap::new())),
             observer_session: Arc::new(RwLock::new(default_observer_session())),
             observer_audit: Arc::new(RwLock::new(VecDeque::new())),
             bench_fault_injection_enabled: false,
@@ -316,10 +329,28 @@ impl InMemoryServer {
         self
     }
 
+    /// Attach an Extended Vehicle MQTT publisher. Routes may publish
+    /// lifecycle events through this sink; when absent the REST surface
+    /// still works but emits no MQTT traffic.
+    #[must_use]
+    pub fn with_extended_vehicle_publisher(
+        mut self,
+        publisher: Arc<dyn ExtendedVehiclePublisher>,
+    ) -> Self {
+        self.extended_vehicle_publisher = Some(publisher);
+        self
+    }
+
     /// Returns whether the internal bench fault-injection routes are enabled.
     #[must_use]
     pub fn bench_fault_injection_enabled(&self) -> bool {
         self.bench_fault_injection_enabled
+    }
+
+    /// Return the configured Extended Vehicle publisher, if any.
+    #[must_use]
+    pub fn extended_vehicle_publisher(&self) -> Option<Arc<dyn ExtendedVehiclePublisher>> {
+        self.extended_vehicle_publisher.as_ref().map(Arc::clone)
     }
 
     /// Register a forward backend for `component`. Any subsequent SOVD
@@ -518,6 +549,18 @@ impl InMemoryServer {
         items
     }
 
+    /// Return one active Extended Vehicle subscription by id.
+    pub async fn extended_vehicle_subscription(
+        &self,
+        id: &str,
+    ) -> Option<ExtendedVehicleSubscription> {
+        self.extended_vehicle_subscriptions
+            .read()
+            .await
+            .get(id)
+            .cloned()
+    }
+
     /// Create and register one Extended Vehicle subscription in the in-memory
     /// demo registry.
     pub async fn create_extended_vehicle_subscription(
@@ -551,15 +594,50 @@ impl InMemoryServer {
         subscription
     }
 
+    /// Publish a batch of Extended Vehicle MQTT messages if a publisher is
+    /// configured. No-op otherwise.
+    pub async fn publish_extended_vehicle_messages(&self, messages: Vec<PublishMessage>) {
+        let Some(publisher) = self.extended_vehicle_publisher() else {
+            return;
+        };
+        if messages.is_empty() {
+            return;
+        }
+        publisher.publish(messages).await;
+    }
+
+    /// Register or replace the background lifecycle tasks for one
+    /// Extended Vehicle subscription.
+    pub async fn register_extended_vehicle_tasks(&self, id: &str, handles: Vec<JoinHandle<()>>) {
+        let mut guard = self.extended_vehicle_tasks.write().await;
+        if let Some(previous) = guard.insert(id.to_owned(), handles) {
+            for handle in previous {
+                handle.abort();
+            }
+        }
+    }
+
+    async fn abort_extended_vehicle_tasks(&self, id: &str) {
+        if let Some(handles) = self.extended_vehicle_tasks.write().await.remove(id) {
+            for handle in handles {
+                handle.abort();
+            }
+        }
+    }
+
     /// Delete one Extended Vehicle subscription by id.
     ///
     /// # Errors
     ///
     /// Returns [`SovdError::NotFound`] when the subscription does not exist.
-    pub async fn delete_extended_vehicle_subscription(&self, id: &str) -> Result<()> {
+    pub async fn delete_extended_vehicle_subscription(
+        &self,
+        id: &str,
+    ) -> Result<ExtendedVehicleSubscription> {
+        self.abort_extended_vehicle_tasks(id).await;
         let removed = self.extended_vehicle_subscriptions.write().await.remove(id);
-        if removed.is_some() {
-            return Ok(());
+        if let Some(subscription) = removed {
+            return Ok(subscription);
         }
         Err(SovdError::NotFound {
             entity: format!("extended vehicle subscription \"{id}\""),

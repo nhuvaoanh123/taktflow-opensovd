@@ -36,3 +36,12 @@ docs/plans/vps-*-notes.md
 # the public mirror. Keep the file locally so Claude Code still loads
 # the rules, but don't publish workstation-specific details.
 CLAUDE.md
+
+# Mis-nested sibling project checkout. Sometimes a `taktflow-embedded-
+# production/` tree lands under this repo by accident (drag-drop, wrong
+# cwd on a clone). Never commit that into the OpenSOVD repo.
+taktflow-embedded-production/
+
+# Local bench flash readbacks named by ST-Link serial. PC-local probe
+# artifacts, never for the public mirror.
+tmp-*-readback.bin

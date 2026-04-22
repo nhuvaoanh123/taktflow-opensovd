@@ -22,6 +22,7 @@
 #define OTA_METADATA_MAGIC             0x54464F54UL
 #define OTA_METADATA_VERSION           0x00000001UL
 #define OTA_STATE_BOOT_PENDING         0x06U
+#define OTA_DOWNLOAD_INACTIVITY_MS     10000U
 
 typedef struct
 {
@@ -48,6 +49,7 @@ typedef struct
     uint32 total_size;
     uint32 bytes_received;
     uint32 witness_id;
+    uint32 last_activity_tick;
 } ota_download_state_t;
 
 typedef enum
@@ -72,6 +74,19 @@ static uint32 ota_fail(uint8 err)
 {
     g_last_error = err;
     return 0U;
+}
+
+/* Constant-time byte-array equality. Returns 1 when equal, 0 otherwise.
+ * The compare always walks the full length so an attacker cannot learn
+ * which byte differed by measuring response latency. Used for the
+ * expected_sha256 check at commit time. */
+static uint32 ota_ct_equal(const uint8 *a, const uint8 *b, uint32 len)
+{
+    uint8 acc = 0U;
+    for (uint32 i = 0U; i < len; i++) {
+        acc |= (uint8)(a[i] ^ b[i]);
+    }
+    return (acc == 0U) ? 1U : 0U;
 }
 
 static uint32 ota_dual_bank_enabled(void)
@@ -270,6 +285,7 @@ static void ota_clear_manifest(void)
     g_download.bytes_received = 0U;
     g_download.expected_block_sequence_counter = 1U;
     g_download.witness_id = 0UL;
+    g_download.last_activity_tick = 0UL;
     for (uint32 i = 0U; i < 8U; i++) {
         g_download.pending_doubleword[i] = 0U;
     }
@@ -334,8 +350,33 @@ void ota_init(void)
     }
 }
 
+static void ota_check_inactivity_timeout(void)
+{
+    uint32 now;
+    uint32 elapsed;
+
+    if (g_state != OTA_STATE_DOWNLOADING) {
+        return;
+    }
+    if (g_download.last_activity_tick == 0UL) {
+        return;
+    }
+
+    now = HAL_GetTick();
+    /* Tick is a uint32 millisecond counter that wraps every ~49 days.
+     * Subtracting two uint32 values gives the correct elapsed ms even
+     * across one wrap, so we do not need an explicit wrap check. */
+    elapsed = now - g_download.last_activity_tick;
+    if (elapsed >= OTA_DOWNLOAD_INACTIVITY_MS) {
+        ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_TIMEOUT);
+        ota_clear_manifest();
+    }
+}
+
 void ota_poll(void)
 {
+    ota_check_inactivity_timeout();
+
     if (g_pending_action == OTA_PENDING_NONE) {
         return;
     }
@@ -394,6 +435,8 @@ uint32 ota_read_did(uint16 did, uint8 *bytes, uint32 *len)
 
 uint32 ota_write_did(uint16 did, const uint8 *bytes, uint32 len)
 {
+    uint32 proposed_witness;
+
     g_last_error = OTA_ERR_NONE;
 
     if (did != OTA_DID_MANIFEST) {
@@ -409,11 +452,25 @@ uint32 ota_write_did(uint16 did, const uint8 *bytes, uint32 len)
         return ota_fail(OTA_ERR_MANIFEST_LOCKED);
     }
 
+    proposed_witness = ((uint32)bytes[2] << 24U)
+                     | ((uint32)bytes[3] << 16U)
+                     | ((uint32)bytes[4] << 8U)
+                     | (uint32)bytes[5];
+
+    /* Reject the sentinel "no witness" value and any attempt to install
+     * an image whose witness matches the currently-active bank. The
+     * first guard stops lazy testers submitting witness_id=0; the second
+     * prevents a trivial re-install attack where a manifest collides
+     * with the installed image's witness to mask the provenance. */
+    if (proposed_witness == 0UL) {
+        return ota_fail(OTA_ERR_BAD_LENGTH);
+    }
+    if (proposed_witness == g_witness_id) {
+        return ota_fail(OTA_ERR_MANIFEST_LOCKED);
+    }
+
     g_download.manifest_ready = 1U;
-    g_download.witness_id = ((uint32)bytes[2] << 24U)
-                          | ((uint32)bytes[3] << 16U)
-                          | ((uint32)bytes[4] << 8U)
-                          | (uint32)bytes[5];
+    g_download.witness_id = proposed_witness;
     for (uint32 i = 0U; i < SHA256_DIGEST_BYTES; i++) {
         g_download.expected_sha256[i] = bytes[6U + i];
     }
@@ -499,6 +556,7 @@ uint32 ota_begin_download(uint32 address, uint32 total_size, uint16 *max_block_l
     g_download.programmed_bytes = 0U;
     g_download.total_size = total_size;
     g_download.bytes_received = 0U;
+    g_download.last_activity_tick = HAL_GetTick();
     g_witness_id = g_download.witness_id;
     ota_set_runtime_status(OTA_STATE_DOWNLOADING, OTA_REASON_NONE);
     *max_block_length = OTA_MAX_BLOCK_LENGTH;
@@ -549,6 +607,7 @@ uint32 ota_transfer_data(uint8 block_sequence_counter, const uint8 *bytes, uint3
 
     HAL_FLASH_Lock();
     g_download.expected_block_sequence_counter++;
+    g_download.last_activity_tick = HAL_GetTick();
     return 1U;
 }
 
@@ -597,7 +656,9 @@ uint32 ota_request_transfer_exit(void)
 
     ota_set_runtime_status(OTA_STATE_VERIFYING, OTA_REASON_NONE);
     (void)ota_hash_inactive_image(digest);
-    if (memcmp(digest, g_download.expected_sha256, SHA256_DIGEST_BYTES) != 0) {
+    /* Constant-time compare so an attacker cannot use response-latency
+     * oscilloscope traces to learn which digest byte differs. */
+    if (ota_ct_equal(digest, g_download.expected_sha256, SHA256_DIGEST_BYTES) == 0U) {
         ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_SIGNATURE_INVALID);
         ota_clear_manifest();
         return ota_fail(OTA_ERR_HASH_MISMATCH);

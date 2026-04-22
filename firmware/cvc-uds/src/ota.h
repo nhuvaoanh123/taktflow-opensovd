@@ -16,6 +16,7 @@
 #define OTA_REASON_POWER_LOSS        0x03U
 #define OTA_REASON_ABORT_REQUESTED   0x04U
 #define OTA_REASON_OTHER             0x05U
+#define OTA_REASON_TIMEOUT           0x06U
 
 #define OTA_SLOT_A 0x01U
 #define OTA_SLOT_B 0x02U

@@ -1311,7 +1311,7 @@ G-SEM green.
 
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
-| P7-SEM-01 | pending | repo_only | Mount VSS route handler in `sovd-server` | `GET /sovd/covesa/vss/{path}` resolves to mapped SOVD endpoint per vss-map rows |
+| P7-SEM-01 | done | repo_only | Mount VSS route handler in `sovd-server` | `sovd-server` now mounts `GET /sovd/covesa/vss/{vss_path}`, resolves the current `Vehicle.OBD.DTCList` mapping row through `sovd-covesa`, defaults the first resolver slice to component `cvc`, and proves the route plus OpenAPI path in focused integration tests |
 | P7-SEM-02 | pending | repo_only | Wire VSS actuator-write whitelist path | `POST /sovd/covesa/vss/{path}` accepts whitelisted actuator writes; rejects unlisted |
 | P7-SEM-03 | pending | repo_only | Add `fault-semantics.schema.yaml` + `operation-semantics.schema.yaml` + `component-semantics.schema.yaml` | Three schemas land under `semantic/`; harness validates |
 | P7-SEM-04 | pending | repo_only | Enforce semantic schema validation on response envelopes | Every `/sovd/v1/*` response validates; negative test exists |

@@ -97,6 +97,17 @@ async fn in_memory_mvp_flow_round_trips_spec_types() {
     assert_eq!(faults.items.len(), 2);
     assert!(faults.items.iter().any(|f| f.code == "P0A1F"));
 
+    // 2b. GET /sovd/covesa/vss/Vehicle.OBD.DTCList -> translated ListOfFaults.
+    let response = client
+        .get(booted.url("/sovd/covesa/vss/Vehicle.OBD.DTCList"))
+        .send()
+        .await
+        .expect("GET covesa dtc list");
+    assert_eq!(response.status(), StatusCode::OK);
+    let covesa_faults: ListOfFaults = response.json().await.expect("parse covesa ListOfFaults");
+    assert_eq!(covesa_faults.items.len(), 2);
+    assert!(covesa_faults.items.iter().any(|f| f.code == "P0A1F"));
+
     // 3. POST .../executions with a StartExecutionRequest body -> 202
     //    StartExecutionAsyncResponse.
     let start_body = StartExecutionRequest {

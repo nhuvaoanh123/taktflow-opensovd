@@ -24,7 +24,7 @@
 
 use utoipa::OpenApi;
 
-use crate::routes::{bulk_data, components, data, faults, observer, operations};
+use crate::routes::{bulk_data, components, covesa, data, faults, observer, operations};
 
 /// Assembled `OpenAPI` document. Derive-built so the doc is in sync with
 /// the annotated handlers and `ToSchema` types at compile time.
@@ -33,6 +33,7 @@ use crate::routes::{bulk_data, components, data, faults, observer, operations};
     paths(
         components::list_components,
         components::get_component,
+        covesa::read_vss_path,
         observer::session,
         observer::audit,
         observer::gateway_backends,
@@ -104,6 +105,7 @@ use crate::routes::{bulk_data, components, data, faults, observer, operations};
     )),
     tags(
         (name = "discovery", description = "Entity discovery endpoints"),
+        (name = "covesa-semantic", description = "COVESA VSS semantic adapter endpoints"),
         (name = "bulk-data", description = "Binary OTA transfer endpoints"),
         (name = "fault-handling", description = "Fault list/detail/clear endpoints"),
         (name = "operations-control", description = "Operation execution endpoints"),

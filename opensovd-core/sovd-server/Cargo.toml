@@ -26,6 +26,7 @@ path = "src/lib.rs"
 
 [dependencies]
 sovd-interfaces = { workspace = true }
+sovd-covesa = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true, features = ["json", "tokio", "http1", "query"] }
 reqwest = { workspace = true, features = ["json"] }

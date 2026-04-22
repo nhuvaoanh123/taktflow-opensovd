@@ -42,6 +42,7 @@ use crate::{InMemoryServer, auth::AuthConfig, correlation};
 pub mod bench;
 pub mod bulk_data;
 pub mod components;
+pub mod covesa;
 pub mod data;
 pub mod error;
 pub mod faults;
@@ -71,6 +72,7 @@ fn base_router() -> Router<Arc<InMemoryServer>> {
             "/sovd/v1/components/{component_id}",
             get(components::get_component),
         )
+        .route("/sovd/covesa/vss/{vss_path}", get(covesa::read_vss_path))
         .route(
             "/sovd/v1/components/{component_id}/faults",
             get(faults::list_faults).delete(faults::clear_all_faults),

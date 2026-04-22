@@ -138,6 +138,7 @@ async fn openapi_endpoint_exposes_every_registered_schema() {
     for expected_path in [
         "/sovd/v1/components",
         "/sovd/v1/components/{component_id}",
+        "/sovd/covesa/vss/{vss_path}",
         "/sovd/v1/components/{component_id}/faults",
         "/sovd/v1/components/{component_id}/faults/{fault_code}",
         "/sovd/v1/components/{component_id}/operations",

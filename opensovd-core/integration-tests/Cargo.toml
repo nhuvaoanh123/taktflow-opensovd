@@ -37,6 +37,7 @@ fault-sink-mqtt = []
 [dev-dependencies]
 sovd-server = { workspace = true }
 sovd-interfaces = { workspace = true }
+sovd-extended-vehicle = { workspace = true }
 sovd-dfm = { workspace = true }
 sovd-db-sqlite = { workspace = true }
 opcycle-taktflow = { workspace = true }

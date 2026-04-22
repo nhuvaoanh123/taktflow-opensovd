@@ -85,6 +85,20 @@ const EXPECTED_SCHEMAS: &[&str] = &[
     "DataListEntry",
     "GenericError",
     "DataError",
+    "CatalogEntryKind",
+    "CatalogEntry",
+    "ExtendedVehicleCatalog",
+    "VehicleInfo",
+    "VehicleState",
+    "FaultLogEntry",
+    "FaultLogList",
+    "FaultStatus",
+    "FaultLogDetail",
+    "EnergyState",
+    "SubscriptionRetention",
+    "ExtendedVehicleSubscription",
+    "SubscriptionsList",
+    "CreateSubscriptionRequest",
 ];
 
 #[tokio::test]
@@ -130,12 +144,20 @@ async fn openapi_endpoint_exposes_every_registered_schema() {
         "schemas missing from generated OpenAPI: {missing:?}"
     );
 
-    // 4. `paths` must contain the nine MVP endpoints.
+    // 4. `paths` must contain the mounted MVP + semantic adapter endpoints.
     let paths = body
         .get("paths")
         .and_then(serde_json::Value::as_object)
         .expect("paths object");
     for expected_path in [
+        "/sovd/v1/extended/vehicle/",
+        "/sovd/v1/extended/vehicle/vehicle-info",
+        "/sovd/v1/extended/vehicle/state",
+        "/sovd/v1/extended/vehicle/fault-log",
+        "/sovd/v1/extended/vehicle/fault-log/{log_id}",
+        "/sovd/v1/extended/vehicle/energy",
+        "/sovd/v1/extended/vehicle/subscriptions",
+        "/sovd/v1/extended/vehicle/subscriptions/{id}",
         "/sovd/v1/components",
         "/sovd/v1/components/{component_id}",
         "/sovd/covesa/vss/{vss_path}",

@@ -24,7 +24,9 @@
 
 use utoipa::OpenApi;
 
-use crate::routes::{bulk_data, components, covesa, data, faults, observer, operations};
+use crate::routes::{
+    bulk_data, components, covesa, data, extended_vehicle, faults, observer, operations,
+};
 
 /// Assembled `OpenAPI` document. Derive-built so the doc is in sync with
 /// the annotated handlers and `ToSchema` types at compile time.
@@ -35,6 +37,15 @@ use crate::routes::{bulk_data, components, covesa, data, faults, observer, opera
         components::get_component,
         covesa::read_vss_path,
         covesa::write_vss_path,
+        extended_vehicle::catalog,
+        extended_vehicle::vehicle_info,
+        extended_vehicle::state,
+        extended_vehicle::fault_log,
+        extended_vehicle::fault_log_detail,
+        extended_vehicle::energy,
+        extended_vehicle::list_subscriptions,
+        extended_vehicle::create_subscription,
+        extended_vehicle::delete_subscription,
         observer::session,
         observer::audit,
         observer::gateway_backends,
@@ -95,6 +106,20 @@ use crate::routes::{bulk_data, components, covesa, data, faults, observer, opera
         sovd_interfaces::spec::data::SovdReadValue,
         sovd_interfaces::spec::error::GenericError,
         sovd_interfaces::spec::error::DataError,
+        sovd_extended_vehicle::CatalogEntryKind,
+        sovd_extended_vehicle::CatalogEntry,
+        sovd_extended_vehicle::ExtendedVehicleCatalog,
+        sovd_extended_vehicle::VehicleInfo,
+        sovd_extended_vehicle::VehicleState,
+        sovd_extended_vehicle::FaultLogEntry,
+        sovd_extended_vehicle::FaultLogList,
+        sovd_extended_vehicle::FaultStatus,
+        sovd_extended_vehicle::FaultLogDetail,
+        sovd_extended_vehicle::EnergyState,
+        sovd_extended_vehicle::SubscriptionRetention,
+        sovd_extended_vehicle::ExtendedVehicleSubscription,
+        sovd_extended_vehicle::SubscriptionsList,
+        sovd_extended_vehicle::CreateSubscriptionRequest,
         // Phase 4 D4 — extras health envelope.
         sovd_interfaces::extras::health::HealthStatus,
         sovd_interfaces::extras::observer::SessionStatus,
@@ -107,6 +132,7 @@ use crate::routes::{bulk_data, components, covesa, data, faults, observer, opera
     tags(
         (name = "discovery", description = "Entity discovery endpoints"),
         (name = "covesa-semantic", description = "COVESA VSS semantic adapter endpoints"),
+        (name = "extended-vehicle", description = "ISO-20078-shaped Extended Vehicle adapter endpoints"),
         (name = "bulk-data", description = "Binary OTA transfer endpoints"),
         (name = "fault-handling", description = "Fault list/detail/clear endpoints"),
         (name = "operations-control", description = "Operation execution endpoints"),

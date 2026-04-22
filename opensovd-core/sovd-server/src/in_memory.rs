@@ -43,15 +43,17 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
+use chrono::{Duration, SecondsFormat, Utc};
+use sovd_extended_vehicle::{
+    ExtendedVehicleSubscription, SubscriptionRetention, subscription_status_topic,
+};
 use sovd_interfaces::{
     ComponentId, SovdError,
     extras::observer::{
         AuditEntry as ObserverAuditEntry, AuditLog, BackendRoute, BackendRoutes, SessionStatus,
     },
     spec::{
-        bulk_data::{
-            BulkDataTransferCreated, BulkDataTransferRequest, BulkDataTransferStatus,
-        },
+        bulk_data::{BulkDataTransferCreated, BulkDataTransferRequest, BulkDataTransferStatus},
         component::{DiscoveredEntities, EntityCapabilities, EntityReference},
         data::{Datas, ReadValue, ValueMetadata},
         fault::{Fault, FaultDetails, FaultFilter, ListOfFaults},
@@ -64,8 +66,8 @@ use sovd_interfaces::{
         backend::{BackendHealth, SovdBackend},
         server::SovdServer,
     },
-    types::error::Result,
     types::bulk_data::BulkDataChunk,
+    types::error::Result,
 };
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -206,6 +208,7 @@ pub struct InMemoryServer {
     components: Arc<RwLock<HashMap<ComponentId, ComponentState>>>,
     forwards: Arc<RwLock<HashMap<ComponentId, Arc<dyn SovdBackend + Send + Sync>>>>,
     fault_overrides: Arc<RwLock<HashMap<ComponentId, BenchFaultOverride>>>,
+    extended_vehicle_subscriptions: Arc<RwLock<HashMap<String, ExtendedVehicleSubscription>>>,
     observer_session: Arc<RwLock<SessionStatus>>,
     observer_audit: Arc<RwLock<VecDeque<ObserverAuditEntry>>>,
     bench_fault_injection_enabled: bool,
@@ -218,6 +221,7 @@ impl std::fmt::Debug for InMemoryServer {
             .field("components", &"<async>")
             .field("forwards", &"<async>")
             .field("fault_overrides", &"<async>")
+            .field("extended_vehicle_subscriptions", &"<async>")
             .field("observer_session", &"<async>")
             .field("observer_audit", &"<async>")
             .field(
@@ -237,6 +241,7 @@ impl InMemoryServer {
             components: Arc::new(RwLock::new(HashMap::new())),
             forwards: Arc::new(RwLock::new(HashMap::new())),
             fault_overrides: Arc::new(RwLock::new(HashMap::new())),
+            extended_vehicle_subscriptions: Arc::new(RwLock::new(HashMap::new())),
             observer_session: Arc::new(RwLock::new(default_observer_session())),
             observer_audit: Arc::new(RwLock::new(VecDeque::new())),
             bench_fault_injection_enabled: false,
@@ -297,6 +302,7 @@ impl InMemoryServer {
             components: Arc::new(RwLock::new(components)),
             forwards: Arc::new(RwLock::new(HashMap::new())),
             fault_overrides: Arc::new(RwLock::new(HashMap::new())),
+            extended_vehicle_subscriptions: Arc::new(RwLock::new(HashMap::new())),
             observer_session: Arc::new(RwLock::new(default_observer_session())),
             observer_audit: Arc::new(RwLock::new(VecDeque::new())),
             bench_fault_injection_enabled: false,
@@ -496,6 +502,68 @@ impl InMemoryServer {
         AuditLog {
             items: guard.iter().take(limit).cloned().collect(),
         }
+    }
+
+    /// Return every active Extended Vehicle subscription, sorted by id for
+    /// deterministic REST responses.
+    pub async fn list_extended_vehicle_subscriptions(&self) -> Vec<ExtendedVehicleSubscription> {
+        let mut items = self
+            .extended_vehicle_subscriptions
+            .read()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.id.cmp(&right.id));
+        items
+    }
+
+    /// Create and register one Extended Vehicle subscription in the in-memory
+    /// demo registry.
+    pub async fn create_extended_vehicle_subscription(
+        &self,
+        data_item: &str,
+        topic: &str,
+        retention_policy: SubscriptionRetention,
+    ) -> ExtendedVehicleSubscription {
+        let now = Utc::now();
+        let ttl_seconds = match i64::try_from(retention_policy.subscription_ttl_seconds) {
+            Ok(value) => value,
+            Err(_) => i64::MAX,
+        };
+        let expires_at = now
+            .checked_add_signed(Duration::seconds(ttl_seconds))
+            .unwrap_or(now);
+        let id = Uuid::new_v4().to_string();
+        let subscription = ExtendedVehicleSubscription {
+            id: id.clone(),
+            data_item: data_item.to_owned(),
+            topic: topic.to_owned(),
+            status_topic: subscription_status_topic(&id),
+            created_at: now.to_rfc3339_opts(SecondsFormat::Secs, true),
+            expires_at: expires_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+            retention_policy,
+        };
+        self.extended_vehicle_subscriptions
+            .write()
+            .await
+            .insert(id, subscription.clone());
+        subscription
+    }
+
+    /// Delete one Extended Vehicle subscription by id.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SovdError::NotFound`] when the subscription does not exist.
+    pub async fn delete_extended_vehicle_subscription(&self, id: &str) -> Result<()> {
+        let removed = self.extended_vehicle_subscriptions.write().await.remove(id);
+        if removed.is_some() {
+            return Ok(());
+        }
+        Err(SovdError::NotFound {
+            entity: format!("extended vehicle subscription \"{id}\""),
+        })
     }
 
     /// Append one observer-facing audit entry.
@@ -1561,6 +1629,39 @@ mod tests {
         assert_eq!(
             value.data,
             serde_json::json!({ "value": 12.8f64, "unit": "V" })
+        );
+    }
+
+    #[tokio::test]
+    async fn extended_vehicle_subscriptions_round_trip() {
+        let server = InMemoryServer::new_with_demo_data();
+        let created = server
+            .create_extended_vehicle_subscription(
+                "state",
+                "sovd/extended-vehicle/state",
+                SubscriptionRetention {
+                    subscription_ttl_seconds: 300,
+                    heartbeat_seconds: 30,
+                },
+            )
+            .await;
+        assert_eq!(created.data_item, "state");
+        assert_eq!(created.topic, "sovd/extended-vehicle/state");
+        assert!(created.status_topic.ends_with("/status"));
+
+        let listed = server.list_extended_vehicle_subscriptions().await;
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, created.id);
+
+        server
+            .delete_extended_vehicle_subscription(&created.id)
+            .await
+            .expect("delete subscription");
+        assert!(
+            server
+                .list_extended_vehicle_subscriptions()
+                .await
+                .is_empty()
         );
     }
 

@@ -1316,7 +1316,7 @@ G-SEM green.
 | P7-SEM-03 | done | repo_only | Add `fault-semantics.schema.yaml` + `operation-semantics.schema.yaml` + `component-semantics.schema.yaml` | The three schema files now live under `opensovd-core/sovd-interfaces/schemas/semantic/`, and `cargo test -p sovd-interfaces --test semantic_schema_harness` validates the expanded semantic schema set |
 | P7-SEM-04 | done | repo_only | Enforce semantic schema validation on response envelopes | `sovd-server` now runs a central `/sovd/v1/*` response-envelope validator, normalizes unknown or framework-generated error bodies into `GenericError`, and proves both a negative malformed-response case and an unknown-route case in focused tests |
 | P7-SEM-05 | done | repo_only | Integration tests for seven VSS mapping rows | `vss-map.yaml` now carries the seven first-slice ADR-0026 rows, `sovd-server` translates each row through the COVESA adapter, and focused integration tests cover every happy-path row end to end |
-| P7-XV-01 | pending | repo_only | Mount Extended Vehicle REST surface in `sovd-server` | All 9 endpoints in §5.7.1 respond per OpenAPI contract |
+| P7-XV-01 | done | repo_only | Mount Extended Vehicle REST surface in `sovd-server` | All 9 endpoints in §5.7.1 respond per OpenAPI contract |
 | P7-XV-02 | pending | repo_only | Wire MQTT publisher for XV topics | All 6 topics in §5.7.2 emit per subscription lifecycle |
 | P7-XV-03 | pending | repo_only | Wire MQTT subscriber for `control/subscribe` | Subscription create/delete round-trips |
 | P7-XV-04 | pending | repo_only | SIL scenario `sil_extended_vehicle_state.yaml` | State topic publishes expected snapshot |
@@ -1324,6 +1324,13 @@ G-SEM green.
 | P7-XV-06 | pending | live_bench | HIL scenario `hil_extended_vehicle_pubsub.yaml` | Pi publishes to Mosquitto; bench client consumes |
 | P7-CORE-SDK-01 | pending | repo_only | Scaffold reference Rust SDK crate (`sovd-client-rust`) | Crate exists; typed wrappers for every `/sovd/v1/*` endpoint; health-endpoint smoke test green |
 | P7-CORE-SDK-02 | pending | repo_only | SDK retry + timeout + correlation-id propagation | Policies configurable; unit tests cover both |
+
+Completion note (2026-04-22): P7-XV-01 is now closed repo-side. The
+`sovd-extended-vehicle` crate now carries typed ADR-0027 REST DTOs and helper
+constants, `sovd-server` mounts all nine `/sovd/v1/extended/vehicle/*` routes
+against the in-memory demo state plus a small subscription registry, the
+response-envelope validator recognizes the new surface, and focused integration
+plus OpenAPI tests prove the full nine-endpoint slice.
 
 ### 7.9 P8 — Edge AI/ML Integration
 

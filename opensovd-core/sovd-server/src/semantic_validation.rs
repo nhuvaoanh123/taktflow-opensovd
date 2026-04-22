@@ -32,8 +32,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, de::DeserializeOwned};
-#[cfg(debug_assertions)]
-use std::collections::BTreeMap;
+use sovd_extended_vehicle::{
+    EnergyState, ExtendedVehicleCatalog, ExtendedVehicleSubscription, FaultLogDetail, FaultLogList,
+    SubscriptionsList, VehicleInfo, VehicleState,
+};
 use sovd_interfaces::{
     extras::observer::{AuditLog, BackendRoutes, SessionStatus},
     spec::{
@@ -48,6 +50,8 @@ use sovd_interfaces::{
         },
     },
 };
+#[cfg(debug_assertions)]
+use std::collections::BTreeMap;
 
 const RESPONSE_BODY_LIMIT: usize = 4 * 1024 * 1024;
 
@@ -57,6 +61,13 @@ enum SemanticRoute {
     Session,
     Audit,
     GatewayBackends,
+    ExtendedVehicleCatalog,
+    ExtendedVehicleInfo,
+    ExtendedVehicleState,
+    ExtendedVehicleFaultLog,
+    ExtendedVehicleFaultLogDetail,
+    ExtendedVehicleEnergy,
+    ExtendedVehicleSubscriptions,
     Components,
     Component,
     Faults,
@@ -106,16 +117,42 @@ impl SemanticRoute {
             ["sovd", "v1", "session"] => Self::Session,
             ["sovd", "v1", "audit"] => Self::Audit,
             ["sovd", "v1", "gateway", "backends"] => Self::GatewayBackends,
+            ["sovd", "v1", "extended", "vehicle"] => Self::ExtendedVehicleCatalog,
+            ["sovd", "v1", "extended", "vehicle", "vehicle-info"] => Self::ExtendedVehicleInfo,
+            ["sovd", "v1", "extended", "vehicle", "state"] => Self::ExtendedVehicleState,
+            ["sovd", "v1", "extended", "vehicle", "fault-log"] => Self::ExtendedVehicleFaultLog,
+            ["sovd", "v1", "extended", "vehicle", "fault-log", _log_id] => {
+                Self::ExtendedVehicleFaultLogDetail
+            }
+            ["sovd", "v1", "extended", "vehicle", "energy"] => Self::ExtendedVehicleEnergy,
+            ["sovd", "v1", "extended", "vehicle", "subscriptions"] => {
+                Self::ExtendedVehicleSubscriptions
+            }
+            ["sovd", "v1", "extended", "vehicle", "subscriptions", _id] => {
+                Self::ExtendedVehicleSubscriptions
+            }
             ["sovd", "v1", "components"] => Self::Components,
             ["sovd", "v1", "components", _component_id] => Self::Component,
             ["sovd", "v1", "components", _component_id, "faults"] => Self::Faults,
-            ["sovd", "v1", "components", _component_id, "faults", _fault_code] => Self::Fault,
+            [
+                "sovd",
+                "v1",
+                "components",
+                _component_id,
+                "faults",
+                _fault_code,
+            ] => Self::Fault,
             ["sovd", "v1", "components", _component_id, "data"] => Self::DataList,
             ["sovd", "v1", "components", _component_id, "data", _data_id] => Self::DataValue,
             ["sovd", "v1", "components", _component_id, "bulk-data"] => Self::BulkDataCreate,
-            ["sovd", "v1", "components", _component_id, "bulk-data", _transfer_id] => {
-                Self::BulkDataTransfer
-            }
+            [
+                "sovd",
+                "v1",
+                "components",
+                _component_id,
+                "bulk-data",
+                _transfer_id,
+            ] => Self::BulkDataTransfer,
             [
                 "sovd",
                 "v1",
@@ -220,45 +257,75 @@ async fn validate_response(
     }
 
     match route {
-        SemanticRoute::Health => validate_success::<HealthEnvelope>(
-            method,
-            path,
-            parts,
-            body,
-            "HealthEnvelope",
-        ),
+        SemanticRoute::Health => {
+            validate_success::<HealthEnvelope>(method, path, parts, body, "HealthEnvelope")
+        }
         SemanticRoute::Session => {
             validate_success::<SessionStatus>(method, path, parts, body, "SessionStatus")
         }
-        SemanticRoute::Audit => {
-            validate_success::<AuditLog>(method, path, parts, body, "AuditLog")
-        }
+        SemanticRoute::Audit => validate_success::<AuditLog>(method, path, parts, body, "AuditLog"),
         SemanticRoute::GatewayBackends => {
             validate_success::<BackendRoutes>(method, path, parts, body, "BackendRoutes")
         }
-        SemanticRoute::Components => validate_success::<DiscoveredEntities>(
+        SemanticRoute::ExtendedVehicleCatalog => validate_success::<ExtendedVehicleCatalog>(
             method,
             path,
             parts,
             body,
-            "DiscoveredEntities",
+            "ExtendedVehicleCatalog",
         ),
-        SemanticRoute::Component => validate_success::<EntityCapabilities>(
-            method,
-            path,
-            parts,
-            body,
-            "EntityCapabilities",
-        ),
+        SemanticRoute::ExtendedVehicleInfo => {
+            validate_success::<VehicleInfo>(method, path, parts, body, "VehicleInfo")
+        }
+        SemanticRoute::ExtendedVehicleState => {
+            validate_success::<VehicleState>(method, path, parts, body, "VehicleState")
+        }
+        SemanticRoute::ExtendedVehicleFaultLog => {
+            validate_success::<FaultLogList>(method, path, parts, body, "FaultLogList")
+        }
+        SemanticRoute::ExtendedVehicleFaultLogDetail => {
+            validate_success::<FaultLogDetail>(method, path, parts, body, "FaultLogDetail")
+        }
+        SemanticRoute::ExtendedVehicleEnergy => {
+            validate_success::<EnergyState>(method, path, parts, body, "EnergyState")
+        }
+        SemanticRoute::ExtendedVehicleSubscriptions => match method {
+            &Method::GET => validate_success::<SubscriptionsList>(
+                method,
+                path,
+                parts,
+                body,
+                "SubscriptionsList",
+            ),
+            &Method::POST if status == StatusCode::CREATED => {
+                validate_success::<ExtendedVehicleSubscription>(
+                    method,
+                    path,
+                    parts,
+                    body,
+                    "ExtendedVehicleSubscription",
+                )
+            }
+            _ => invalid_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &original_headers,
+                "semantic.response_validation_failed",
+                format!("{method} {path} returned an unexpected success status {status}"),
+            ),
+        },
+        SemanticRoute::Components => {
+            validate_success::<DiscoveredEntities>(method, path, parts, body, "DiscoveredEntities")
+        }
+        SemanticRoute::Component => {
+            validate_success::<EntityCapabilities>(method, path, parts, body, "EntityCapabilities")
+        }
         SemanticRoute::Faults => {
             validate_success::<ListOfFaults>(method, path, parts, body, "ListOfFaults")
         }
         SemanticRoute::Fault => {
             validate_success::<FaultDetails>(method, path, parts, body, "FaultDetails")
         }
-        SemanticRoute::DataList => {
-            validate_success::<Datas>(method, path, parts, body, "Datas")
-        }
+        SemanticRoute::DataList => validate_success::<Datas>(method, path, parts, body, "Datas"),
         SemanticRoute::DataValue => {
             validate_success::<ReadValue>(method, path, parts, body, "ReadValue")
         }
@@ -282,13 +349,9 @@ async fn validate_response(
             body,
             "BulkDataTransferStatus",
         ),
-        SemanticRoute::Operations => validate_success::<OperationsList>(
-            method,
-            path,
-            parts,
-            body,
-            "OperationsList",
-        ),
+        SemanticRoute::Operations => {
+            validate_success::<OperationsList>(method, path, parts, body, "OperationsList")
+        }
         SemanticRoute::StartExecution => match status {
             StatusCode::OK => validate_success::<StartExecutionSyncResponse>(
                 method,
@@ -319,13 +382,9 @@ async fn validate_response(
             "ExecutionStatusResponse",
         ),
         #[cfg(debug_assertions)]
-        SemanticRoute::OpenApi => validate_success::<OpenApiEnvelope>(
-            method,
-            path,
-            parts,
-            body,
-            "OpenApiEnvelope",
-        ),
+        SemanticRoute::OpenApi => {
+            validate_success::<OpenApiEnvelope>(method, path, parts, body, "OpenApiEnvelope")
+        }
         SemanticRoute::Unknown => invalid_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             &original_headers,
@@ -447,7 +506,10 @@ mod tests {
     #[tokio::test]
     async fn middleware_rejects_invalid_success_envelope_for_known_route() {
         let app = Router::new()
-            .route("/sovd/v1/components", get(|| async { Json(json!({"broken": true})) }))
+            .route(
+                "/sovd/v1/components",
+                get(|| async { Json(json!({"broken": true})) }),
+            )
             .layer(from_fn(middleware));
 
         let response = app
@@ -480,7 +542,10 @@ mod tests {
             "status": "ok",
             "version": "1.0.0",
         });
-        assert!(validate_json::<HealthEnvelope>(&serde_json::to_vec(&valid).expect("serialize")).is_ok());
+        assert!(
+            validate_json::<HealthEnvelope>(&serde_json::to_vec(&valid).expect("serialize"))
+                .is_ok()
+        );
 
         let missing_version = serde_json::json!({
             "status": "ok",

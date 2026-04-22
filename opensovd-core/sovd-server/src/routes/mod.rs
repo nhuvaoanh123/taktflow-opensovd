@@ -45,6 +45,7 @@ pub mod components;
 pub mod covesa;
 pub mod data;
 pub mod error;
+pub mod extended_vehicle;
 pub mod faults;
 pub mod health;
 pub mod observer;
@@ -75,6 +76,42 @@ fn base_router() -> Router<Arc<InMemoryServer>> {
         .route(
             "/sovd/covesa/vss/{vss_path}",
             get(covesa::read_vss_path).post(covesa::write_vss_path),
+        )
+        .route(
+            "/sovd/v1/extended/vehicle",
+            get(extended_vehicle::catalog),
+        )
+        .route(
+            "/sovd/v1/extended/vehicle/",
+            get(extended_vehicle::catalog),
+        )
+        .route(
+            "/sovd/v1/extended/vehicle/vehicle-info",
+            get(extended_vehicle::vehicle_info),
+        )
+        .route(
+            "/sovd/v1/extended/vehicle/state",
+            get(extended_vehicle::state),
+        )
+        .route(
+            "/sovd/v1/extended/vehicle/fault-log",
+            get(extended_vehicle::fault_log),
+        )
+        .route(
+            "/sovd/v1/extended/vehicle/fault-log/{log_id}",
+            get(extended_vehicle::fault_log_detail),
+        )
+        .route(
+            "/sovd/v1/extended/vehicle/energy",
+            get(extended_vehicle::energy),
+        )
+        .route(
+            "/sovd/v1/extended/vehicle/subscriptions",
+            get(extended_vehicle::list_subscriptions).post(extended_vehicle::create_subscription),
+        )
+        .route(
+            "/sovd/v1/extended/vehicle/subscriptions/{id}",
+            delete(extended_vehicle::delete_subscription),
         )
         .route(
             "/sovd/v1/components/{component_id}/faults",
@@ -142,7 +179,9 @@ pub fn app_with_server(server: Arc<InMemoryServer>) -> Router {
     base_router()
         .with_state(Arc::clone(&server))
         .layer(from_fn_with_state(server, observer::middleware))
-        .layer(axum::middleware::from_fn(crate::semantic_validation::middleware))
+        .layer(axum::middleware::from_fn(
+            crate::semantic_validation::middleware,
+        ))
         .layer(axum::middleware::from_fn(correlation::middleware))
 }
 
@@ -160,6 +199,8 @@ pub fn app_with_auth(server: Arc<InMemoryServer>, auth: AuthConfig) -> Router {
         .with_state(Arc::clone(&server))
         .layer(from_fn_with_state(server, observer::middleware))
         .layer(from_fn_with_state(auth_state, crate::auth::middleware))
-        .layer(axum::middleware::from_fn(crate::semantic_validation::middleware))
+        .layer(axum::middleware::from_fn(
+            crate::semantic_validation::middleware,
+        ))
         .layer(axum::middleware::from_fn(correlation::middleware))
 }

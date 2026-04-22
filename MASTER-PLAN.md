@@ -122,7 +122,7 @@ plus the four future-proofing extensions the project description names.
 | CORE-5 | Protocol Adapter — SOVD → UDS/DoIP (legacy ECU bridge) | `classic-diagnostic-adapter/` (vendored) | §5.1.5 |
 | CORE-6 | Protocol Adapter — CAN → DoIP proxy (physical-bus bridge) | `gateway/can_to_doip_proxy/` | §5.1.6 |
 | CORE-7 | One-binary launcher | `opensovd-core/sovd-main/` | §5.1.7 |
-| CORE-8 | Reference SOVD Rust client SDK | `opensovd-core/sovd-client-rust/` *(planned)* | §5.1.8 |
+| CORE-8 | Reference SOVD Rust client SDK | `opensovd-core/sovd-client-rust/` | §5.1.8 |
 | CORE-9 | Reference SOVD TypeScript client | `dashboard/src/lib/api/sovdClient.ts` | §5.1.9 |
 
 #### 1.2.2 Bucket B — Security & Compliance
@@ -407,7 +407,7 @@ gitignored working notes.
 | [`firmware/platform/posix/src/DoIp_Posix.c`](firmware/platform/posix/src/DoIp_Posix.c) | POSIX DoIP listener | ADR-0005 |
 | [`tools/odx-gen/`](tools/odx-gen/) | ODX → MDD converter (FlatBuffers emitter) | ADR-0008 |
 | [`dashboard/`](dashboard/) | SvelteKit observer dashboard, 20 UC widgets | ADR-0024 |
-| [`opensovd-core/sovd-client-rust/`](opensovd-core/sovd-client-rust/) *(planned)* | Reference SOVD client SDK (Rust) | — |
+| [`opensovd-core/sovd-client-rust/`](opensovd-core/sovd-client-rust/) | Reference SOVD client SDK (Rust) | — |
 
 ### 4.3 Protocol Stack
 
@@ -604,15 +604,17 @@ limit → server → gateway → DFM → optional CDA forward.
 
 **Config.** TOML (`opensovd-pi.toml`, `opensovd-pi-phase5-hybrid.toml`).
 
-#### 5.1.8 CORE-8 Reference Rust SDK (*planned*)
+#### 5.1.8 CORE-8 Reference Rust SDK
 
 **Role.** Reference client SDK for integrators writing Rust testers.
 
-**Location.** [`opensovd-core/sovd-client-rust/`](opensovd-core/sovd-client-rust/)
-*(crate to be created in P7)*.
+**Location.** [`opensovd-core/sovd-client-rust/`](opensovd-core/sovd-client-rust/).
 
 **Surface.** Thin async wrappers over `sovd-interfaces` types; retry and
 timeout policy; correlation-id propagation.
+
+**Status.** Implemented in §7.P7 (`P7-CORE-SDK-01` for the initial scaffold,
+`P7-CORE-SDK-02` for transport policy).
 
 **Planned in.** §7.P7 (see P7-CORE-SDK-01 below).
 
@@ -1322,7 +1324,7 @@ G-SEM green.
 | P7-XV-04 | done | repo_only | SIL scenario `sil_extended_vehicle_state.yaml` | State topic publishes expected snapshot |
 | P7-XV-05 | done | repo_only | SIL scenario `sil_extended_vehicle_fault_log.yaml` *(expand)* | Fault log + drill-in + subscription round-trip |
 | P7-XV-06 | done | live_bench | HIL scenario `hil_extended_vehicle_pubsub.yaml` | Pi publishes to Mosquitto; bench client consumes |
-| P7-CORE-SDK-01 | pending | repo_only | Scaffold reference Rust SDK crate (`sovd-client-rust`) | Crate exists; typed wrappers for every `/sovd/v1/*` endpoint; health-endpoint smoke test green |
+| P7-CORE-SDK-01 | done | repo_only | Scaffold reference Rust SDK crate (`sovd-client-rust`) | Crate exists; typed wrappers for every `/sovd/v1/*` endpoint; health-endpoint smoke test green |
 | P7-CORE-SDK-02 | pending | repo_only | SDK retry + timeout + correlation-id propagation | Policies configurable; unit tests cover both |
 
 Completion note (2026-04-22): P7-XV-01 is now closed repo-side. The
@@ -1381,6 +1383,15 @@ passed with `TAKTFLOW_BENCH=1`, `PHASE5_BENCH_READY=1`,
 `TAKTFLOW_PI_SOVD_MAIN_BASE_URL=http://192.168.0.197:21002`, and
 `TAKTFLOW_PI_MQTT_ADDR=127.0.0.1:18830`, proving the required
 Pi-publishes / bench-consumes MQTT witness end to end.
+
+Completion note (2026-04-22): `P7-CORE-SDK-01` is now closed repo-side. The
+new workspace crate `opensovd-core/sovd-client-rust/` now exposes typed async
+wrappers for every mounted `/sovd/v1/*` route group (`health`, observer,
+components, Extended Vehicle, faults, data, bulk-data, and operations), maps
+non-success responses onto the typed `GenericError` envelope when the server
+returns one, and proves the initial smoke path with a local in-memory
+round-trip test against `GET /sovd/v1/health`. The older `sovd-client` crate
+now acts as a compatibility shim that re-exports the new SDK surface.
 
 ### 7.9 P8 — Edge AI/ML Integration
 

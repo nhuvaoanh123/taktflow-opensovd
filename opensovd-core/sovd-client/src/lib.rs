@@ -10,19 +10,10 @@
  * https://www.apache.org/licenses/LICENSE-2.0
  */
 
-//! Outbound SOVD REST client for the Eclipse `OpenSOVD` core stack.
+//! Compatibility shim for the reference Rust SDK.
 //!
-//! Used by off-board testers, on-board apps, cloud services, and by
-//! `sovd-gateway` itself when talking to downstream native-SOVD ECUs.
-//! See [`ARCHITECTURE.md`](../../ARCHITECTURE.md) for role boundaries.
-//!
-//! Phase 0: skeleton only. The [`Client`] unit struct declared here will
-//! implement [`sovd_interfaces::traits::SovdClient`] in Phase 3/4.
+//! `P7-CORE-SDK-01` introduces the real implementation under the new
+//! `sovd-client-rust` crate. This compatibility crate keeps the older
+//! `sovd-client` package name available while re-exporting the new API.
 
-/// Outbound SOVD REST client instance.
-///
-/// Will implement [`sovd_interfaces::traits::SovdClient`] in Phase 3/4.
-/// Fields (base URL, HTTP client, auth material) are added then.
-pub struct Client {
-    // fields added in Phase 3/4
-}
+pub use sovd_client_rust::*;

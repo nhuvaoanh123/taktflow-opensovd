@@ -25,6 +25,4 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
-sovd-interfaces = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
+sovd-client-rust = { workspace = true }

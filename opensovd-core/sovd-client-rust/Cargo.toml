@@ -1,0 +1,31 @@
+[package]
+name = "sovd-client-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+description = "Reference Rust SDK for the OpenSOVD HTTP surface"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+percent-encoding = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sovd-extended-vehicle = { workspace = true }
+sovd-interfaces = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+axum = { workspace = true }
+sovd-server = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }

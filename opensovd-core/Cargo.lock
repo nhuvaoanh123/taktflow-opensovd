@@ -3445,9 +3445,24 @@ dependencies = [
 name = "sovd-client"
 version = "0.1.0"
 dependencies = [
+ "sovd-client-rust",
+]
+
+[[package]]
+name = "sovd-client-rust"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.9",
+ "percent-encoding",
+ "reqwest",
  "serde",
+ "serde_json",
+ "sovd-extended-vehicle",
  "sovd-interfaces",
+ "sovd-server",
  "thiserror 2.0.18",
+ "tokio",
+ "url",
 ]
 
 [[package]]

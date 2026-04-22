@@ -28,6 +28,7 @@ members = [
   "sovd-server",
   "sovd-gateway",
   "sovd-client",
+  "sovd-client-rust",
   "sovd-tracing",
   "sovd-main",
   "integration-tests",
@@ -52,6 +53,7 @@ sovd-db = { path = "sovd-db" }
 sovd-server = { path = "sovd-server" }
 sovd-gateway = { path = "sovd-gateway" }
 sovd-client = { path = "sovd-client" }
+sovd-client-rust = { path = "sovd-client-rust" }
 sovd-tracing = { path = "sovd-tracing" }
 sovd-db-sqlite = { path = "crates/sovd-db-sqlite" }
 sovd-db-score = { path = "crates/sovd-db-score" }

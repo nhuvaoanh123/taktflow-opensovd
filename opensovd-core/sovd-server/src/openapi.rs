@@ -24,7 +24,7 @@
 
 use utoipa::OpenApi;
 
-use crate::routes::{components, data, faults, observer, operations};
+use crate::routes::{bulk_data, components, data, faults, observer, operations};
 
 /// Assembled `OpenAPI` document. Derive-built so the doc is in sync with
 /// the annotated handlers and `ToSchema` types at compile time.
@@ -36,6 +36,10 @@ use crate::routes::{components, data, faults, observer, operations};
         observer::session,
         observer::audit,
         observer::gateway_backends,
+        bulk_data::start_transfer,
+        bulk_data::upload_chunk,
+        bulk_data::transfer_status,
+        bulk_data::cancel_transfer,
         faults::list_faults,
         faults::get_fault,
         faults::clear_all_faults,
@@ -51,6 +55,11 @@ use crate::routes::{components, data, faults, observer, operations};
         sovd_interfaces::spec::component::DiscoveredEntitiesWithSchema,
         sovd_interfaces::spec::component::EntityCapabilities,
         sovd_interfaces::spec::component::EntityReference,
+        sovd_interfaces::spec::bulk_data::BulkDataState,
+        sovd_interfaces::spec::bulk_data::BulkDataFailureReason,
+        sovd_interfaces::spec::bulk_data::BulkDataTransferRequest,
+        sovd_interfaces::spec::bulk_data::BulkDataTransferCreated,
+        sovd_interfaces::spec::bulk_data::BulkDataTransferStatus,
         sovd_interfaces::spec::fault::Fault,
         sovd_interfaces::spec::fault::FaultDetails,
         sovd_interfaces::spec::fault::FaultFilter,
@@ -95,6 +104,7 @@ use crate::routes::{components, data, faults, observer, operations};
     )),
     tags(
         (name = "discovery", description = "Entity discovery endpoints"),
+        (name = "bulk-data", description = "Binary OTA transfer endpoints"),
         (name = "fault-handling", description = "Fault list/detail/clear endpoints"),
         (name = "operations-control", description = "Operation execution endpoints"),
         (name = "data-access", description = "Data resource access endpoints"),

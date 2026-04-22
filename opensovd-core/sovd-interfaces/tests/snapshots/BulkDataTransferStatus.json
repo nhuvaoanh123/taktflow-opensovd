@@ -1,0 +1,50 @@
+{
+  "type": "object",
+  "description": "`GET /components/{id}/bulk-data/{transfer-id}/status` body.",
+  "required": [
+    "transfer-id",
+    "state",
+    "bytes-received",
+    "total-bytes"
+  ],
+  "properties": {
+    "bytes-received": {
+      "type": "integer",
+      "format": "int64",
+      "description": "Monotonic byte counter of accepted payload data.",
+      "minimum": 0
+    },
+    "reason": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/components/schemas/BulkDataFailureReason",
+          "description": "Failure reason when `state == Failed`."
+        }
+      ]
+    },
+    "state": {
+      "$ref": "#/components/schemas/BulkDataState",
+      "description": "Current lifecycle state."
+    },
+    "target-slot": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Echo of the optional slot hint when the caller supplied one."
+    },
+    "total-bytes": {
+      "type": "integer",
+      "format": "int64",
+      "description": "Total image size declared when the transfer was created.",
+      "minimum": 0
+    },
+    "transfer-id": {
+      "type": "string",
+      "description": "Transfer identifier the status belongs to."
+    }
+  }
+}

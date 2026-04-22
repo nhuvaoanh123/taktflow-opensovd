@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "description": "`POST /components/{id}/bulk-data` success body.",
+  "required": [
+    "transfer-id",
+    "state"
+  ],
+  "properties": {
+    "state": {
+      "$ref": "#/components/schemas/BulkDataState",
+      "description": "Initial lifecycle state returned to the caller."
+    },
+    "transfer-id": {
+      "type": "string",
+      "description": "Stable identifier for subsequent `PUT` / `GET status` / `DELETE`."
+    }
+  }
+}

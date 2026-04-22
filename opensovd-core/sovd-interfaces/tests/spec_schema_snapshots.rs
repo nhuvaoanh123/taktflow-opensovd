@@ -35,6 +35,10 @@ use std::{
 };
 
 use sovd_interfaces::spec::{
+    bulk_data::{
+        BulkDataFailureReason, BulkDataState, BulkDataTransferCreated, BulkDataTransferRequest,
+        BulkDataTransferStatus,
+    },
     component::{
         DiscoveredEntities, DiscoveredEntitiesWithSchema, EntityCapabilities, EntityCollection,
         EntityReference,
@@ -92,6 +96,31 @@ fn check_snapshot<T: PartialSchema>(name: &str) {
 }
 
 // ---- error ---------------------------------------------------------------
+
+#[test]
+fn snapshot_bulk_data_state() {
+    check_snapshot::<BulkDataState>("BulkDataState");
+}
+
+#[test]
+fn snapshot_bulk_data_failure_reason() {
+    check_snapshot::<BulkDataFailureReason>("BulkDataFailureReason");
+}
+
+#[test]
+fn snapshot_bulk_data_transfer_request() {
+    check_snapshot::<BulkDataTransferRequest>("BulkDataTransferRequest");
+}
+
+#[test]
+fn snapshot_bulk_data_transfer_created() {
+    check_snapshot::<BulkDataTransferCreated>("BulkDataTransferCreated");
+}
+
+#[test]
+fn snapshot_bulk_data_transfer_status() {
+    check_snapshot::<BulkDataTransferStatus>("BulkDataTransferStatus");
+}
 
 #[test]
 fn snapshot_generic_error() {

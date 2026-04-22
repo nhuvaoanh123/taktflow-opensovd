@@ -32,6 +32,9 @@ use async_trait::async_trait;
 
 use crate::{
     spec::{
+        bulk_data::{
+            BulkDataTransferCreated, BulkDataTransferRequest, BulkDataTransferStatus,
+        },
         component::EntityCapabilities,
         data::{Datas, ReadValue},
         fault::{FaultDetails, FaultFilter, ListOfFaults},
@@ -41,6 +44,7 @@ use crate::{
         },
     },
     types::{
+        bulk_data::BulkDataChunk,
         component::ComponentId,
         error::{Result, SovdError},
     },
@@ -151,6 +155,45 @@ pub trait SovdBackend: Send + Sync {
         let _ = data_id;
         Err(SovdError::InvalidRequest(
             "backend does not implement read_data".to_owned(),
+        ))
+    }
+
+    /// Start a bulk-data transfer on `POST .../components/{id}/bulk-data`.
+    async fn start_bulk_data(
+        &self,
+        request: BulkDataTransferRequest,
+    ) -> Result<BulkDataTransferCreated> {
+        let _ = request;
+        Err(SovdError::InvalidRequest(
+            "backend does not implement bulk-data".to_owned(),
+        ))
+    }
+
+    /// Upload one binary chunk on `PUT .../components/{id}/bulk-data/{transfer-id}`.
+    async fn upload_bulk_data_chunk(
+        &self,
+        transfer_id: &str,
+        chunk: BulkDataChunk,
+    ) -> Result<()> {
+        let _ = (transfer_id, chunk);
+        Err(SovdError::InvalidRequest(
+            "backend does not implement bulk-data".to_owned(),
+        ))
+    }
+
+    /// Read transfer status on `GET .../bulk-data/{transfer-id}/status`.
+    async fn bulk_data_status(&self, transfer_id: &str) -> Result<BulkDataTransferStatus> {
+        let _ = transfer_id;
+        Err(SovdError::InvalidRequest(
+            "backend does not implement bulk-data".to_owned(),
+        ))
+    }
+
+    /// Cancel an in-flight transfer on `DELETE .../bulk-data/{transfer-id}`.
+    async fn cancel_bulk_data(&self, transfer_id: &str) -> Result<()> {
+        let _ = transfer_id;
+        Err(SovdError::InvalidRequest(
+            "backend does not implement bulk-data".to_owned(),
         ))
     }
 

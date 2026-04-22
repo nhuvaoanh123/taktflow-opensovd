@@ -30,6 +30,7 @@
 //! Wire-format DTOs (`Fault`, `Operation*`, `EntityCapabilities`, …) live
 //! in [`crate::spec`] and are derived from the ISO 17978-3 `OpenAPI` YAML.
 
+pub mod bulk_data;
 pub mod component;
 pub mod error;
 pub mod session;

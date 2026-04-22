@@ -49,6 +49,9 @@ use sovd_interfaces::{
         AuditEntry as ObserverAuditEntry, AuditLog, BackendRoute, BackendRoutes, SessionStatus,
     },
     spec::{
+        bulk_data::{
+            BulkDataTransferCreated, BulkDataTransferRequest, BulkDataTransferStatus,
+        },
         component::{DiscoveredEntities, EntityCapabilities, EntityReference},
         data::{Datas, ReadValue, ValueMetadata},
         fault::{Fault, FaultDetails, FaultFilter, ListOfFaults},
@@ -62,6 +65,7 @@ use sovd_interfaces::{
         server::SovdServer,
     },
     types::error::Result,
+    types::bulk_data::BulkDataChunk,
 };
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -732,6 +736,68 @@ impl InMemoryServer {
         }
         let view = self.component_server(component).await?;
         view.list_data().await
+    }
+
+    /// Dispatch `start_bulk_data`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SovdError::InvalidRequest`] when the routed component does not
+    /// support bulk-data.
+    pub async fn dispatch_start_bulk_data(
+        &self,
+        component: &ComponentId,
+        request: BulkDataTransferRequest,
+    ) -> Result<BulkDataTransferCreated> {
+        if let Some(backend) = self.forward(component).await {
+            return backend.start_bulk_data(request).await;
+        }
+        Err(SovdError::InvalidRequest(format!(
+            "component \"{component}\" does not implement bulk-data"
+        )))
+    }
+
+    /// Dispatch one bulk-data chunk upload.
+    pub async fn dispatch_upload_bulk_data_chunk(
+        &self,
+        component: &ComponentId,
+        transfer_id: &str,
+        chunk: BulkDataChunk,
+    ) -> Result<()> {
+        if let Some(backend) = self.forward(component).await {
+            return backend.upload_bulk_data_chunk(transfer_id, chunk).await;
+        }
+        Err(SovdError::InvalidRequest(format!(
+            "component \"{component}\" does not implement bulk-data"
+        )))
+    }
+
+    /// Dispatch bulk-data status lookup.
+    pub async fn dispatch_bulk_data_status(
+        &self,
+        component: &ComponentId,
+        transfer_id: &str,
+    ) -> Result<BulkDataTransferStatus> {
+        if let Some(backend) = self.forward(component).await {
+            return backend.bulk_data_status(transfer_id).await;
+        }
+        Err(SovdError::InvalidRequest(format!(
+            "component \"{component}\" does not implement bulk-data"
+        )))
+    }
+
+    /// Dispatch bulk-data cancellation.
+    pub async fn dispatch_cancel_bulk_data(
+        &self,
+        component: &ComponentId,
+        transfer_id: &str,
+    ) -> Result<()> {
+        if let Some(backend) = self.forward(component).await {
+            return backend.cancel_bulk_data(transfer_id).await;
+        }
+        Err(SovdError::InvalidRequest(format!(
+            "component \"{component}\" does not implement bulk-data"
+        )))
     }
 
     /// Dispatch `read_data` — `GET /components/{id}/data/{data-id}`.

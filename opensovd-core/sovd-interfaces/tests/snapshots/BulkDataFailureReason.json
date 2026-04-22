@@ -1,0 +1,13 @@
+{
+  "type": "string",
+  "description": "Enumerated failure reason surfaced by OTA status polling.",
+  "enum": [
+    "InvalidManifest",
+    "SignatureInvalid",
+    "ChunkOutOfOrder",
+    "FlashWriteFailed",
+    "PowerLoss",
+    "AbortRequested",
+    "Other"
+  ]
+}

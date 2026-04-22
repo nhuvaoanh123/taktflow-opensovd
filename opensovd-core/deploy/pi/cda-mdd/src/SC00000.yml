@@ -14,7 +14,7 @@ meta:
   author: "Taktflow bench"
   domain: "Phase5"
   created: "2026-04-20"
-  revision: "1.0.0"
+  revision: "1.1.0"
   description: "SC (Safety Controller) - TMS570 bench ECU, DoIP logical 0x0004"
   tags: [taktflow, phase5, sc, tms570, bench, safety]
 
@@ -165,6 +165,22 @@ services:
     subfunctions:
       on: 0x01
       off: 0x02
+
+  requestDownload:
+    enabled: true
+    max_number_of_block_length: 130
+    regions:
+      - name: "bench_download_buffer"
+        start: 0x00020000
+        end: 0x000203FF
+        access: programming_only
+
+  transferData:
+    enabled: true
+    max_block_sequence_counter: 255
+
+  requestTransferExit:
+    enabled: true
 
 # Safety Controller does NOT host RoutineControl; motor self-test is CVC-only.
 #

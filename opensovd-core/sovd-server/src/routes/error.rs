@@ -45,6 +45,7 @@ impl From<SovdError> for ApiError {
         let (status, error_code) = match &err {
             SovdError::NotFound { .. } => (StatusCode::NOT_FOUND, "resource.not_found"),
             SovdError::InvalidRequest(_) => (StatusCode::BAD_REQUEST, "request.invalid"),
+            SovdError::Conflict(_) => (StatusCode::CONFLICT, "request.conflict"),
             SovdError::Unauthorized => (StatusCode::UNAUTHORIZED, "auth.unauthorized"),
             SovdError::BackendUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, "backend.unavailable")

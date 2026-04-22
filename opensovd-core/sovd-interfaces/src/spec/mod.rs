@@ -51,6 +51,7 @@
 //! `tests/snapshots/` lock the generated JSON Schema output so drift against
 //! the spec is visible in `git diff`.
 
+pub mod bulk_data;
 pub mod component;
 pub mod data;
 pub mod error;

@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "description": "`POST /components/{id}/bulk-data` body.",
+  "required": [
+    "manifest",
+    "image-size"
+  ],
+  "properties": {
+    "image-size": {
+      "type": "integer",
+      "format": "int64",
+      "description": "Total image size in bytes.",
+      "minimum": 0
+    },
+    "manifest": {
+      "description": "Free-form OTA manifest. Phase 6 requires this to be present even when a\nbackend uses only a subset of the fields."
+    },
+    "target-slot": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional target-slot preference from the caller."
+    }
+  }
+}

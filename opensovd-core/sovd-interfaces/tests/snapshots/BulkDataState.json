@@ -1,0 +1,12 @@
+{
+  "type": "string",
+  "description": "Bulk-data transfer lifecycle.",
+  "enum": [
+    "Idle",
+    "Downloading",
+    "Verifying",
+    "Committed",
+    "Failed",
+    "Rolledback"
+  ]
+}

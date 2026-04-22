@@ -40,6 +40,7 @@ use axum::{
 use crate::{InMemoryServer, auth::AuthConfig, correlation};
 
 pub mod bench;
+pub mod bulk_data;
 pub mod components;
 pub mod data;
 pub mod error;
@@ -85,6 +86,18 @@ fn base_router() -> Router<Arc<InMemoryServer>> {
         .route(
             "/sovd/v1/components/{component_id}/data/{data_id}",
             get(data::read_data),
+        )
+        .route(
+            "/sovd/v1/components/{component_id}/bulk-data",
+            post(bulk_data::start_transfer),
+        )
+        .route(
+            "/sovd/v1/components/{component_id}/bulk-data/{transfer_id}",
+            put(bulk_data::upload_chunk).delete(bulk_data::cancel_transfer),
+        )
+        .route(
+            "/sovd/v1/components/{component_id}/bulk-data/{transfer_id}/status",
+            get(bulk_data::transfer_status),
         )
         .route(
             "/sovd/v1/components/{component_id}/operations",

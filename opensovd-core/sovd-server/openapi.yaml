@@ -72,6 +72,126 @@ paths:
                 $ref: '#/components/schemas/EntityCapabilities'
         '404':
           description: Component not found
+  /sovd/v1/components/{component_id}/bulk-data:
+    post:
+      tags:
+      - bulk-data
+      summary: '`POST /sovd/v1/components/{component_id}/bulk-data` â€” start a transfer.'
+      operationId: startBulkDataTransfer
+      parameters:
+      - name: component_id
+        in: path
+        description: Stable component identifier
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkDataTransferRequest'
+        required: true
+      responses:
+        '201':
+          description: Transfer created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkDataTransferCreated'
+        '400':
+          description: Invalid manifest
+        '404':
+          description: Component not found
+        '422':
+          description: Component does not support bulk-data
+  /sovd/v1/components/{component_id}/bulk-data/{transfer_id}:
+    put:
+      tags:
+      - bulk-data
+      summary: |-
+        `PUT /sovd/v1/components/{component_id}/bulk-data/{transfer_id}` â€” upload
+        one binary chunk.
+      operationId: uploadBulkDataChunk
+      parameters:
+      - name: component_id
+        in: path
+        description: Stable component identifier
+        required: true
+        schema:
+          type: string
+      - name: transfer_id
+        in: path
+        description: Bulk-data transfer identifier
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Binary chunk payload addressed by Content-Range
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+        required: true
+      responses:
+        '204':
+          description: Chunk accepted
+        '400':
+          description: Invalid Content-Range or payload
+        '404':
+          description: Transfer not found
+        '409':
+          description: Chunk order conflicts with current transfer state
+    delete:
+      tags:
+      - bulk-data
+      summary: '`DELETE /sovd/v1/components/{component_id}/bulk-data/{transfer_id}` â€” abort.'
+      operationId: cancelBulkDataTransfer
+      parameters:
+      - name: component_id
+        in: path
+        description: Stable component identifier
+        required: true
+        schema:
+          type: string
+      - name: transfer_id
+        in: path
+        description: Bulk-data transfer identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Transfer cancelled
+        '404':
+          description: Transfer not found
+  /sovd/v1/components/{component_id}/bulk-data/{transfer_id}/status:
+    get:
+      tags:
+      - bulk-data
+      summary: '`GET /sovd/v1/components/{component_id}/bulk-data/{transfer_id}/status`.'
+      operationId: getBulkDataTransferStatus
+      parameters:
+      - name: component_id
+        in: path
+        description: Stable component identifier
+        required: true
+        schema:
+          type: string
+      - name: transfer_id
+        in: path
+        description: Bulk-data transfer identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Current transfer status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkDataTransferStatus'
+        '404':
+          description: Transfer not found
   /sovd/v1/components/{component_id}/data:
     get:
       tags:
@@ -565,6 +685,96 @@ components:
           items:
             $ref: '#/components/schemas/BackendRoute'
           description: All known routes, sorted by `id`.
+    BulkDataFailureReason:
+      type: string
+      description: Enumerated failure reason surfaced by OTA status polling.
+      enum:
+      - InvalidManifest
+      - SignatureInvalid
+      - ChunkOutOfOrder
+      - FlashWriteFailed
+      - PowerLoss
+      - AbortRequested
+      - Other
+    BulkDataState:
+      type: string
+      description: Bulk-data transfer lifecycle.
+      enum:
+      - Idle
+      - Downloading
+      - Verifying
+      - Committed
+      - Failed
+      - Rolledback
+    BulkDataTransferCreated:
+      type: object
+      description: '`POST /components/{id}/bulk-data` success body.'
+      required:
+      - transfer-id
+      - state
+      properties:
+        state:
+          $ref: '#/components/schemas/BulkDataState'
+          description: Initial lifecycle state returned to the caller.
+        transfer-id:
+          type: string
+          description: Stable identifier for subsequent `PUT` / `GET status` / `DELETE`.
+    BulkDataTransferRequest:
+      type: object
+      description: '`POST /components/{id}/bulk-data` body.'
+      required:
+      - manifest
+      - image-size
+      properties:
+        image-size:
+          type: integer
+          format: int64
+          description: Total image size in bytes.
+          minimum: 0
+        manifest:
+          description: |-
+            Free-form OTA manifest. Phase 6 requires this to be present even when a
+            backend uses only a subset of the fields.
+        target-slot:
+          type:
+          - string
+          - 'null'
+          description: Optional target-slot preference from the caller.
+    BulkDataTransferStatus:
+      type: object
+      description: '`GET /components/{id}/bulk-data/{transfer-id}/status` body.'
+      required:
+      - transfer-id
+      - state
+      - bytes-received
+      - total-bytes
+      properties:
+        bytes-received:
+          type: integer
+          format: int64
+          description: Monotonic byte counter of accepted payload data.
+          minimum: 0
+        reason:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/BulkDataFailureReason'
+            description: Failure reason when `state == Failed`.
+        state:
+          $ref: '#/components/schemas/BulkDataState'
+          description: Current lifecycle state.
+        target-slot:
+          type:
+          - string
+          - 'null'
+          description: Echo of the optional slot hint when the caller supplied one.
+        total-bytes:
+          type: integer
+          format: int64
+          description: Total image size declared when the transfer was created.
+          minimum: 0
+        transfer-id:
+          type: string
+          description: Transfer identifier the status belongs to.
     Capability:
       type: string
       description: |-
@@ -1569,6 +1779,8 @@ components:
 tags:
 - name: discovery
   description: Entity discovery endpoints
+- name: bulk-data
+  description: Binary OTA transfer endpoints
 - name: fault-handling
   description: Fault list/detail/clear endpoints
 - name: operations-control

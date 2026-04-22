@@ -44,6 +44,10 @@ pub enum SovdError {
     #[error("invalid request: {0}")]
     InvalidRequest(String),
 
+    /// The request conflicts with the current resource state.
+    #[error("conflict: {0}")]
+    Conflict(String),
+
     /// The backend for the given component is currently not reachable.
     #[error("backend unavailable for component: {0}")]
     BackendUnavailable(ComponentId),

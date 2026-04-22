@@ -55,6 +55,10 @@ use sovd_interfaces::{
     ComponentId, SovdError,
     extras::response::ResponseExtras,
     spec::{
+        bulk_data::{
+            BulkDataFailureReason, BulkDataState, BulkDataTransferCreated,
+            BulkDataTransferRequest, BulkDataTransferStatus,
+        },
         component::EntityCapabilities,
         data::{Datas, ReadValue},
         error::{DataError, GenericError},
@@ -65,7 +69,7 @@ use sovd_interfaces::{
         },
     },
     traits::backend::{BackendKind, SovdBackend},
-    types::error::Result,
+    types::{bulk_data::BulkDataChunk, error::Result},
 };
 use tokio::sync::{Mutex, RwLock};
 use tracing::Instrument as _;
@@ -82,6 +86,14 @@ const CDA_MAX_ATTEMPTS: u32 = 3;
 const CDA_TOTAL_BUDGET: Duration = Duration::from_millis(2_000);
 const CDA_INITIAL_BACKOFF: Duration = Duration::from_millis(50);
 const CDA_CACHE_LOCK_BUDGET: Duration = Duration::from_millis(50);
+const BULK_DATA_SC_COMPONENT_ID: &str = "sc";
+const BULK_DATA_PROGRAMMING_SESSION: u8 = 0x02;
+const BULK_DATA_REQUEST_DOWNLOAD_SID: u8 = 0x34;
+const BULK_DATA_TRANSFER_DATA_SID: u8 = 0x36;
+const BULK_DATA_TRANSFER_EXIT_SID: u8 = 0x37;
+const BULK_DATA_DEFAULT_DATA_FORMAT_IDENTIFIER: u8 = 0x00;
+const BULK_DATA_DEFAULT_ADDRESS_AND_LENGTH_FORMAT_IDENTIFIER: u8 = 0x44;
+const BULK_DATA_DEFAULT_MEMORY_ADDRESS: u32 = 0x0000_0000;
 
 #[derive(Debug, Clone)]
 struct LastKnownFaults {
@@ -174,6 +186,14 @@ struct CdaExecutionRecord {
     status: ExecutionStatusResponse,
 }
 
+#[derive(Debug, Clone)]
+struct BulkTransferRecord {
+    status: BulkDataTransferStatus,
+    next_block_sequence_counter: u8,
+    max_block_length: Option<u32>,
+    uploaded_bytes: Vec<u8>,
+}
+
 /// Forwarding backend that turns [`SovdBackend`] trait calls into SOVD
 /// HTTP requests against an upstream CDA.
 ///
@@ -214,6 +234,8 @@ pub struct CdaBackend {
     /// it back with `extras.stale=true` instead of surfacing a hard
     /// transport failure to the caller.
     last_known_faults: Arc<RwLock<Option<LastKnownFaults>>>,
+    /// Active or recently finished standard SOVD bulk-data transfers.
+    bulk_transfers: Arc<Mutex<HashMap<String, BulkTransferRecord>>>,
 }
 
 impl CdaBackend {
@@ -300,6 +322,7 @@ impl CdaBackend {
             auth_token: Arc::new(Mutex::new(None)),
             executions: Arc::new(Mutex::new(HashMap::new())),
             last_known_faults: Arc::new(RwLock::new(None)),
+            bulk_transfers: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -356,6 +379,7 @@ impl CdaBackend {
             auth_token: Arc::new(Mutex::new(None)),
             executions: Arc::new(Mutex::new(HashMap::new())),
             last_known_faults: Arc::new(RwLock::new(None)),
+            bulk_transfers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -500,6 +524,16 @@ impl CdaBackend {
 
     fn faults_request(&self, url: Url, token: Option<&str>) -> reqwest::RequestBuilder {
         self.request_builder(self.http.get(url), token)
+    }
+
+    fn octet_stream_request(
+        &self,
+        request: reqwest::RequestBuilder,
+        token: Option<&str>,
+    ) -> reqwest::RequestBuilder {
+        self.request_builder(request, token)
+            .header(reqwest::header::ACCEPT, "application/octet-stream")
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
     }
 
     fn request_builder(
@@ -674,6 +708,190 @@ impl CdaBackend {
             .map_err(|e| map_reqwest_err(&self.component_id, &e))
     }
 
+    fn genericservice_url(&self) -> Result<Url> {
+        self.component_url("genericservice")
+    }
+
+    fn bulk_data_enabled(&self) -> bool {
+        self.component_id
+            .as_str()
+            .eq_ignore_ascii_case(BULK_DATA_SC_COMPONENT_ID)
+    }
+
+    fn bulk_data_path(&self) -> String {
+        format!(
+            "{LOCAL_COMPONENT_BASE_PATH_PREFIX}/{}/bulk-data",
+            self.component_id
+        )
+    }
+
+    async fn send_generic_service(
+        &self,
+        operation: &'static str,
+        payload: Vec<u8>,
+    ) -> Result<Vec<u8>> {
+        let url = self.genericservice_url()?;
+        let response = self
+            .send_with_auth_retry(operation, "PUT", &url, |token| {
+                self.octet_stream_request(self.http.put(url.clone()).body(payload.clone()), token)
+            })
+            .await?;
+        response
+            .bytes()
+            .await
+            .map(|bytes| bytes.to_vec())
+            .map_err(|e| map_reqwest_err(&self.component_id, &e))
+    }
+
+    fn map_negative_response(
+        &self,
+        operation: &'static str,
+        service: u8,
+        nrc: u8,
+    ) -> SovdError {
+        let message = format!(
+            "{operation} negative response for service 0x{service:02X}: NRC 0x{nrc:02X}"
+        );
+        match nrc {
+            0x24 | 0x73 => SovdError::Conflict(message),
+            0x31 | 0x70 | 0x71 | 0x72 => SovdError::InvalidRequest(message),
+            _ => SovdError::Transport(message),
+        }
+    }
+
+    async fn send_checked_generic_service(
+        &self,
+        operation: &'static str,
+        request: Vec<u8>,
+        positive_sid: u8,
+    ) -> Result<Vec<u8>> {
+        let response = self.send_generic_service(operation, request.clone()).await?;
+        let Some(&sid) = response.first() else {
+            return Err(SovdError::Transport(format!(
+                "{operation} returned an empty response"
+            )));
+        };
+        if sid == 0x7F {
+            let service = response.get(1).copied().unwrap_or(request[0]);
+            let nrc = response.get(2).copied().unwrap_or(0x10);
+            return Err(self.map_negative_response(operation, service, nrc));
+        }
+        if sid != positive_sid {
+            return Err(SovdError::Transport(format!(
+                "{operation} returned unexpected positive SID 0x{sid:02X}; expected 0x{positive_sid:02X}"
+            )));
+        }
+        Ok(response)
+    }
+
+    fn request_download_parameters(
+        request: &BulkDataTransferRequest,
+    ) -> Result<(u32, u8, u8)> {
+        let Some(manifest) = request.manifest.as_object() else {
+            return Err(SovdError::InvalidRequest(
+                "manifest must be a JSON object".to_owned(),
+            ));
+        };
+
+        let memory_address = manifest
+            .get("memoryAddress")
+            .map(|value| {
+                value.as_u64().ok_or_else(|| {
+                    SovdError::InvalidRequest(
+                        "manifest.memoryAddress must be an unsigned integer".to_owned(),
+                    )
+                })
+            })
+            .transpose()?
+            .map(|value| {
+                u32::try_from(value).map_err(|_| {
+                    SovdError::InvalidRequest(
+                        "manifest.memoryAddress exceeds 32-bit range".to_owned(),
+                    )
+                })
+            })
+            .transpose()?
+            .unwrap_or(BULK_DATA_DEFAULT_MEMORY_ADDRESS);
+
+        let data_format_identifier = manifest
+            .get("dataFormatIdentifier")
+            .map(|value| {
+                value.as_u64().ok_or_else(|| {
+                    SovdError::InvalidRequest(
+                        "manifest.dataFormatIdentifier must be an unsigned integer".to_owned(),
+                    )
+                })
+            })
+            .transpose()?
+            .map(|value| {
+                u8::try_from(value).map_err(|_| {
+                    SovdError::InvalidRequest(
+                        "manifest.dataFormatIdentifier exceeds byte range".to_owned(),
+                    )
+                })
+            })
+            .transpose()?
+            .unwrap_or(BULK_DATA_DEFAULT_DATA_FORMAT_IDENTIFIER);
+
+        let address_and_length_format_identifier = manifest
+            .get("addressAndLengthFormatIdentifier")
+            .map(|value| {
+                value.as_u64().ok_or_else(|| {
+                    SovdError::InvalidRequest(
+                        "manifest.addressAndLengthFormatIdentifier must be an unsigned integer"
+                            .to_owned(),
+                    )
+                })
+            })
+            .transpose()?
+            .map(|value| {
+                u8::try_from(value).map_err(|_| {
+                    SovdError::InvalidRequest(
+                        "manifest.addressAndLengthFormatIdentifier exceeds byte range".to_owned(),
+                    )
+                })
+            })
+            .transpose()?
+            .unwrap_or(BULK_DATA_DEFAULT_ADDRESS_AND_LENGTH_FORMAT_IDENTIFIER);
+
+        Ok((
+            memory_address,
+            data_format_identifier,
+            address_and_length_format_identifier,
+        ))
+    }
+
+    fn parse_max_block_length(response: &[u8]) -> Result<Option<u32>> {
+        if response.len() < 2 {
+            return Err(SovdError::Transport(
+                "request_download response too short".to_owned(),
+            ));
+        }
+        let hinted_len = usize::from(response[1] >> 4);
+        let value_len = if hinted_len == 0 {
+            response.len().saturating_sub(2)
+        } else {
+            hinted_len
+        };
+        if value_len == 0 {
+            return Ok(None);
+        }
+        let end = 2usize.saturating_add(value_len);
+        if response.len() < end {
+            return Err(SovdError::Transport(
+                "request_download response truncated".to_owned(),
+            ));
+        }
+        let mut max = 0u32;
+        for byte in &response[2..end] {
+            max = max
+                .checked_shl(8)
+                .unwrap_or(0)
+                .saturating_add(u32::from(*byte));
+        }
+        Ok(Some(max))
+    }
+
     fn failed_execution_status_from_http(
         &self,
         status: StatusCode,
@@ -729,6 +947,19 @@ impl CdaBackend {
             },
         );
         execution_id
+    }
+
+    fn duplicate_chunk_matches(record: &BulkTransferRecord, chunk: &BulkDataChunk) -> bool {
+        let Ok(start) = usize::try_from(chunk.range.start) else {
+            return false;
+        };
+        let Ok(end_exclusive) = usize::try_from(chunk.range.end.saturating_add(1)) else {
+            return false;
+        };
+        record
+            .uploaded_bytes
+            .get(start..end_exclusive)
+            .is_some_and(|existing| existing == chunk.bytes.as_slice())
     }
 }
 
@@ -1182,7 +1413,243 @@ impl SovdBackend for CdaBackend {
                 &self.remote_component_id,
             );
         }
+        if self.bulk_data_enabled() {
+            capabilities.bulk_data = Some(self.bulk_data_path());
+        }
         Ok(capabilities)
+    }
+
+    async fn start_bulk_data(
+        &self,
+        request: BulkDataTransferRequest,
+    ) -> Result<BulkDataTransferCreated> {
+        if !self.bulk_data_enabled() {
+            return Err(SovdError::InvalidRequest(format!(
+                "component \"{}\" does not support bulk-data",
+                self.component_id
+            )));
+        }
+        {
+            let transfers = self.bulk_transfers.lock().await;
+            if transfers.values().any(|record| {
+                matches!(
+                    record.status.state,
+                    BulkDataState::Downloading | BulkDataState::Verifying
+                )
+            }) {
+                return Err(SovdError::Conflict(format!(
+                    "component \"{}\" already has an active bulk-data transfer",
+                    self.component_id
+                )));
+            }
+        }
+
+        let (memory_address, data_format_identifier, address_and_length_format_identifier) =
+            Self::request_download_parameters(&request)?;
+        let total_bytes = u32::try_from(request.image_size).map_err(|_| {
+            SovdError::InvalidRequest("image-size exceeds 32-bit UDS download range".to_owned())
+        })?;
+
+        self.send_checked_generic_service(
+            "bulk_data_programming_session",
+            vec![0x10, BULK_DATA_PROGRAMMING_SESSION],
+            0x50,
+        )
+        .await?;
+
+        let mut request_download = vec![
+            BULK_DATA_REQUEST_DOWNLOAD_SID,
+            data_format_identifier,
+            address_and_length_format_identifier,
+        ];
+        request_download.extend_from_slice(&memory_address.to_be_bytes());
+        request_download.extend_from_slice(&total_bytes.to_be_bytes());
+        let response = self
+            .send_checked_generic_service(
+                "bulk_data_request_download",
+                request_download,
+                0x74,
+            )
+            .await?;
+        let max_block_length = Self::parse_max_block_length(&response)?;
+
+        let transfer_id = Uuid::new_v4().to_string();
+        let status = BulkDataTransferStatus {
+            transfer_id: transfer_id.clone(),
+            state: BulkDataState::Downloading,
+            bytes_received: 0,
+            total_bytes: request.image_size,
+            reason: None,
+            target_slot: request.target_slot,
+        };
+        self.bulk_transfers.lock().await.insert(
+            transfer_id.clone(),
+            BulkTransferRecord {
+                status,
+                next_block_sequence_counter: 1,
+                max_block_length,
+                uploaded_bytes: Vec::new(),
+            },
+        );
+
+        Ok(BulkDataTransferCreated {
+            transfer_id,
+            state: BulkDataState::Downloading,
+        })
+    }
+
+    async fn upload_bulk_data_chunk(
+        &self,
+        transfer_id: &str,
+        chunk: BulkDataChunk,
+    ) -> Result<()> {
+        let snapshot = {
+            let transfers = self.bulk_transfers.lock().await;
+            transfers
+                .get(transfer_id)
+                .cloned()
+                .ok_or_else(|| SovdError::NotFound {
+                    entity: format!("bulk-data transfer \"{transfer_id}\""),
+                })?
+        };
+
+        if chunk.range.total != snapshot.status.total_bytes {
+            return Err(SovdError::InvalidRequest(format!(
+                "chunk total {} does not match transfer total {}",
+                chunk.range.total, snapshot.status.total_bytes
+            )));
+        }
+        let chunk_len = u64::try_from(chunk.bytes.len()).unwrap_or(u64::MAX);
+        if chunk.range.end.saturating_sub(chunk.range.start).saturating_add(1) != chunk_len {
+            return Err(SovdError::InvalidRequest(
+                "chunk body length does not match Content-Range".to_owned(),
+            ));
+        }
+        if !matches!(snapshot.status.state, BulkDataState::Downloading) {
+            return Err(SovdError::Conflict(format!(
+                "transfer \"{transfer_id}\" is in state {:?}",
+                snapshot.status.state
+            )));
+        }
+        if chunk.range.end >= snapshot.status.total_bytes {
+            return Err(SovdError::InvalidRequest(format!(
+                "chunk end {} exceeds transfer size {}",
+                chunk.range.end, snapshot.status.total_bytes
+            )));
+        }
+        if let Some(max_block_length) = snapshot.max_block_length {
+            let uds_len = u32::try_from(chunk.bytes.len())
+                .unwrap_or(u32::MAX)
+                .saturating_add(2);
+            if uds_len > max_block_length {
+                return Err(SovdError::InvalidRequest(format!(
+                    "chunk exceeds negotiated max block length {max_block_length}"
+                )));
+            }
+        }
+        if chunk.range.start < snapshot.status.bytes_received {
+            if Self::duplicate_chunk_matches(&snapshot, &chunk) {
+                return Ok(());
+            }
+            return Err(SovdError::Conflict(format!(
+                "chunk range {}-{} overlaps previously written data",
+                chunk.range.start, chunk.range.end
+            )));
+        }
+        if chunk.range.start != snapshot.status.bytes_received {
+            return Err(SovdError::Conflict(format!(
+                "expected next chunk to start at byte {}, got {}",
+                snapshot.status.bytes_received, chunk.range.start
+            )));
+        }
+
+        let mut transfer_payload = Vec::with_capacity(chunk.bytes.len().saturating_add(2));
+        transfer_payload.push(BULK_DATA_TRANSFER_DATA_SID);
+        transfer_payload.push(snapshot.next_block_sequence_counter);
+        transfer_payload.extend_from_slice(&chunk.bytes);
+        let response = self
+            .send_checked_generic_service(
+                "bulk_data_transfer_data",
+                transfer_payload,
+                0x76,
+            )
+            .await?;
+        if response.get(1).copied() != Some(snapshot.next_block_sequence_counter) {
+            return Err(SovdError::Transport(format!(
+                "transfer-data response acknowledged block 0x{:02X}, expected 0x{:02X}",
+                response.get(1).copied().unwrap_or_default(),
+                snapshot.next_block_sequence_counter
+            )));
+        }
+
+        let final_chunk = chunk.range.end.saturating_add(1) == snapshot.status.total_bytes;
+        if final_chunk {
+            self.send_checked_generic_service(
+                "bulk_data_transfer_exit",
+                vec![BULK_DATA_TRANSFER_EXIT_SID],
+                0x77,
+            )
+            .await?;
+        }
+
+        let mut transfers = self.bulk_transfers.lock().await;
+        let record = transfers
+            .get_mut(transfer_id)
+            .ok_or_else(|| SovdError::NotFound {
+                entity: format!("bulk-data transfer \"{transfer_id}\""),
+            })?;
+        if record.status.bytes_received != snapshot.status.bytes_received
+            || record.next_block_sequence_counter != snapshot.next_block_sequence_counter
+        {
+            return Err(SovdError::Conflict(format!(
+                "transfer \"{transfer_id}\" changed while chunk was in flight"
+            )));
+        }
+        record.uploaded_bytes.extend_from_slice(&chunk.bytes);
+        record.status.bytes_received = chunk.range.end.saturating_add(1);
+        record.next_block_sequence_counter =
+            record.next_block_sequence_counter.wrapping_add(1);
+        record.status.state = if final_chunk {
+            BulkDataState::Committed
+        } else {
+            BulkDataState::Downloading
+        };
+        Ok(())
+    }
+
+    async fn bulk_data_status(&self, transfer_id: &str) -> Result<BulkDataTransferStatus> {
+        let transfers = self.bulk_transfers.lock().await;
+        transfers
+            .get(transfer_id)
+            .map(|record| record.status.clone())
+            .ok_or_else(|| SovdError::NotFound {
+                entity: format!("bulk-data transfer \"{transfer_id}\""),
+            })
+    }
+
+    async fn cancel_bulk_data(&self, transfer_id: &str) -> Result<()> {
+        let mut transfers = self.bulk_transfers.lock().await;
+        let record = transfers
+            .get_mut(transfer_id)
+            .ok_or_else(|| SovdError::NotFound {
+                entity: format!("bulk-data transfer \"{transfer_id}\""),
+            })?;
+        match record.status.state {
+            BulkDataState::Downloading | BulkDataState::Verifying => {
+                record.status.state = BulkDataState::Failed;
+                record.status.reason = Some(BulkDataFailureReason::AbortRequested);
+                Ok(())
+            }
+            BulkDataState::Failed
+                if record.status.reason == Some(BulkDataFailureReason::AbortRequested) =>
+            {
+                Ok(())
+            }
+            BulkDataState::Committed => Err(SovdError::InvalidRequest(
+                "rollback is not implemented for the TMS570 bulk-data start slice".to_owned(),
+            )),
+            _ => Ok(()),
+        }
     }
 
     fn route_address(&self) -> Option<String> {
@@ -1241,6 +1708,33 @@ mod tests {
             .expect("construct with prefix");
         let got = backend.component_url("faults").expect("join");
         assert_eq!(got.path(), "/sovd/v1/components/cvc/faults");
+    }
+
+    #[test]
+    fn request_download_parameters_default_to_phase6_bench_values() {
+        let (memory_address, data_format_identifier, alfid) =
+            CdaBackend::request_download_parameters(&BulkDataTransferRequest {
+                manifest: serde_json::json!({}),
+                image_size: 256,
+                target_slot: None,
+            })
+            .expect("parse defaults");
+        assert_eq!(memory_address, BULK_DATA_DEFAULT_MEMORY_ADDRESS);
+        assert_eq!(
+            data_format_identifier,
+            BULK_DATA_DEFAULT_DATA_FORMAT_IDENTIFIER
+        );
+        assert_eq!(
+            alfid,
+            BULK_DATA_DEFAULT_ADDRESS_AND_LENGTH_FORMAT_IDENTIFIER
+        );
+    }
+
+    #[test]
+    fn parse_max_block_length_reads_two_byte_length_hint() {
+        let parsed =
+            CdaBackend::parse_max_block_length(&[0x74, 0x20, 0x00, 0x82]).expect("parse max");
+        assert_eq!(parsed, Some(130));
     }
 
     #[test]

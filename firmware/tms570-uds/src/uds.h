@@ -1,12 +1,14 @@
 /*
- * Minimum UDS server for the TMS570 ECU-diversification firmware.
+ * Minimal UDS server for the TMS570 bench firmware.
  *
  * Scope:
- *  - ISO-TP single-frame only (8-byte CAN payloads; DLC[0] = 0x0?).
+ *  - ISO-TP single-frame plus receive-side multi-frame requests.
  *  - Services: 0x10 SessionControl, 0x11 ECUReset, 0x14 ClearDTC,
  *              0x19 ReadDTCInfo (subf 0x01, 0x02), 0x22 ReadDataByIdentifier,
- *              0x3E TesterPresent.
- *  - NRCs: 0x11 (SNS), 0x12 (subf NS), 0x13 (len), 0x31 (range).
+ *              0x34 RequestDownload, 0x36 TransferData,
+ *              0x37 RequestTransferExit, 0x3E TesterPresent.
+ *  - OTA slice uses a bounded RAM-backed staging buffer only.
+ *    No flash commit, signature verify, or rollback yet.
  *  - 3 hardcoded DTCs so `/faults` has content to render.
  */
 

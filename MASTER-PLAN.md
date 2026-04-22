@@ -1321,7 +1321,7 @@ G-SEM green.
 | P7-XV-03 | done | repo_only | Wire MQTT subscriber for `control/subscribe` | Subscription create/delete round-trips |
 | P7-XV-04 | done | repo_only | SIL scenario `sil_extended_vehicle_state.yaml` | State topic publishes expected snapshot |
 | P7-XV-05 | done | repo_only | SIL scenario `sil_extended_vehicle_fault_log.yaml` *(expand)* | Fault log + drill-in + subscription round-trip |
-| P7-XV-06 | pending | live_bench | HIL scenario `hil_extended_vehicle_pubsub.yaml` | Pi publishes to Mosquitto; bench client consumes |
+| P7-XV-06 | done | live_bench | HIL scenario `hil_extended_vehicle_pubsub.yaml` | Pi publishes to Mosquitto; bench client consumes |
 | P7-CORE-SDK-01 | pending | repo_only | Scaffold reference Rust SDK crate (`sovd-client-rust`) | Crate exists; typed wrappers for every `/sovd/v1/*` endpoint; health-endpoint smoke test green |
 | P7-CORE-SDK-02 | pending | repo_only | SDK retry + timeout + correlation-id propagation | Policies configurable; unit tests cover both |
 
@@ -1367,17 +1367,20 @@ proves that the pinned SC fault is visible in the REST list/detail path and
 that creating a `fault-log` subscription emits the expected ADR-0027 MQTT event
 before the subscription is deleted again.
 
-Blocker note (2026-04-22): `P7-XV-06` remains pending even though the repo-side
-enablement is now landed. `sovd-main` now wires the Extended Vehicle MQTT
-publisher/control runtime, the Pi deploy script now syncs
-`extended-vehicle.toml`, and the new bench-gated scenario
-`opensovd-core/test/hil/scenarios/hil_extended_vehicle_pubsub.yaml` plus
-`integration-tests/tests/phase7_hil_extended_vehicle_pubsub.rs` can witness the
-flow once the bench is redeployed. The live proof is still red today because
-the current Pi at `192.168.0.197:21002` still returns `404` on
-`/sovd/v1/extended/vehicle/*`, and TCP `192.168.0.197:1883` is not listening,
-so the required Pi-to-Mosquitto publish witness cannot be honestly recorded
-until deployment/access is restored.
+Completion note (2026-04-22): `P7-XV-06` is now closed on the live bench. The
+Pi at `192.168.0.197:21002` was redeployed onto the native `sovd-main` build
+from commit `57f4d6b`, the runtime `extended-vehicle.toml` was installed under
+`/opt/taktflow/sovd-main`, and the Pi was switched onto the checked-in
+`deploy/pi/opensovd-pi.toml` profile so the Extended Vehicle `state` surface
+came up green on the live host. A bench client on the control host then
+consumed the Pi's loopback Mosquitto broker through an SSH forward
+(`127.0.0.1:18830 -> 192.168.0.197:127.0.0.1:1883`), and
+`cargo test -p integration-tests --test phase7_hil_extended_vehicle_pubsub -- --nocapture`
+passed with `TAKTFLOW_BENCH=1`, `PHASE5_BENCH_READY=1`,
+`TAKTFLOW_PI_SOVD_MAIN_ADDR=192.168.0.197:21002`,
+`TAKTFLOW_PI_SOVD_MAIN_BASE_URL=http://192.168.0.197:21002`, and
+`TAKTFLOW_PI_MQTT_ADDR=127.0.0.1:18830`, proving the required
+Pi-publishes / bench-consumes MQTT witness end to end.
 
 ### 7.9 P8 — Edge AI/ML Integration
 

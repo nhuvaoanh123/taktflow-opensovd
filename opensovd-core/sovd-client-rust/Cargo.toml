@@ -23,9 +23,10 @@ serde_json = { workspace = true }
 sovd-extended-vehicle = { workspace = true }
 sovd-interfaces = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
 url = { workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }
 sovd-server = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time"] }

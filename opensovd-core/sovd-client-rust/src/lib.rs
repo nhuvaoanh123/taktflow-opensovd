@@ -12,10 +12,9 @@
 
 //! Reference Rust SDK for the `/sovd/v1/*` HTTP surface.
 //!
-//! The client intentionally stays thin in `P7-CORE-SDK-01`: it exposes one
-//! typed async wrapper per mounted route, maps non-success responses onto the
-//! server's `GenericError` envelope when possible, and leaves retry/timeout/
-//! correlation policy for `P7-CORE-SDK-02`.
+//! The client exposes one typed async wrapper per mounted route and carries a
+//! small configurable transport policy for timeout, retry, and correlation
+//! propagation.
 
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::{
@@ -45,6 +44,7 @@ use sovd_interfaces::{
     },
     types::bulk_data::ContentRange,
 };
+use std::time::Duration;
 use thiserror::Error;
 use url::Url;
 
@@ -71,11 +71,45 @@ pub enum SdkError {
     UnexpectedStatus { status: StatusCode, body: String },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetryPolicy {
+    pub max_attempts: usize,
+    pub backoff: Duration,
+}
+
+impl RetryPolicy {
+    #[must_use]
+    pub fn new(max_attempts: usize, backoff: Duration) -> Self {
+        Self {
+            max_attempts: max_attempts.max(1),
+            backoff,
+        }
+    }
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_attempts: 1,
+            backoff: Duration::ZERO,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CorrelationHeaders {
+    pub request_id: Option<String>,
+    pub traceparent: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SovdClientBuilder {
     base_url: Option<Url>,
     bearer_token: Option<String>,
     http: Option<reqwest::Client>,
+    request_timeout: Option<Duration>,
+    retry_policy: RetryPolicy,
+    correlation_headers: CorrelationHeaders,
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +117,9 @@ pub struct SovdClient {
     base_url: Url,
     bearer_token: Option<String>,
     http: reqwest::Client,
+    request_timeout: Option<Duration>,
+    retry_policy: RetryPolicy,
+    correlation_headers: CorrelationHeaders,
 }
 
 pub type Client = SovdClient;
@@ -134,11 +171,44 @@ impl SovdClientBuilder {
         self
     }
 
+    #[must_use]
+    pub fn timeout(mut self, request_timeout: Duration) -> Self {
+        self.request_timeout = Some(request_timeout);
+        self
+    }
+
+    #[must_use]
+    pub fn retry_policy(mut self, retry_policy: RetryPolicy) -> Self {
+        self.retry_policy = retry_policy;
+        self
+    }
+
+    #[must_use]
+    pub fn correlation_headers(mut self, correlation_headers: CorrelationHeaders) -> Self {
+        self.correlation_headers = correlation_headers;
+        self
+    }
+
+    #[must_use]
+    pub fn request_id(mut self, request_id: impl Into<String>) -> Self {
+        self.correlation_headers.request_id = Some(request_id.into());
+        self
+    }
+
+    #[must_use]
+    pub fn traceparent(mut self, traceparent: impl Into<String>) -> Self {
+        self.correlation_headers.traceparent = Some(traceparent.into());
+        self
+    }
+
     pub fn build(self) -> Result<SovdClient> {
         Ok(SovdClient {
             base_url: self.base_url.ok_or(SdkError::MissingBaseUrl)?,
             bearer_token: self.bearer_token,
             http: self.http.unwrap_or_else(reqwest::Client::new),
+            request_timeout: self.request_timeout,
+            retry_policy: self.retry_policy,
+            correlation_headers: self.correlation_headers,
         })
     }
 }
@@ -155,6 +225,21 @@ impl SovdClient {
     #[must_use]
     pub fn base_url(&self) -> &Url {
         &self.base_url
+    }
+
+    #[must_use]
+    pub fn request_timeout(&self) -> Option<Duration> {
+        self.request_timeout
+    }
+
+    #[must_use]
+    pub fn retry_policy(&self) -> &RetryPolicy {
+        &self.retry_policy
+    }
+
+    #[must_use]
+    pub fn correlation_headers(&self) -> &CorrelationHeaders {
+        &self.correlation_headers
     }
 
     pub async fn health(&self) -> Result<HealthStatus> {
@@ -388,17 +473,19 @@ impl SovdClient {
             range.start, range.end, range.total
         ))?;
         let response = self
-            .request(
-                Method::PUT,
-                &format!(
-                    "/sovd/v1/components/{}/bulk-data/{}",
-                    encode_path_segment(component_id.as_ref()),
-                    encode_path_segment(transfer_id.as_ref())
-                ),
-            )?
-            .header(CONTENT_RANGE, header_value)
-            .body(bytes.to_vec())
-            .send()
+            .send_with_retry(|| {
+                Ok(self
+                    .request(
+                        Method::PUT,
+                        &format!(
+                            "/sovd/v1/components/{}/bulk-data/{}",
+                            encode_path_segment(component_id.as_ref()),
+                            encode_path_segment(transfer_id.as_ref())
+                        ),
+                    )?
+                    .header(CONTENT_RANGE, header_value.clone())
+                    .body(bytes.to_vec()))
+            })
             .await?;
         self.expect_empty(response).await
     }
@@ -484,7 +571,16 @@ impl SovdClient {
 
     fn request(&self, method: Method, path: &str) -> Result<reqwest::RequestBuilder> {
         let url = self.base_url.join(path.trim_start_matches('/'))?;
-        let request = self.http.request(method, url);
+        let mut request = self.http.request(method, url);
+        if let Some(timeout) = self.request_timeout {
+            request = request.timeout(timeout);
+        }
+        if let Some(request_id) = &self.correlation_headers.request_id {
+            request = request.header("x-request-id", request_id);
+        }
+        if let Some(traceparent) = &self.correlation_headers.traceparent {
+            request = request.header("traceparent", traceparent);
+        }
         Ok(if let Some(token) = &self.bearer_token {
             request.bearer_auth(token)
         } else {
@@ -497,11 +593,15 @@ impl SovdClient {
         T: DeserializeOwned,
         Q: Serialize + ?Sized,
     {
-        let mut request = self.request(Method::GET, path)?;
-        if let Some(query) = query {
-            request = request.query(query);
-        }
-        let response = request.send().await?;
+        let response = self
+            .send_with_retry(|| {
+                let mut request = self.request(Method::GET, path)?;
+                if let Some(query) = query {
+                    request = request.query(query);
+                }
+                Ok(request)
+            })
+            .await?;
         self.expect_json(response).await
     }
 
@@ -510,12 +610,16 @@ impl SovdClient {
         T: DeserializeOwned,
         B: Serialize + ?Sized,
     {
-        let response = self.request(method, path)?.json(body).send().await?;
+        let response = self
+            .send_with_retry(|| Ok(self.request(method.clone(), path)?.json(body)))
+            .await?;
         self.expect_json(response).await
     }
 
     async fn send_empty(&self, method: Method, path: &str) -> Result<()> {
-        let response = self.request(method, path)?.send().await?;
+        let response = self
+            .send_with_retry(|| self.request(method.clone(), path))
+            .await?;
         self.expect_empty(response).await
     }
 
@@ -549,8 +653,49 @@ impl SovdClient {
             Err(error) => SdkError::Transport(error),
         }
     }
+
+    async fn send_with_retry<F>(&self, mut build: F) -> Result<Response>
+    where
+        F: FnMut() -> Result<reqwest::RequestBuilder>,
+    {
+        let max_attempts = self.retry_policy.max_attempts.max(1);
+        for attempt in 0..max_attempts {
+            let request = build()?;
+            match request.send().await {
+                Ok(response) => {
+                    if should_retry_status(response.status()) && attempt + 1 < max_attempts {
+                        if !self.retry_policy.backoff.is_zero() {
+                            tokio::time::sleep(self.retry_policy.backoff).await;
+                        }
+                        continue;
+                    }
+                    return Ok(response);
+                }
+                Err(error) => {
+                    if should_retry_transport(&error) && attempt + 1 < max_attempts {
+                        if !self.retry_policy.backoff.is_zero() {
+                            tokio::time::sleep(self.retry_policy.backoff).await;
+                        }
+                        continue;
+                    }
+                    return Err(SdkError::Transport(error));
+                }
+            }
+        }
+        unreachable!("retry loop must always return")
+    }
 }
 
 fn encode_path_segment(segment: &str) -> String {
     utf8_percent_encode(segment, NON_ALPHANUMERIC).to_string()
+}
+
+fn should_retry_status(status: StatusCode) -> bool {
+    status == StatusCode::REQUEST_TIMEOUT
+        || status == StatusCode::TOO_MANY_REQUESTS
+        || status.is_server_error()
+}
+
+fn should_retry_transport(error: &reqwest::Error) -> bool {
+    error.is_connect() || error.is_timeout()
 }

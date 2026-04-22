@@ -1325,7 +1325,7 @@ G-SEM green.
 | P7-XV-05 | done | repo_only | SIL scenario `sil_extended_vehicle_fault_log.yaml` *(expand)* | Fault log + drill-in + subscription round-trip |
 | P7-XV-06 | done | live_bench | HIL scenario `hil_extended_vehicle_pubsub.yaml` | Pi publishes to Mosquitto; bench client consumes |
 | P7-CORE-SDK-01 | done | repo_only | Scaffold reference Rust SDK crate (`sovd-client-rust`) | Crate exists; typed wrappers for every `/sovd/v1/*` endpoint; health-endpoint smoke test green |
-| P7-CORE-SDK-02 | pending | repo_only | SDK retry + timeout + correlation-id propagation | Policies configurable; unit tests cover both |
+| P7-CORE-SDK-02 | done | repo_only | SDK retry + timeout + correlation-id propagation | Policies configurable; unit tests cover both |
 
 Completion note (2026-04-22): P7-XV-01 is now closed repo-side. The
 `sovd-extended-vehicle` crate now carries typed ADR-0027 REST DTOs and helper
@@ -1392,6 +1392,13 @@ non-success responses onto the typed `GenericError` envelope when the server
 returns one, and proves the initial smoke path with a local in-memory
 round-trip test against `GET /sovd/v1/health`. The older `sovd-client` crate
 now acts as a compatibility shim that re-exports the new SDK surface.
+
+Completion note (2026-04-22): `P7-CORE-SDK-02` is now closed repo-side. The
+`sovd-client-rust` builder now carries configurable request timeout, bounded
+retry, and correlation-header policy, and the transport layer applies those
+settings consistently across the typed endpoint wrappers. Focused SDK tests now
+prove transient `503` retry recovery, per-request timeout enforcement, and
+`x-request-id` / `traceparent` propagation on outbound requests.
 
 ### 7.9 P8 — Edge AI/ML Integration
 

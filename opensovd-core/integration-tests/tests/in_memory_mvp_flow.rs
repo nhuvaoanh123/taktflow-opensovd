@@ -24,6 +24,7 @@ use std::sync::Arc;
 use reqwest::StatusCode;
 use sovd_interfaces::spec::{
     component::DiscoveredEntities,
+    error::GenericError,
     fault::ListOfFaults,
     operation::{
         ExecutionStatus, ExecutionStatusResponse, StartExecutionAsyncResponse,
@@ -191,4 +192,14 @@ async fn in_memory_mvp_flow_round_trips_spec_types() {
     assert_eq!(response.status(), StatusCode::OK);
     let body: serde_json::Value = response.json().await.expect("parse health");
     assert_eq!(body.get("status").and_then(|v| v.as_str()), Some("ok"));
+
+    // 7. Unknown /sovd/v1/* routes still return a schema-valid GenericError.
+    let response = client
+        .get(booted.url("/sovd/v1/not-mounted"))
+        .send()
+        .await
+        .expect("GET unknown route");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let error: GenericError = response.json().await.expect("parse GenericError");
+    assert_eq!(error.error_code, "semantic.error_envelope_normalized");
 }

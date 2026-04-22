@@ -36,6 +36,7 @@ pub mod in_memory;
 pub mod openapi;
 pub mod rate_limit;
 pub mod routes;
+mod semantic_validation;
 
 pub use auth::{AuthConfig, BearerToken};
 pub use backends::CdaBackend;
@@ -47,7 +48,9 @@ pub use rate_limit::{RateLimitConfig, RateLimiter};
 /// endpoint. Used when `sovd-main` is configured with `server.mode =
 /// "hello_world"`.
 pub fn app() -> Router {
-    Router::new().route("/sovd/v1/health", get(health))
+    Router::new()
+        .route("/sovd/v1/health", get(health))
+        .layer(axum::middleware::from_fn(semantic_validation::middleware))
 }
 
 async fn health() -> Json<Value> {

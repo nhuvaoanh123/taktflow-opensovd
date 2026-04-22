@@ -142,6 +142,7 @@ pub fn app_with_server(server: Arc<InMemoryServer>) -> Router {
     base_router()
         .with_state(Arc::clone(&server))
         .layer(from_fn_with_state(server, observer::middleware))
+        .layer(axum::middleware::from_fn(crate::semantic_validation::middleware))
         .layer(axum::middleware::from_fn(correlation::middleware))
 }
 
@@ -159,5 +160,6 @@ pub fn app_with_auth(server: Arc<InMemoryServer>, auth: AuthConfig) -> Router {
         .with_state(Arc::clone(&server))
         .layer(from_fn_with_state(server, observer::middleware))
         .layer(from_fn_with_state(auth_state, crate::auth::middleware))
+        .layer(axum::middleware::from_fn(crate::semantic_validation::middleware))
         .layer(axum::middleware::from_fn(correlation::middleware))
 }

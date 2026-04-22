@@ -9,3 +9,12 @@ mappings:
       First slice from ADR-0026. `{id}` is resolved from an OEM-supplied
       VSS-to-component map. The native SOVD read defaults to status mask
       `0x08` (confirmed) unless the caller overrides it.
+  - path: Vehicle.Service.Routine.motor_self_test.Start
+    method: POST
+    endpoint: /sovd/v1/components/{id}/operations/motor_self_test/executions
+    direction: write
+    notes: >-
+      First actuator whitelist row from ADR-0026. The route translates
+      the VSS actuator write to the existing SOVD operation start path,
+      using the same initial `cvc` default resolver slice as the DTC-list
+      read path until an OEM-supplied resolver lands.

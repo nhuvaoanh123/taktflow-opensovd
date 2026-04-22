@@ -72,7 +72,10 @@ fn base_router() -> Router<Arc<InMemoryServer>> {
             "/sovd/v1/components/{component_id}",
             get(components::get_component),
         )
-        .route("/sovd/covesa/vss/{vss_path}", get(covesa::read_vss_path))
+        .route(
+            "/sovd/covesa/vss/{vss_path}",
+            get(covesa::read_vss_path).post(covesa::write_vss_path),
+        )
         .route(
             "/sovd/v1/components/{component_id}/faults",
             get(faults::list_faults).delete(faults::clear_all_faults),

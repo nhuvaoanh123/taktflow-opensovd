@@ -31,13 +31,22 @@ use serde::Deserialize;
 use sovd_covesa::first_mapping_for;
 use sovd_interfaces::{
     ComponentId, SovdError,
-    spec::fault::{FaultFilter, ListOfFaults},
+    spec::{
+        fault::{FaultFilter, ListOfFaults},
+        operation::{StartExecutionAsyncResponse, StartExecutionRequest},
+    },
+};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 
 use crate::{InMemoryServer, routes::error::ApiError};
 
 const DEFAULT_COMPONENT_ID: &str = "cvc";
 const DTC_LIST_ENDPOINT: &str = "/sovd/v1/components/{id}/faults";
+const OPERATIONS_EXECUTIONS_PREFIX: &str = "/sovd/v1/components/{id}/operations/";
+const EXECUTIONS_SUFFIX: &str = "/executions";
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
@@ -49,6 +58,20 @@ pub struct CovesaReadQuery {
 
 fn resolve_component_id(query: CovesaReadQuery) -> ComponentId {
     ComponentId::new(query.component_id.unwrap_or_else(|| DEFAULT_COMPONENT_ID.to_owned()))
+}
+
+fn resolve_operation_id(endpoint: &str) -> Option<&str> {
+    endpoint
+        .strip_prefix(OPERATIONS_EXECUTIONS_PREFIX)?
+        .strip_suffix(EXECUTIONS_SUFFIX)
+}
+
+fn default_start_execution_request() -> StartExecutionRequest {
+    StartExecutionRequest {
+        timeout: None,
+        parameters: None,
+        proximity_response: None,
+    }
 }
 
 /// `GET /sovd/covesa/vss/{vss_path}` - translate one mapped VSS read
@@ -99,6 +122,70 @@ pub async fn read_vss_path(
         ))
         .into()),
     }
+}
+
+/// `POST /sovd/covesa/vss/{vss_path}` - translate one whitelisted VSS
+/// actuator write into the underlying SOVD operation-start path.
+///
+/// # Errors
+///
+/// Returns 404 if the VSS path is unknown or the resolved component does
+/// not exist. Non-whitelisted or non-write mappings are rejected with a
+/// 400.
+#[utoipa::path(
+    post,
+    path = "/sovd/covesa/vss/{vss_path}",
+    operation_id = "writeCovesaVssPath",
+    tag = "covesa-semantic",
+    params(
+        ("vss_path" = String, Path, description = "Dotted VSS actuator path"),
+        ("component-id" = Option<String>, Query, description = "Optional component-id override for per-component mappings"),
+    ),
+    request_body = Option<StartExecutionRequest>,
+    responses(
+        (status = 202, description = "Whitelisted actuator write translated to an async operation start", body = StartExecutionAsyncResponse),
+        (status = 400, description = "Path is not a whitelisted actuator mapping", body = sovd_interfaces::spec::error::GenericError),
+        (status = 404, description = "VSS path or resolved component not found", body = sovd_interfaces::spec::error::GenericError),
+        (status = 500, description = "Semantic contract load failure", body = sovd_interfaces::spec::error::GenericError),
+    ),
+)]
+pub async fn write_vss_path(
+    State(server): State<Arc<InMemoryServer>>,
+    Path(vss_path): Path<String>,
+    Query(query): Query<CovesaReadQuery>,
+    request: Option<Json<StartExecutionRequest>>,
+) -> Result<Response, ApiError> {
+    let mapping = first_mapping_for(&vss_path)
+        .map_err(|err| SovdError::Internal(format!("load covesa contracts: {err}")))?;
+    let mapping = mapping.ok_or_else(|| SovdError::NotFound {
+        entity: format!("COVESA VSS path \"{vss_path}\""),
+    })?;
+
+    if mapping.method != "POST" || mapping.direction != "write" {
+        return Err(SovdError::InvalidRequest(format!(
+            "COVESA VSS path \"{vss_path}\" is not a whitelisted actuator write"
+        ))
+        .into());
+    }
+
+    let Some(operation_id) = resolve_operation_id(&mapping.endpoint) else {
+        return Err(SovdError::InvalidRequest(format!(
+            "COVESA mapping for \"{vss_path}\" does not target a supported operation start endpoint"
+        ))
+        .into());
+    };
+
+    let component = resolve_component_id(query);
+    let started = server
+        .dispatch_start_execution(
+            &component,
+            operation_id,
+            request
+                .map(|Json(request)| request)
+                .unwrap_or_else(default_start_execution_request),
+        )
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(started)).into_response())
 }
 
 #[cfg(test)]

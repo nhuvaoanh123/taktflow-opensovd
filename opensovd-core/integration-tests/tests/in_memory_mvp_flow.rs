@@ -108,6 +108,28 @@ async fn in_memory_mvp_flow_round_trips_spec_types() {
     assert_eq!(covesa_faults.items.len(), 2);
     assert!(covesa_faults.items.iter().any(|f| f.code == "P0A1F"));
 
+    // 2c. POST whitelisted actuator path -> StartExecutionAsyncResponse.
+    let response = client
+        .post(booted.url("/sovd/covesa/vss/Vehicle.Service.Routine.motor_self_test.Start"))
+        .send()
+        .await
+        .expect("POST covesa routine start");
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let covesa_started: StartExecutionAsyncResponse = response
+        .json()
+        .await
+        .expect("parse covesa StartExecutionAsyncResponse");
+    assert_eq!(covesa_started.status, Some(ExecutionStatus::Running));
+    assert!(!covesa_started.id.is_empty());
+
+    // 2d. POST unlisted actuator path -> rejected.
+    let response = client
+        .post(booted.url("/sovd/covesa/vss/Vehicle.Service.Routine.unknown.Start"))
+        .send()
+        .await
+        .expect("POST unlisted covesa routine start");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
     // 3. POST .../executions with a StartExecutionRequest body -> 202
     //    StartExecutionAsyncResponse.
     let start_body = StartExecutionRequest {

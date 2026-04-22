@@ -30,7 +30,7 @@ fn loads_pinned_vss_release_and_first_mapping_slice() {
 
     assert_eq!(pin.vss_release, "v5.0");
     assert_eq!(map.vss_version, pin.vss_release);
-    assert_eq!(map.mappings.len(), 1);
+    assert_eq!(map.mappings.len(), 2);
 }
 
 #[test]
@@ -43,4 +43,19 @@ fn dtc_list_mapping_matches_adr_0026_first_row() {
     assert_eq!(mapping.endpoint, "/sovd/v1/components/{id}/faults");
     assert_eq!(mapping.direction, "read");
     assert!(mapping.notes.contains("ADR-0026"));
+}
+
+#[test]
+fn actuator_mapping_matches_first_whitelist_row() {
+    let mapping = first_mapping_for("Vehicle.Service.Routine.motor_self_test.Start")
+        .expect("load mapping catalog")
+        .expect("find whitelisted actuator path");
+
+    assert_eq!(mapping.method, "POST");
+    assert_eq!(
+        mapping.endpoint,
+        "/sovd/v1/components/{id}/operations/motor_self_test/executions"
+    );
+    assert_eq!(mapping.direction, "write");
+    assert!(mapping.notes.contains("actuator whitelist"));
 }

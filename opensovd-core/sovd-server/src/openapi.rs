@@ -34,6 +34,7 @@ use crate::routes::{bulk_data, components, covesa, data, faults, observer, opera
         components::list_components,
         components::get_component,
         covesa::read_vss_path,
+        covesa::write_vss_path,
         observer::session,
         observer::audit,
         observer::gateway_backends,

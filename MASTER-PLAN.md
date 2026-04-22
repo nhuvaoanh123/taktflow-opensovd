@@ -1318,7 +1318,7 @@ G-SEM green.
 | P7-SEM-05 | done | repo_only | Integration tests for seven VSS mapping rows | `vss-map.yaml` now carries the seven first-slice ADR-0026 rows, `sovd-server` translates each row through the COVESA adapter, and focused integration tests cover every happy-path row end to end |
 | P7-XV-01 | done | repo_only | Mount Extended Vehicle REST surface in `sovd-server` | All 9 endpoints in §5.7.1 respond per OpenAPI contract |
 | P7-XV-02 | done | repo_only | Wire MQTT publisher for XV topics | All 6 topics in §5.7.2 emit per subscription lifecycle |
-| P7-XV-03 | pending | repo_only | Wire MQTT subscriber for `control/subscribe` | Subscription create/delete round-trips |
+| P7-XV-03 | done | repo_only | Wire MQTT subscriber for `control/subscribe` | Subscription create/delete round-trips |
 | P7-XV-04 | pending | repo_only | SIL scenario `sil_extended_vehicle_state.yaml` | State topic publishes expected snapshot |
 | P7-XV-05 | pending | repo_only | SIL scenario `sil_extended_vehicle_fault_log.yaml` *(expand)* | Fault log + drill-in + subscription round-trip |
 | P7-XV-06 | pending | live_bench | HIL scenario `hil_extended_vehicle_pubsub.yaml` | Pi publishes to Mosquitto; bench client consumes |
@@ -1340,6 +1340,16 @@ topic set (`state`, `fault-log/new`, `energy`, per-subscription status, and
 `control/ack`) with live broker coverage proving create, periodic state, and
 delete lifecycle behavior. The inbound `control/subscribe` consumer remains the
 explicit scope of `P7-XV-03`.
+
+Completion note (2026-04-22): P7-XV-03 is now closed repo-side. The
+`sovd-extended-vehicle` crate now owns the inbound MQTT control-subscriber loop
+for `sovd/extended-vehicle/control/subscribe`, and
+`sovd-server/src/routes/extended_vehicle.rs` now routes those MQTT create/delete
+commands through the same Extended Vehicle subscription lifecycle used by the
+REST surface so control acks, status events, and teardown behavior stay aligned.
+The broker-backed integration coverage now proves MQTT create/delete commands
+round-trip all the way into the REST subscription registry and back out through
+the ADR-0027 publish topics.
 
 ### 7.9 P8 — Edge AI/ML Integration
 

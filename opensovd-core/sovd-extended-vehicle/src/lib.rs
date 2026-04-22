@@ -18,11 +18,11 @@
 //! stable path/topic constants, and DTOs in one place so OpenAPI
 //! generation and tests share the same contract.
 
-use std::{fs, path::Path, time::Duration};
+use std::{fs, path::Path, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use chrono::{SecondsFormat, Utc};
-use rumqttc::{AsyncClient, MqttOptions, QoS};
+use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
@@ -236,6 +236,11 @@ pub struct ExtendedVehicleMqttConfig {
 #[async_trait]
 pub trait ExtendedVehiclePublisher: Send + Sync {
     async fn publish(&self, messages: Vec<PublishMessage>);
+}
+
+#[async_trait]
+pub trait ExtendedVehicleControlHandler: Send + Sync {
+    async fn handle(&self, command: ControlSubscribeCommand);
 }
 
 #[derive(Debug, Clone)]
@@ -516,6 +521,15 @@ impl MqttPublisher {
     }
 }
 
+pub fn spawn_control_subscriber(
+    config: ExtendedVehicleMqttConfig,
+    handler: Arc<dyn ExtendedVehicleControlHandler>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        run_control_subscriber(config, handler).await;
+    })
+}
+
 #[async_trait]
 impl ExtendedVehiclePublisher for MqttPublisher {
     async fn publish(&self, messages: Vec<PublishMessage>) {
@@ -538,6 +552,64 @@ impl ExtendedVehiclePublisher for MqttPublisher {
 
 pub fn now_rfc3339() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+async fn run_control_subscriber(
+    config: ExtendedVehicleMqttConfig,
+    handler: Arc<dyn ExtendedVehicleControlHandler>,
+) {
+    let client_id = format!("opensovd-extended-vehicle-control-{}", std::process::id());
+    let mut options = MqttOptions::new(client_id, &config.broker_host, config.broker_port);
+    options.set_keep_alive(Duration::from_secs(30));
+    options.set_clean_session(true);
+
+    let (client, mut event_loop) = AsyncClient::new(options, 64);
+    subscribe_to_control_topic(&client, &config).await;
+
+    loop {
+        match event_loop.poll().await {
+            Ok(Event::Incoming(Incoming::Publish(publish))) => {
+                match serde_json::from_slice::<ControlSubscribeCommand>(&publish.payload) {
+                    Ok(command) => handler.handle(command).await,
+                    Err(error) => {
+                        warn!(
+                            err = %error,
+                            topic = %publish.topic,
+                            "extended vehicle MQTT control payload parse failed"
+                        );
+                    }
+                }
+            }
+            Ok(Event::Incoming(Incoming::ConnAck(_))) => {
+                subscribe_to_control_topic(&client, &config).await;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                warn!(
+                    err = %error,
+                    broker_host = %config.broker_host,
+                    broker_port = config.broker_port,
+                    "extended vehicle MQTT control event loop error"
+                );
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+    }
+}
+
+async fn subscribe_to_control_topic(client: &AsyncClient, config: &ExtendedVehicleMqttConfig) {
+    if let Err(error) = client
+        .subscribe(CONTROL_SUBSCRIBE_TOPIC, QoS::AtLeastOnce)
+        .await
+    {
+        warn!(
+            err = %error,
+            broker_host = %config.broker_host,
+            broker_port = config.broker_port,
+            topic = CONTROL_SUBSCRIBE_TOPIC,
+            "extended vehicle MQTT control subscribe failed"
+        );
+    }
 }
 
 fn validate_config(config: &ExtendedVehicleConfig) -> Result<(), ExtendedVehicleError> {

@@ -15,6 +15,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -23,19 +24,22 @@ use axum::{
 use chrono::{DateTime, FixedOffset};
 use serde::Deserialize;
 use sovd_extended_vehicle::{
-    ControlAckEvent, CreateSubscriptionRequest, EnergyState, ExtendedVehicleCatalog,
-    ExtendedVehicleConfig, ExtendedVehiclePublisher, ExtendedVehicleSubscription, FaultLogDetail,
-    FaultLogEntry, FaultLogEvent, FaultLogList, FaultStatus, PublishMessage, SubscriptionRetention,
-    SubscriptionStatusEvent, SubscriptionsList, VehicleInfo, VehicleState,
+    ControlAckEvent, ControlSubscribeCommand, CreateSubscriptionRequest, EnergyState,
+    ExtendedVehicleCatalog, ExtendedVehicleConfig, ExtendedVehicleControlHandler,
+    ExtendedVehicleMqttConfig, ExtendedVehiclePublisher, ExtendedVehicleSubscription,
+    FaultLogDetail, FaultLogEntry, FaultLogEvent, FaultLogList, FaultStatus, PublishMessage,
+    SubscriptionRetention, SubscriptionStatusEvent, SubscriptionsList, VehicleInfo, VehicleState,
     build_control_ack_publish, build_energy_publish, build_fault_log_publish, build_state_publish,
     build_subscription_status_publish, catalog_entries, ensure_enabled, fault_log_endpoint,
-    fault_log_id, load_config, now_rfc3339, topic_for_data_item,
+    fault_log_id, load_config, now_rfc3339,
+    spawn_control_subscriber as spawn_extended_vehicle_control_subscriber, topic_for_data_item,
 };
 use sovd_interfaces::{
     ComponentId, SovdError,
     spec::{error::GenericError, fault::FaultFilter},
 };
 use tokio::time::{Duration, sleep};
+use tracing::warn;
 
 use crate::{InMemoryServer, routes::error::ApiError};
 
@@ -246,15 +250,8 @@ pub async fn create_subscription(
     Json(request): Json<CreateSubscriptionRequest>,
 ) -> Result<(StatusCode, Json<ExtendedVehicleSubscription>), ApiError> {
     let config = load_extended_vehicle_config()?;
-    let topic = subscription_topic_for_item(&config, &request.data_item)?;
-    let retention_policy = SubscriptionRetention {
-        subscription_ttl_seconds: config.retention_policy.subscription_ttl_seconds,
-        heartbeat_seconds: config.retention_policy.heartbeat_seconds,
-    };
-    let created = server
-        .create_extended_vehicle_subscription(&request.data_item, topic, retention_policy)
-        .await;
-    publish_subscription_created(Arc::clone(&server), config.clone(), created.clone()).await?;
+    let created =
+        create_subscription_record(Arc::clone(&server), config, &request.data_item).await?;
     Ok((StatusCode::CREATED, Json(created)))
 }
 
@@ -278,9 +275,70 @@ pub async fn delete_subscription(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let config = load_extended_vehicle_config()?;
-    let deleted = server.delete_extended_vehicle_subscription(&id).await?;
-    publish_subscription_deleted(&server, &config, &deleted).await?;
+    delete_subscription_record(Arc::clone(&server), config, &id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub fn spawn_control_subscriber(
+    server: Arc<InMemoryServer>,
+    mqtt_config: ExtendedVehicleMqttConfig,
+) -> std::result::Result<tokio::task::JoinHandle<()>, SovdError> {
+    let config = load_config().map_err(|error| {
+        SovdError::Internal(format!("extended vehicle config load failed: {error}"))
+    })?;
+    let handler: Arc<dyn ExtendedVehicleControlHandler> =
+        Arc::new(MqttControlHandler { server, config });
+    Ok(spawn_extended_vehicle_control_subscriber(
+        mqtt_config,
+        handler,
+    ))
+}
+
+struct MqttControlHandler {
+    server: Arc<InMemoryServer>,
+    config: ExtendedVehicleConfig,
+}
+
+#[async_trait]
+impl ExtendedVehicleControlHandler for MqttControlHandler {
+    async fn handle(&self, command: ControlSubscribeCommand) {
+        let result = match command.action.as_str() {
+            "create" => create_subscription_record(
+                Arc::clone(&self.server),
+                self.config.clone(),
+                &command.data_item,
+            )
+            .await
+            .map(|_| ()),
+            "delete" => match command.subscription_id.as_deref() {
+                Some(subscription_id) => delete_subscription_record(
+                    Arc::clone(&self.server),
+                    self.config.clone(),
+                    subscription_id,
+                )
+                .await
+                .map(|_| ()),
+                None => Err(ApiError::from(SovdError::InvalidRequest(
+                    "extended vehicle delete control command requires subscription_id".to_owned(),
+                ))),
+            },
+            _ => Err(ApiError::from(SovdError::InvalidRequest(format!(
+                "unsupported extended vehicle control action \"{}\"",
+                command.action
+            )))),
+        };
+
+        if let Err(error) = result {
+            warn!(
+                action = %command.action,
+                data_item = %command.data_item,
+                subscription_id = ?command.subscription_id,
+                err = ?error,
+                "extended vehicle control command rejected"
+            );
+            publish_rejected_control_ack(&self.server, &self.config, &command).await;
+        }
+    }
 }
 
 fn load_extended_vehicle_config() -> Result<ExtendedVehicleConfig, ApiError> {
@@ -309,6 +367,33 @@ fn subscription_topic_for_item(
             "extended vehicle item \"{item}\" does not support subscriptions"
         )))
     })
+}
+
+async fn create_subscription_record(
+    server: Arc<InMemoryServer>,
+    config: ExtendedVehicleConfig,
+    data_item: &str,
+) -> Result<ExtendedVehicleSubscription, ApiError> {
+    let topic = subscription_topic_for_item(&config, data_item)?;
+    let retention_policy = SubscriptionRetention {
+        subscription_ttl_seconds: config.retention_policy.subscription_ttl_seconds,
+        heartbeat_seconds: config.retention_policy.heartbeat_seconds,
+    };
+    let created = server
+        .create_extended_vehicle_subscription(data_item, topic, retention_policy)
+        .await;
+    publish_subscription_created(Arc::clone(&server), config, created.clone()).await?;
+    Ok(created)
+}
+
+async fn delete_subscription_record(
+    server: Arc<InMemoryServer>,
+    config: ExtendedVehicleConfig,
+    id: &str,
+) -> Result<ExtendedVehicleSubscription, ApiError> {
+    let deleted = server.delete_extended_vehicle_subscription(id).await?;
+    publish_subscription_deleted(&server, &config, &deleted).await?;
+    Ok(deleted)
 }
 
 async fn publish_subscription_created(
@@ -351,6 +436,28 @@ async fn publish_subscription_deleted(
         ])
         .await;
     Ok(())
+}
+
+async fn publish_rejected_control_ack(
+    server: &Arc<InMemoryServer>,
+    config: &ExtendedVehicleConfig,
+    command: &ControlSubscribeCommand,
+) {
+    let message = build_control_ack_publish(
+        config,
+        &ControlAckEvent {
+            action: command.action.clone(),
+            result: "rejected".to_owned(),
+            subscription_id: command.subscription_id.clone(),
+            data_item: Some(command.data_item.clone()),
+            observed_at: now_rfc3339(),
+        },
+    );
+    if let Ok(message) = message {
+        server
+            .publish_extended_vehicle_messages(vec![message])
+            .await;
+    }
 }
 
 async fn spawn_subscription_tasks(

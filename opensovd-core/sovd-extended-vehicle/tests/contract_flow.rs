@@ -11,10 +11,11 @@
  */
 
 use sovd_extended_vehicle::{
-    ControlAckEvent, EnergyState, FaultLogEvent, SubscriptionStatusEvent, VehicleState,
-    build_control_ack_publish, build_energy_publish, build_fault_log_publish, build_state_publish,
-    build_subscription_status_publish, control_ack_topic, control_subscribe_topic, energy_topic,
-    fault_log_endpoint, fault_log_new_topic, load_config, rest_root, state_topic,
+    ControlAckEvent, ControlSubscribeCommand, EnergyState, FaultLogEvent, SubscriptionStatusEvent,
+    VehicleState, build_control_ack_publish, build_energy_publish, build_fault_log_publish,
+    build_state_publish, build_subscription_status_publish, control_ack_topic,
+    control_subscribe_topic, energy_topic, fault_log_endpoint, fault_log_new_topic, load_config,
+    rest_root, state_topic,
 };
 
 #[test]
@@ -139,4 +140,19 @@ fn state_energy_status_and_ack_payloads_include_bench_scope() {
     .expect("build control ack publish");
     assert_eq!(ack.topic, "sovd/extended-vehicle/control/ack");
     assert!(ack.payload_json.contains("\"action\": \"create\""));
+}
+
+#[test]
+fn control_subscribe_command_payload_is_stable() {
+    let command = ControlSubscribeCommand {
+        action: "delete".to_owned(),
+        data_item: "state".to_owned(),
+        subscription_id: Some("sub-123".to_owned()),
+    };
+
+    let payload = serde_json::to_string_pretty(&command).expect("serialize control command");
+
+    assert!(payload.contains("\"action\": \"delete\""));
+    assert!(payload.contains("\"data_item\": \"state\""));
+    assert!(payload.contains("\"subscription_id\": \"sub-123\""));
 }

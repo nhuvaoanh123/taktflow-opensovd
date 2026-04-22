@@ -26,7 +26,7 @@ use std::{
     process::Command,
 };
 
-use chrono::{SecondsFormat, Utc};
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -41,6 +41,12 @@ pub const REFERENCE_MODEL_NAME: &str = "reference-fault-predictor";
 pub const REFERENCE_MODEL_VERSION: &str = "1.0.0";
 /// Stable demo fingerprint carried in the Phase 8 operation payload.
 pub const REFERENCE_MODEL_FINGERPRINT: &str = "sha256:7b0f1b5f2b8c2a7e8d4d0f9c3f6b1a22";
+/// ADR-0029 rollback threshold for consecutive failed inferences.
+pub const INFERENCE_FAILURE_ROLLBACK_THRESHOLD: u32 = 5;
+/// ADR-0029 cadence for periodic signature re-verification.
+pub const PERIODIC_REVERIFICATION_INTERVAL_HOURS: i64 = 24;
+/// ADR-0029 default confidence floor below which an inference counts as failed.
+pub const DEFAULT_CONFIDENCE_FLOOR: f64 = 0.1;
 
 /// Relative path reserved for the reference ONNX artifact.
 pub const REFERENCE_MODEL_RELATIVE_PATH: &str = "models/reference-fault-predictor.onnx";
@@ -161,6 +167,15 @@ pub struct LoadedModelBundle {
     pub manifest: ModelManifest,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RuntimeSlot {
+    model: LoadedModelBundle,
+    signature_path: PathBuf,
+    manifest_path: PathBuf,
+    ca_cert_path: PathBuf,
+    last_verified_at: DateTime<Utc>,
+}
+
 /// Coarse runtime load state for the Phase 8 active/shadow model loader.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelRuntimeState {
@@ -168,11 +183,32 @@ pub enum ModelRuntimeState {
     Ready,
 }
 
+/// ADR-0029 rollback trigger classes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RollbackTrigger {
+    InferenceFailureThreshold,
+    SignatureReverificationFailure,
+    OperatorRequested,
+}
+
+/// Structured rollback audit record emitted by `ModelRuntime`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RollbackRecord {
+    pub trigger: RollbackTrigger,
+    pub detail: String,
+    pub session_id: Option<String>,
+    pub from_model_version: String,
+    pub to_model_version: String,
+    pub at: DateTime<Utc>,
+}
+
 /// Minimal runtime holder for the active plus shadow verified model bundles.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModelRuntime {
-    active: Option<LoadedModelBundle>,
-    shadow: Option<LoadedModelBundle>,
+    active: Option<RuntimeSlot>,
+    shadow: Option<RuntimeSlot>,
+    consecutive_failures: u32,
+    rollback_history: Vec<RollbackRecord>,
 }
 
 impl ModelRuntime {
@@ -192,21 +228,27 @@ impl ModelRuntime {
 
     #[must_use]
     pub fn active_model(&self) -> Option<&LoadedModelBundle> {
-        self.active.as_ref()
+        self.active.as_ref().map(|slot| &slot.model)
     }
 
     #[must_use]
     pub fn shadow_model(&self) -> Option<&LoadedModelBundle> {
-        self.shadow.as_ref()
+        self.shadow.as_ref().map(|slot| &slot.model)
+    }
+
+    #[must_use]
+    pub fn rollback_history(&self) -> &[RollbackRecord] {
+        &self.rollback_history
     }
 
     pub fn load(
         &mut self,
         bundle: &ModelBundlePaths<'_>,
     ) -> Result<ModelRuntimeState, ModelLoadError> {
-        let loaded = load_verified_model(bundle)?;
+        let loaded = load_runtime_slot(bundle, Utc::now())?;
         self.active = Some(loaded);
         self.shadow = None;
+        self.consecutive_failures = 0;
         Ok(ModelRuntimeState::Ready)
     }
 
@@ -224,28 +266,152 @@ impl ModelRuntime {
 
     pub fn stage_shadow(&mut self, bundle: &ModelBundlePaths<'_>) -> Result<(), ModelLoadError> {
         if self.active.is_none() {
-            return Err(ModelLoadError::NoActiveModel);
+            return Err(ModelLoadError::NoLoadedModel);
         }
-        let loaded = load_verified_model(bundle)?;
+        let loaded = load_runtime_slot(bundle, Utc::now())?;
         self.shadow = Some(loaded);
         Ok(())
     }
 
     pub fn promote_shadow(&mut self) -> Result<ModelRuntimeState, ModelLoadError> {
         if self.shadow.is_none() {
-            return Err(ModelLoadError::NoShadowModel);
+            return Err(ModelLoadError::NoRollbackTarget);
         }
         std::mem::swap(&mut self.active, &mut self.shadow);
+        self.consecutive_failures = 0;
         Ok(self.state())
+    }
+
+    pub fn record_inference_success(&mut self) {
+        self.consecutive_failures = 0;
+    }
+
+    pub fn record_inference_confidence(
+        &mut self,
+        confidence: f64,
+    ) -> Result<Option<RollbackRecord>, ModelLoadError> {
+        if confidence < DEFAULT_CONFIDENCE_FLOOR {
+            self.record_inference_failure(&format!("confidence_below_floor:{confidence:.3}"))
+        } else {
+            self.record_inference_success();
+            Ok(None)
+        }
+    }
+
+    pub fn record_inference_failure(
+        &mut self,
+        detail: &str,
+    ) -> Result<Option<RollbackRecord>, ModelLoadError> {
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        if self.consecutive_failures < INFERENCE_FAILURE_ROLLBACK_THRESHOLD {
+            return Ok(None);
+        }
+        self.rollback(
+            RollbackTrigger::InferenceFailureThreshold,
+            detail.to_owned(),
+            None,
+        )
+        .map(Some)
+    }
+
+    pub fn reverify_active_if_due(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<Option<RollbackRecord>, ModelLoadError> {
+        let Some(active) = self.active.as_ref() else {
+            return Ok(None);
+        };
+        if now - active.last_verified_at < Duration::hours(PERIODIC_REVERIFICATION_INTERVAL_HOURS) {
+            return Ok(None);
+        }
+
+        let model_path = active.model.model_path.clone();
+        let signature_path = active.signature_path.clone();
+        let manifest_path = active.manifest_path.clone();
+        let ca_cert_path = active.ca_cert_path.clone();
+
+        let result = load_runtime_slot(
+            &ModelBundlePaths {
+                model: &model_path,
+                signature: &signature_path,
+                manifest: &manifest_path,
+                ca_cert: &ca_cert_path,
+            },
+            now,
+        );
+
+        match result {
+            Ok(slot) => {
+                self.active = Some(slot);
+                Ok(None)
+            }
+            Err(error) => self
+                .rollback(
+                    RollbackTrigger::SignatureReverificationFailure,
+                    error.to_string(),
+                    None,
+                )
+                .map(Some),
+        }
+    }
+
+    pub fn rollback_by_operator(
+        &mut self,
+        session_id: &str,
+    ) -> Result<RollbackRecord, ModelLoadError> {
+        self.rollback(
+            RollbackTrigger::OperatorRequested,
+            "operator_requested".to_owned(),
+            Some(session_id.to_owned()),
+        )
+    }
+
+    fn rollback(
+        &mut self,
+        trigger: RollbackTrigger,
+        detail: String,
+        session_id: Option<String>,
+    ) -> Result<RollbackRecord, ModelLoadError> {
+        let from_model_version = self
+            .active
+            .as_ref()
+            .ok_or(ModelLoadError::NoLoadedModel)?
+            .model
+            .manifest
+            .model_version
+            .clone();
+        if self.shadow.is_none() {
+            return Err(ModelLoadError::NoRollbackTarget);
+        }
+        std::mem::swap(&mut self.active, &mut self.shadow);
+        self.consecutive_failures = 0;
+        let to_model_version = self
+            .active
+            .as_ref()
+            .ok_or(ModelLoadError::NoLoadedModel)?
+            .model
+            .manifest
+            .model_version
+            .clone();
+        let record = RollbackRecord {
+            trigger,
+            detail,
+            session_id,
+            from_model_version,
+            to_model_version,
+            at: Utc::now(),
+        };
+        self.rollback_history.push(record.clone());
+        Ok(record)
     }
 }
 
 #[derive(Debug, Error)]
 pub enum ModelLoadError {
-    #[error("hot-swap requires an active model before staging the shadow slot")]
-    NoActiveModel,
-    #[error("hot-swap promotion requires a verified model in the shadow slot")]
-    NoShadowModel,
+    #[error("model runtime has no active model loaded")]
+    NoLoadedModel,
+    #[error("rollback requires a verified model in the shadow slot")]
+    NoRollbackTarget,
     #[error("unsigned model rejected: missing detached signature at {0}")]
     MissingSignature(PathBuf),
     #[error("missing model bytes at {0}")]
@@ -388,6 +554,20 @@ pub fn load_verified_model(
     Ok(LoadedModelBundle {
         model_path: bundle.model.to_path_buf(),
         manifest,
+    })
+}
+
+fn load_runtime_slot(
+    bundle: &ModelBundlePaths<'_>,
+    verified_at: DateTime<Utc>,
+) -> Result<RuntimeSlot, ModelLoadError> {
+    let model = load_verified_model(bundle)?;
+    Ok(RuntimeSlot {
+        model,
+        signature_path: bundle.signature.to_path_buf(),
+        manifest_path: bundle.manifest.to_path_buf(),
+        ca_cert_path: bundle.ca_cert.to_path_buf(),
+        last_verified_at: verified_at,
     })
 }
 

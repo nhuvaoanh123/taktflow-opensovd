@@ -12,10 +12,13 @@
 
 use std::{fs, path::Path, process::Command};
 
+use chrono::{Duration, Utc};
 use sovd_ml::{
-    ML_INFERENCE_OPERATION_TEMPLATE, MODELS_README_RELATIVE_PATH, ModelBundlePaths, ModelLoadError,
-    ModelManifest, ModelRuntime, ModelRuntimeState, canonical_manifest_yaml, models_readme_path,
-    reference_manifest_path, reference_model_path, reference_signature_path,
+    INFERENCE_FAILURE_ROLLBACK_THRESHOLD, ML_INFERENCE_OPERATION_TEMPLATE,
+    MODELS_README_RELATIVE_PATH, ModelBundlePaths, ModelLoadError, ModelManifest, ModelRuntime,
+    ModelRuntimeState, PERIODIC_REVERIFICATION_INTERVAL_HOURS, RollbackTrigger,
+    canonical_manifest_yaml, models_readme_path, reference_manifest_path, reference_model_path,
+    reference_signature_path,
 };
 use tempfile::TempDir;
 
@@ -319,4 +322,160 @@ fn hot_swap_promotion_is_atomic_and_retains_previous_active_as_shadow() {
     assert_eq!(active.model_path, shadow_model);
     assert_eq!(shadow.manifest.model_version, "1.0.0");
     assert_eq!(shadow.model_path, active_model);
+}
+
+#[test]
+fn trigger_a_rolls_back_after_five_consecutive_failed_inferences() {
+    let (_active_temp, active_ca_cert, active_model, active_manifest, active_signature) =
+        signed_fixture_with("1.0.0", b"fake-onnx-model-v1");
+    let (_shadow_temp, shadow_ca_cert, shadow_model, shadow_manifest, shadow_signature) =
+        signed_fixture_with("2.0.0", b"fake-onnx-model-v2");
+
+    let mut runtime = ModelRuntime::new();
+    runtime
+        .load(&ModelBundlePaths {
+            model: &active_model,
+            signature: &active_signature,
+            manifest: &active_manifest,
+            ca_cert: &active_ca_cert,
+        })
+        .expect("load active model");
+    runtime
+        .stage_shadow(&ModelBundlePaths {
+            model: &shadow_model,
+            signature: &shadow_signature,
+            manifest: &shadow_manifest,
+            ca_cert: &shadow_ca_cert,
+        })
+        .expect("stage shadow model");
+    runtime.promote_shadow().expect("promote shadow");
+
+    for _ in 0..(INFERENCE_FAILURE_ROLLBACK_THRESHOLD - 1) {
+        assert!(
+            runtime
+                .record_inference_failure("runtime_error")
+                .expect("record failure")
+                .is_none()
+        );
+    }
+    let rollback = runtime
+        .record_inference_failure("runtime_error")
+        .expect("record failure")
+        .expect("rollback event");
+
+    assert_eq!(rollback.trigger, RollbackTrigger::InferenceFailureThreshold);
+    assert_eq!(rollback.from_model_version, "2.0.0");
+    assert_eq!(rollback.to_model_version, "1.0.0");
+    assert_eq!(
+        runtime
+            .active_model()
+            .expect("rolled back active")
+            .manifest
+            .model_version,
+        "1.0.0"
+    );
+    assert_eq!(
+        runtime
+            .shadow_model()
+            .expect("rolled back shadow")
+            .manifest
+            .model_version,
+        "2.0.0"
+    );
+    assert_eq!(runtime.rollback_history().len(), 1);
+}
+
+#[test]
+fn trigger_b_rolls_back_when_due_reverification_fails() {
+    let (_active_temp, active_ca_cert, active_model, active_manifest, active_signature) =
+        signed_fixture_with("1.0.0", b"fake-onnx-model-v1");
+    let (_shadow_temp, shadow_ca_cert, shadow_model, shadow_manifest, shadow_signature) =
+        signed_fixture_with("2.0.0", b"fake-onnx-model-v2");
+
+    let mut runtime = ModelRuntime::new();
+    runtime
+        .load(&ModelBundlePaths {
+            model: &active_model,
+            signature: &active_signature,
+            manifest: &active_manifest,
+            ca_cert: &active_ca_cert,
+        })
+        .expect("load active model");
+    runtime
+        .stage_shadow(&ModelBundlePaths {
+            model: &shadow_model,
+            signature: &shadow_signature,
+            manifest: &shadow_manifest,
+            ca_cert: &shadow_ca_cert,
+        })
+        .expect("stage shadow model");
+    runtime.promote_shadow().expect("promote shadow");
+
+    fs::remove_file(&shadow_signature).expect("remove active signature");
+    let rollback = runtime
+        .reverify_active_if_due(
+            Utc::now() + Duration::hours(PERIODIC_REVERIFICATION_INTERVAL_HOURS + 1),
+        )
+        .expect("reverify active")
+        .expect("rollback event");
+
+    assert_eq!(
+        rollback.trigger,
+        RollbackTrigger::SignatureReverificationFailure
+    );
+    assert_eq!(rollback.from_model_version, "2.0.0");
+    assert_eq!(rollback.to_model_version, "1.0.0");
+    assert!(rollback.detail.contains("unsigned model rejected"));
+    assert_eq!(
+        runtime
+            .active_model()
+            .expect("rolled back active")
+            .manifest
+            .model_version,
+        "1.0.0"
+    );
+}
+
+#[test]
+fn trigger_c_rolls_back_on_operator_request() {
+    let (_active_temp, active_ca_cert, active_model, active_manifest, active_signature) =
+        signed_fixture_with("1.0.0", b"fake-onnx-model-v1");
+    let (_shadow_temp, shadow_ca_cert, shadow_model, shadow_manifest, shadow_signature) =
+        signed_fixture_with("2.0.0", b"fake-onnx-model-v2");
+
+    let mut runtime = ModelRuntime::new();
+    runtime
+        .load(&ModelBundlePaths {
+            model: &active_model,
+            signature: &active_signature,
+            manifest: &active_manifest,
+            ca_cert: &active_ca_cert,
+        })
+        .expect("load active model");
+    runtime
+        .stage_shadow(&ModelBundlePaths {
+            model: &shadow_model,
+            signature: &shadow_signature,
+            manifest: &shadow_manifest,
+            ca_cert: &shadow_ca_cert,
+        })
+        .expect("stage shadow model");
+    runtime.promote_shadow().expect("promote shadow");
+
+    let rollback = runtime
+        .rollback_by_operator("session-123")
+        .expect("operator rollback");
+
+    assert_eq!(rollback.trigger, RollbackTrigger::OperatorRequested);
+    assert_eq!(rollback.session_id.as_deref(), Some("session-123"));
+    assert_eq!(rollback.from_model_version, "2.0.0");
+    assert_eq!(rollback.to_model_version, "1.0.0");
+    assert_eq!(
+        runtime
+            .active_model()
+            .expect("rolled back active")
+            .manifest
+            .model_version,
+        "1.0.0"
+    );
 }

@@ -1335,6 +1335,8 @@ fn demo_component_state(id: &str) -> Option<ComponentState> {
             ],
             &[
                 ("vin", serde_json::json!("WDD2031411F123456")),
+                ("battery_soc", serde_json::json!(76)),
+                ("battery_soh", serde_json::json!(94)),
                 (
                     "battery_voltage",
                     serde_json::json!({"value": 12.8f64, "unit": "V"}),

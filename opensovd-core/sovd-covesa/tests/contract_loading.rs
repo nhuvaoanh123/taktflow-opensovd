@@ -30,7 +30,7 @@ fn loads_pinned_vss_release_and_first_mapping_slice() {
 
     assert_eq!(pin.vss_release, "v5.0");
     assert_eq!(map.vss_version, pin.vss_release);
-    assert_eq!(map.mappings.len(), 2);
+    assert_eq!(map.mappings.len(), 7);
 }
 
 #[test]
@@ -58,4 +58,26 @@ fn actuator_mapping_matches_first_whitelist_row() {
     );
     assert_eq!(mapping.direction, "write");
     assert!(mapping.notes.contains("actuator whitelist"));
+}
+
+#[test]
+fn battery_soc_mapping_matches_adr_0026_slice() {
+    let mapping = first_mapping_for("Vehicle.Powertrain.Battery.StateOfCharge")
+        .expect("load mapping catalog")
+        .expect("find battery soc path");
+
+    assert_eq!(mapping.method, "GET");
+    assert_eq!(mapping.endpoint, "/sovd/v1/components/{id}/data/battery_soc");
+    assert_eq!(mapping.direction, "read");
+}
+
+#[test]
+fn version_pin_mapping_uses_constant_selector() {
+    let mapping = first_mapping_for("Vehicle.VersionVSS")
+        .expect("load mapping catalog")
+        .expect("find version pin path");
+
+    assert_eq!(mapping.method, "GET");
+    assert_eq!(mapping.endpoint, "constant:vss-version");
+    assert_eq!(mapping.direction, "read");
 }

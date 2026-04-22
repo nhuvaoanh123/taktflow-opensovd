@@ -10,16 +10,13 @@
  * https://www.apache.org/licenses/LICENSE-2.0
  */
 
-//! COVESA VSS semantic read endpoint.
+//! COVESA VSS semantic adapter routes.
 //!
-//! `P7-SEM-01` mounts the first adapter-backed read path:
-//! `GET /sovd/covesa/vss/{vss_path}`.
-//!
-//! The current contract catalog carries exactly one mapping row,
-//! `Vehicle.OBD.DTCList -> GET /sovd/v1/components/{id}/faults`. The
-//! OEM-specific component-id resolver is not wired yet, so the first
-//! server slice defaults that row to `cvc` unless the caller passes an
-//! explicit `?component-id=...` override.
+//! The Phase 7 slice translates a pinned subset of VSS rows from
+//! `sovd-covesa/schemas/vss-map.yaml` onto existing SOVD reads and
+//! whitelisted writes. The OEM-specific component-id resolver is not
+//! wired yet, so `{id}` rows default to `cvc` unless the caller passes
+//! an explicit `?component-id=...` override.
 
 use std::sync::Arc;
 
@@ -28,10 +25,12 @@ use axum::{
     extract::{Path, Query, State},
 };
 use serde::Deserialize;
-use sovd_covesa::first_mapping_for;
+use serde_json::json;
+use sovd_covesa::{first_mapping_for, load_vss_version_pin};
 use sovd_interfaces::{
     ComponentId, SovdError,
     spec::{
+        data::ReadValue,
         fault::{FaultFilter, ListOfFaults},
         operation::{StartExecutionAsyncResponse, StartExecutionRequest},
     },
@@ -44,9 +43,12 @@ use axum::{
 use crate::{InMemoryServer, routes::error::ApiError};
 
 const DEFAULT_COMPONENT_ID: &str = "cvc";
-const DTC_LIST_ENDPOINT: &str = "/sovd/v1/components/{id}/faults";
+const FAULTS_ENDPOINT: &str = "/sovd/v1/components/{id}/faults";
+const FAULT_DETAILS_PREFIX: &str = "/sovd/v1/components/{id}/faults/";
+const DATA_PREFIX: &str = "/sovd/v1/components/{id}/data/";
 const OPERATIONS_EXECUTIONS_PREFIX: &str = "/sovd/v1/components/{id}/operations/";
 const EXECUTIONS_SUFFIX: &str = "/executions";
+const VERSION_PIN_ENDPOINT: &str = "constant:vss-version";
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
@@ -58,6 +60,14 @@ pub struct CovesaReadQuery {
 
 fn resolve_component_id(query: CovesaReadQuery) -> ComponentId {
     ComponentId::new(query.component_id.unwrap_or_else(|| DEFAULT_COMPONENT_ID.to_owned()))
+}
+
+fn resolve_fault_code(endpoint: &str) -> Option<&str> {
+    endpoint.strip_prefix(FAULT_DETAILS_PREFIX)
+}
+
+fn resolve_data_id(endpoint: &str) -> Option<&str> {
+    endpoint.strip_prefix(DATA_PREFIX)
 }
 
 fn resolve_operation_id(endpoint: &str) -> Option<&str> {
@@ -92,7 +102,7 @@ fn default_start_execution_request() -> StartExecutionRequest {
         ("component-id" = Option<String>, Query, description = "Optional component-id override for per-component mappings"),
     ),
     responses(
-        (status = 200, description = "Translated VSS read result", body = ListOfFaults),
+        (status = 200, description = "Translated VSS read result"),
         (status = 404, description = "VSS path or resolved component not found", body = sovd_interfaces::spec::error::GenericError),
         (status = 500, description = "Semantic contract load failure", body = sovd_interfaces::spec::error::GenericError),
     ),
@@ -101,7 +111,7 @@ pub async fn read_vss_path(
     State(server): State<Arc<InMemoryServer>>,
     Path(vss_path): Path<String>,
     Query(query): Query<CovesaReadQuery>,
-) -> Result<Json<ListOfFaults>, ApiError> {
+) -> Result<Response, ApiError> {
     let mapping = first_mapping_for(&vss_path)
         .map_err(|err| SovdError::Internal(format!("load covesa contracts: {err}")))?;
     let mapping = mapping.ok_or_else(|| SovdError::NotFound {
@@ -109,13 +119,31 @@ pub async fn read_vss_path(
     })?;
 
     match (mapping.method.as_str(), mapping.endpoint.as_str()) {
-        ("GET", DTC_LIST_ENDPOINT) => {
+        ("GET", FAULTS_ENDPOINT) => {
             let component = resolve_component_id(query);
-            Ok(Json(
-                server
-                    .dispatch_list_faults(&component, FaultFilter::all())
-                    .await?,
-            ))
+            let list: ListOfFaults = server.dispatch_list_faults(&component, FaultFilter::all()).await?;
+            Ok(Json(list).into_response())
+        }
+        ("GET", VERSION_PIN_ENDPOINT) => {
+            let pin = load_vss_version_pin()
+                .map_err(|err| SovdError::Internal(format!("load covesa contracts: {err}")))?;
+            Ok(Json(ReadValue {
+                id: vss_path,
+                data: json!(pin.vss_release),
+                errors: None,
+                schema: None,
+            })
+            .into_response())
+        }
+        ("GET", endpoint) if resolve_fault_code(endpoint).is_some() => {
+            let component = resolve_component_id(query);
+            let fault_code = resolve_fault_code(endpoint).expect("fault code checked above");
+            Ok(Json(server.dispatch_get_fault(&component, fault_code).await?).into_response())
+        }
+        ("GET", endpoint) if resolve_data_id(endpoint).is_some() => {
+            let component = resolve_component_id(query);
+            let data_id = resolve_data_id(endpoint).expect("data id checked above");
+            Ok(Json(server.dispatch_read_data(&component, data_id).await?).into_response())
         }
         _ => Err(SovdError::InvalidRequest(format!(
             "COVESA mapping for \"{vss_path}\" is not mounted yet"
@@ -144,6 +172,7 @@ pub async fn read_vss_path(
     request_body = Option<StartExecutionRequest>,
     responses(
         (status = 202, description = "Whitelisted actuator write translated to an async operation start", body = StartExecutionAsyncResponse),
+        (status = 204, description = "Whitelisted actuator write translated to a clear-all-fault request"),
         (status = 400, description = "Path is not a whitelisted actuator mapping", body = sovd_interfaces::spec::error::GenericError),
         (status = 404, description = "VSS path or resolved component not found", body = sovd_interfaces::spec::error::GenericError),
         (status = 500, description = "Semantic contract load failure", body = sovd_interfaces::spec::error::GenericError),
@@ -166,6 +195,12 @@ pub async fn write_vss_path(
             "COVESA VSS path \"{vss_path}\" is not a whitelisted actuator write"
         ))
         .into());
+    }
+
+    if mapping.endpoint == FAULTS_ENDPOINT {
+        let component = resolve_component_id(query);
+        server.dispatch_clear_all_faults(&component).await?;
+        return Ok(StatusCode::NO_CONTENT.into_response());
     }
 
     let Some(operation_id) = resolve_operation_id(&mapping.endpoint) else {

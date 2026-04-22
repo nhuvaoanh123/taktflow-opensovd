@@ -9,6 +9,44 @@ mappings:
       First slice from ADR-0026. `{id}` is resolved from an OEM-supplied
       VSS-to-component map. The native SOVD read defaults to status mask
       `0x08` (confirmed) unless the caller overrides it.
+  - path: Vehicle.OBD.DTC.P0A1F
+    method: GET
+    endpoint: /sovd/v1/components/{id}/faults/P0A1F
+    direction: read
+    notes: >-
+      ADR-0026 drill-in row for one single DTC entry. The first concrete
+      slice pins `P0A1F` from the demo CVC fault set so the adapter can
+      prove a fault-detail translation path end to end.
+  - path: Vehicle.Powertrain.Battery.StateOfCharge
+    method: GET
+    endpoint: /sovd/v1/components/{id}/data/battery_soc
+    direction: read
+    notes: >-
+      ADR-0026 battery StateOfCharge row. The first slice keeps the
+      component-id resolver on the same `{id}` indirection as the DTC
+      rows while the bench defaults to `cvc`.
+  - path: Vehicle.Powertrain.Battery.StateOfHealth
+    method: GET
+    endpoint: /sovd/v1/components/{id}/data/battery_soh
+    direction: read
+    notes: >-
+      ADR-0026 battery StateOfHealth row. Uses the same resolver and
+      read-data translation path as the StateOfCharge mapping.
+  - path: Vehicle.VersionVSS
+    method: GET
+    endpoint: constant:vss-version
+    direction: read
+    notes: >-
+      ADR-0026 version-pin row. The value is served from the checked-in
+      `vss-version.yaml` pin rather than proxied from any ECU.
+  - path: Vehicle.Service.ClearDTCs
+    method: POST
+    endpoint: /sovd/v1/components/{id}/faults
+    direction: write
+    notes: >-
+      ADR-0026 clear-fault-memory actuator row. The first slice maps the
+      VSS actuator onto the existing SOVD clear-all-faults behavior for
+      the resolved component.
   - path: Vehicle.Service.Routine.motor_self_test.Start
     method: POST
     endpoint: /sovd/v1/components/{id}/operations/motor_self_test/executions

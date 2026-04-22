@@ -47,8 +47,8 @@ properties:
           description: Native OpenSOVD HTTP method used for this mapping.
         endpoint:
           type: string
-          pattern: "^/sovd/v1/"
-          description: Native OpenSOVD endpoint path.
+          pattern: "^(?:/sovd/v1/|constant:)"
+          description: Native OpenSOVD endpoint path or local semantic-adapter constant selector.
         direction:
           type: string
           enum:

@@ -199,7 +199,7 @@
 
 			<div>
 				<p class="mb-1 text-[10px] font-semibold uppercase text-muted-foreground">
-					UP3-06 - ML Inference Scaffold (ADR-0028, ADR-0029)
+					UC21 - Predictive Fault Inference (ML-3)
 				</p>
 				<UC21MlInference componentId={selectedEcu} />
 			</div>

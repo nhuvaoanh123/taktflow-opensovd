@@ -87,6 +87,13 @@ export interface MlInferenceResult {
 	updatedAt: string; // ISO 8601
 	source: 'live' | 'stub';
 	status: 'completed' | 'running' | 'failed';
+	advisoryOnly: boolean;
+	advisoryActive: boolean;
+	lifecycleState: 'ready' | 'rolled_back';
+	rollbackTrigger?: string;
+	rollbackAt?: string;
+	rollbackFromModelVersion?: string;
+	rollbackToModelVersion?: string;
 }
 
 export interface GatewayHealth {

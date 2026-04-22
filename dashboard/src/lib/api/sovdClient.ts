@@ -72,6 +72,7 @@ type ExecutionStatusResponse = {
 	id?: string | null;
 	status?: string | null;
 	result?: Record<string, unknown> | null;
+	parameters?: Record<string, unknown> | null;
 	error?: Array<{
 		title?: string;
 		message?: string;
@@ -423,6 +424,34 @@ function extractNumberValue(value: unknown): number | undefined {
 	return undefined;
 }
 
+function extractBooleanValue(value: unknown): boolean | undefined {
+	if (typeof value === 'boolean') {
+		return value;
+	}
+	if (typeof value === 'number') {
+		return value !== 0;
+	}
+	if (typeof value === 'string') {
+		const normalized = value.trim().toLowerCase();
+		if (normalized === 'true' || normalized === 'yes' || normalized === '1') {
+			return true;
+		}
+		if (normalized === 'false' || normalized === 'no' || normalized === '0') {
+			return false;
+		}
+	}
+	if (!isRecord(value)) {
+		return undefined;
+	}
+	for (const key of ['value', 'active', 'current']) {
+		const nested = extractBooleanValue(value[key]);
+		if (nested !== undefined) {
+			return nested;
+		}
+	}
+	return undefined;
+}
+
 function mapGatewayProbe(probe?: BackendHealthResponse | null): GatewayHealthProbe {
 	const status = probe?.status?.toLowerCase();
 	if (status === 'degraded' || status === 'unavailable') {
@@ -510,6 +539,8 @@ function mapMlInferenceResult(
 			: fallback.confidence;
 	const source = extractStringValue(result?.source)?.toLowerCase();
 	const status = extractStringValue(result?.status)?.toLowerCase();
+	const rollback = isRecord(result?.rollback) ? result.rollback : undefined;
+	const lifecycleState = extractStringValue(result?.lifecycle_state)?.toLowerCase();
 
 	return {
 		component: componentId,
@@ -523,7 +554,16 @@ function mapMlInferenceResult(
 		status:
 			status === 'running' || status === 'failed' || status === 'completed'
 				? status
-				: fallback.status
+				: fallback.status,
+		advisoryOnly: extractBooleanValue(result?.advisory_only) ?? fallback.advisoryOnly,
+		advisoryActive: extractBooleanValue(result?.advisory_active) ?? fallback.advisoryActive,
+		lifecycleState: lifecycleState === 'rolled_back' ? 'rolled_back' : fallback.lifecycleState,
+		rollbackTrigger: extractStringValue(rollback?.trigger) ?? fallback.rollbackTrigger,
+		rollbackAt: extractStringValue(rollback?.at) ?? fallback.rollbackAt,
+		rollbackFromModelVersion:
+			extractStringValue(rollback?.from_model_version) ?? fallback.rollbackFromModelVersion,
+		rollbackToModelVersion:
+			extractStringValue(rollback?.to_model_version) ?? fallback.rollbackToModelVersion
 	};
 }
 
@@ -722,7 +762,10 @@ export async function readDid(componentId: EcuId): Promise<LiveDid> {
 	}
 }
 
-export async function runMlInference(componentId: EcuId): Promise<MlInferenceResult> {
+export async function runMlInference(
+	componentId: EcuId,
+	parameters: Record<string, unknown> = {}
+): Promise<MlInferenceResult> {
 	try {
 		const start = await fetchJson<MlInferenceStartResponse>(mlInferencePath(componentId), {
 			method: 'POST',
@@ -730,8 +773,11 @@ export async function runMlInference(componentId: EcuId): Promise<MlInferenceRes
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({
-				mode: 'single-shot',
-				component_id: componentId
+				parameters: {
+					mode: 'single-shot',
+					component_id: componentId,
+					...parameters
+				}
 			})
 		});
 
@@ -748,7 +794,11 @@ export async function runMlInference(componentId: EcuId): Promise<MlInferenceRes
 				`${mlInferencePath(componentId)}/${encodeURIComponent(start.id)}`
 			);
 			return mapMlInferenceResult(componentId, {
-				...(isRecord(polled.result) ? polled.result : {}),
+				...(isRecord(polled.parameters)
+					? polled.parameters
+					: isRecord(polled.result)
+						? polled.result
+						: {}),
 				status: polled.status ?? 'completed',
 				source: 'live'
 			});
@@ -1028,6 +1078,9 @@ export function cannedMlInference(componentId: EcuId): MlInferenceResult {
 		fingerprint: 'sha256:7b0f1b5f2b8c2a7e8d4d0f9c3f6b1a22',
 		updatedAt: new Date().toISOString(),
 		source: 'stub',
-		status: 'completed'
+		status: 'completed',
+		advisoryOnly: true,
+		advisoryActive: componentId === 'cvc',
+		lifecycleState: 'ready'
 	};
 }

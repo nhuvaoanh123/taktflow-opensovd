@@ -70,7 +70,10 @@ use sovd_interfaces::{
     types::bulk_data::BulkDataChunk,
     types::error::Result,
 };
-use sovd_ml::{ML_INFERENCE_OPERATION_ID, canned_inference_result};
+use sovd_ml::{
+    ML_INFERENCE_OPERATION_ID, REFERENCE_MODEL_FINGERPRINT, REFERENCE_MODEL_NAME,
+    REFERENCE_MODEL_VERSION, canned_inference_result,
+};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -80,6 +83,9 @@ use uuid::Uuid;
 const BASE_URI: &str = "/sovd/v1";
 const OBSERVER_SESSION_TTL_MS: u64 = 120_000;
 const OBSERVER_AUDIT_LIMIT: usize = 200;
+const BASELINE_MODEL_NAME: &str = "rollback-safe-baseline";
+const BASELINE_MODEL_VERSION: &str = "0.9.0";
+const BASELINE_MODEL_FINGERPRINT: &str = "sha256:0f83f31d2a4c95eb9c7f4a64f4e4d6f2";
 
 /// One execution record held in memory.
 #[derive(Debug, Clone)]
@@ -90,6 +96,31 @@ struct ExecutionRecord {
     status: ExecutionStatus,
     /// Execution payload returned by `GET .../executions/{id}`.
     parameters: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone)]
+struct MlProfile {
+    model_name: String,
+    model_version: String,
+    fingerprint: String,
+    prediction: String,
+    confidence: f64,
+    source: String,
+}
+
+#[derive(Debug, Clone)]
+struct MlRollbackState {
+    trigger: String,
+    from_model_version: String,
+    to_model_version: String,
+    at: String,
+}
+
+#[derive(Debug, Clone)]
+struct MlComponentState {
+    active: MlProfile,
+    rollback_target: Option<MlProfile>,
+    last_rollback: Option<MlRollbackState>,
 }
 
 /// In-memory state for one component.
@@ -107,6 +138,8 @@ struct ComponentState {
     executions: HashMap<String, ExecutionRecord>,
     /// Simple data store for `GET /components/{id}/data/{data-id}`.
     data_values: HashMap<String, serde_json::Value>,
+    /// Local ML overlay state, served even when the component is backend-backed.
+    ml: MlComponentState,
 }
 
 impl ComponentState {
@@ -119,6 +152,209 @@ impl ComponentState {
             tags: None,
         }
     }
+}
+
+fn predictive_profile_for_component(component_id: &str) -> MlProfile {
+    let (prediction, confidence, source) = if component_id == "cvc" {
+        ("warning", 0.82, "demo-cvc-fault-window")
+    } else {
+        ("normal", 0.94, "demo-baseline")
+    };
+    MlProfile {
+        model_name: REFERENCE_MODEL_NAME.to_owned(),
+        model_version: REFERENCE_MODEL_VERSION.to_owned(),
+        fingerprint: REFERENCE_MODEL_FINGERPRINT.to_owned(),
+        prediction: prediction.to_owned(),
+        confidence,
+        source: source.to_owned(),
+    }
+}
+
+fn rollback_baseline_profile() -> MlProfile {
+    MlProfile {
+        model_name: BASELINE_MODEL_NAME.to_owned(),
+        model_version: BASELINE_MODEL_VERSION.to_owned(),
+        fingerprint: BASELINE_MODEL_FINGERPRINT.to_owned(),
+        prediction: "normal".to_owned(),
+        confidence: 0.96,
+        source: "rollback-safe-baseline".to_owned(),
+    }
+}
+
+fn default_ml_state(component_id: &str) -> MlComponentState {
+    let active = predictive_profile_for_component(component_id);
+    let rollback_target = if component_id == "cvc" {
+        Some(rollback_baseline_profile())
+    } else {
+        None
+    };
+    MlComponentState {
+        active,
+        rollback_target,
+        last_rollback: None,
+    }
+}
+
+fn operation_has_ml(items: &[OperationDescription]) -> bool {
+    items
+        .iter()
+        .any(|item| item.id == ML_INFERENCE_OPERATION_ID)
+}
+
+fn ensure_ml_operation(items: &mut Vec<OperationDescription>) {
+    if !operation_has_ml(items) {
+        items.push(ml_demo_op());
+    }
+}
+
+fn ml_trigger_from_request(parameters: &Option<serde_json::Value>) -> Option<&'static str> {
+    let request = parameters.as_ref()?;
+    let action = request.get("action").and_then(serde_json::Value::as_str);
+    let trigger = request
+        .get("force_trigger")
+        .and_then(serde_json::Value::as_str);
+    match (action, trigger) {
+        (Some("rollback"), _) | (_, Some("operator_rollback")) => Some("operator_requested"),
+        (_, Some("inference_failure_threshold")) => Some("inference_failure_threshold"),
+        (_, Some("signature_reverification_failure")) => Some("signature_reverification_failure"),
+        _ => None,
+    }
+}
+
+fn ml_payload(
+    profile: &MlProfile,
+    request: Option<serde_json::Value>,
+    rollback: Option<&MlRollbackState>,
+) -> serde_json::Value {
+    let timestamp = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let advisory_active = profile.prediction != "normal";
+    serde_json::json!({
+        "model_name": profile.model_name,
+        "model_version": profile.model_version,
+        "prediction": profile.prediction,
+        "confidence": profile.confidence,
+        "fingerprint": profile.fingerprint,
+        "updated_at": timestamp,
+        "source": profile.source,
+        "advisory_only": true,
+        "advisory_active": advisory_active,
+        "lifecycle_state": if rollback.is_some() { "rolled_back" } else { "ready" },
+        "request": request,
+        "rollback": rollback.map(|record| serde_json::json!({
+            "state": "rolled_back",
+            "trigger": record.trigger,
+            "from_model_version": record.from_model_version,
+            "to_model_version": record.to_model_version,
+            "at": record.at,
+        })),
+        "inference": {
+            "output": {
+                "prediction": profile.prediction,
+                "advisory_active": advisory_active,
+            },
+            "confidence": profile.confidence,
+            "model_fingerprint": profile.fingerprint,
+            "timestamp": timestamp,
+            "advisory_only": true,
+        }
+    })
+}
+
+fn execute_local_ml(
+    state: &mut ComponentState,
+    component_id: &str,
+    parameters: Option<serde_json::Value>,
+) -> serde_json::Value {
+    if let Some(trigger) = ml_trigger_from_request(&parameters) {
+        if let Some(target) = state.ml.rollback_target.clone() {
+            let previous = state.ml.active.clone();
+            let record = MlRollbackState {
+                trigger: trigger.to_owned(),
+                from_model_version: previous.model_version.clone(),
+                to_model_version: target.model_version.clone(),
+                at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+            };
+            state.ml.active = target;
+            state.ml.rollback_target = Some(previous);
+            state.ml.last_rollback = Some(record.clone());
+            return ml_payload(&state.ml.active, parameters, Some(&record));
+        }
+    }
+
+    let mut payload =
+        serde_json::to_value(canned_inference_result(component_id, parameters.clone()))
+            .unwrap_or_else(|_| serde_json::json!({}));
+    if let Some(object) = payload.as_object_mut() {
+        object.insert(
+            "model_name".to_owned(),
+            serde_json::Value::String(state.ml.active.model_name.clone()),
+        );
+        object.insert(
+            "model_version".to_owned(),
+            serde_json::Value::String(state.ml.active.model_version.clone()),
+        );
+        object.insert(
+            "prediction".to_owned(),
+            serde_json::Value::String(state.ml.active.prediction.clone()),
+        );
+        object.insert(
+            "confidence".to_owned(),
+            serde_json::json!(state.ml.active.confidence),
+        );
+        object.insert(
+            "fingerprint".to_owned(),
+            serde_json::Value::String(state.ml.active.fingerprint.clone()),
+        );
+        object.insert(
+            "source".to_owned(),
+            serde_json::Value::String(state.ml.active.source.clone()),
+        );
+        object.insert(
+            "advisory_active".to_owned(),
+            serde_json::Value::Bool(state.ml.active.prediction != "normal"),
+        );
+        object.insert(
+            "lifecycle_state".to_owned(),
+            serde_json::Value::String(if state.ml.last_rollback.is_some() {
+                "rolled_back".to_owned()
+            } else {
+                "ready".to_owned()
+            }),
+        );
+        if let Some(rollback) = &state.ml.last_rollback {
+            object.insert(
+                "rollback".to_owned(),
+                serde_json::json!({
+                    "state": "rolled_back",
+                    "trigger": rollback.trigger,
+                    "from_model_version": rollback.from_model_version,
+                    "to_model_version": rollback.to_model_version,
+                    "at": rollback.at,
+                }),
+            );
+        }
+        if let Some(inference) = object
+            .get_mut("inference")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            inference.insert(
+                "output".to_owned(),
+                serde_json::json!({
+                    "prediction": state.ml.active.prediction,
+                    "advisory_active": state.ml.active.prediction != "normal",
+                }),
+            );
+            inference.insert(
+                "confidence".to_owned(),
+                serde_json::json!(state.ml.active.confidence),
+            );
+            inference.insert(
+                "model_fingerprint".to_owned(),
+                serde_json::Value::String(state.ml.active.fingerprint.clone()),
+            );
+        }
+    }
+    payload
 }
 
 /// Bench-only injected fault list that can temporarily shadow the live
@@ -786,6 +1022,10 @@ impl InMemoryServer {
         operation_id: &str,
         request: StartExecutionRequest,
     ) -> Result<StartExecutionAsyncResponse> {
+        if operation_id == ML_INFERENCE_OPERATION_ID {
+            let view = self.component_server(component).await?;
+            return view.start_execution(operation_id, request).await;
+        }
         if let Some(backend) = self.forward(component).await {
             return backend.start_execution(operation_id, request).await;
         }
@@ -846,7 +1086,9 @@ impl InMemoryServer {
         component: &ComponentId,
     ) -> Result<OperationsList> {
         if let Some(backend) = self.forward(component).await {
-            return backend.list_operations().await;
+            let mut list = backend.list_operations().await?;
+            ensure_ml_operation(&mut list.items);
+            return Ok(list);
         }
         let view = self.component_server(component).await?;
         view.list_operations().await
@@ -864,6 +1106,10 @@ impl InMemoryServer {
         operation_id: &str,
         execution_id: &str,
     ) -> Result<ExecutionStatusResponse> {
+        if operation_id == ML_INFERENCE_OPERATION_ID {
+            let view = self.component_server(component).await?;
+            return view.execution_status(operation_id, execution_id).await;
+        }
         if let Some(backend) = self.forward(component).await {
             return backend.execution_status(operation_id, execution_id).await;
         }
@@ -1182,17 +1428,14 @@ impl SovdServer for InMemoryComponentServer {
         let component_id = self.component.as_str().to_owned();
         let parameters = request.parameters;
         self.with_state_mut(move |state| {
-            if !state.operations.iter().any(|o| o.id == op_id) {
+            if op_id != ML_INFERENCE_OPERATION_ID && !state.operations.iter().any(|o| o.id == op_id)
+            {
                 return Err(SovdError::NotFound {
                     entity: format!("operation \"{op_id}\""),
                 });
             }
             let (status, stored_parameters) = if op_id == ML_INFERENCE_OPERATION_ID {
-                let result =
-                    serde_json::to_value(canned_inference_result(&component_id, parameters))
-                        .map_err(|error| {
-                            SovdError::Internal(format!("serialize ml inference result: {error}"))
-                        })?;
+                let result = execute_local_ml(state, &component_id, parameters);
                 (ExecutionStatus::Completed, Some(result))
             } else {
                 (ExecutionStatus::Running, parameters)
@@ -1286,8 +1529,10 @@ impl InMemoryComponentServer {
     /// the store between view creation and this call.
     pub async fn list_operations(&self) -> Result<OperationsList> {
         self.with_state(|state| {
+            let mut items = state.operations.clone();
+            ensure_ml_operation(&mut items);
             Ok(OperationsList {
-                items: state.operations.clone(),
+                items,
                 schema: None,
             })
         })
@@ -1474,6 +1719,7 @@ fn demo_component(
         operations: operations.to_vec(),
         executions: HashMap::new(),
         data_values,
+        ml: default_ml_state(id),
     }
 }
 
@@ -1704,6 +1950,60 @@ mod tests {
             payload["request"]["input_window"],
             serde_json::json!("last-5-fault-events")
         );
+    }
+
+    #[tokio::test]
+    async fn ml_operator_rollback_switches_cvc_to_baseline_profile() {
+        let server = InMemoryServer::new_with_demo_data();
+        let view = server
+            .component_server(&ComponentId::new("cvc"))
+            .await
+            .expect("component view");
+
+        let rolled_back = view
+            .start_execution(
+                ML_INFERENCE_OPERATION_ID,
+                StartExecutionRequest {
+                    timeout: Some(5),
+                    parameters: Some(serde_json::json!({
+                        "action": "rollback",
+                        "force_trigger": "operator_rollback",
+                    })),
+                    proximity_response: None,
+                },
+            )
+            .await
+            .expect("start rollback execution");
+        let rollback_status = view
+            .execution_status(ML_INFERENCE_OPERATION_ID, &rolled_back.id)
+            .await
+            .expect("rollback status");
+        let rollback_payload = rollback_status.parameters.expect("rollback payload");
+        assert_eq!(rollback_payload["prediction"], "normal");
+        assert_eq!(rollback_payload["lifecycle_state"], "rolled_back");
+        assert_eq!(rollback_payload["rollback"]["trigger"], "operator_requested");
+        assert_eq!(rollback_payload["rollback"]["to_model_version"], "0.9.0");
+
+        let next = view
+            .start_execution(
+                ML_INFERENCE_OPERATION_ID,
+                StartExecutionRequest {
+                    timeout: Some(5),
+                    parameters: Some(serde_json::json!({
+                        "mode": "single-shot",
+                    })),
+                    proximity_response: None,
+                },
+            )
+            .await
+            .expect("start next inference");
+        let next_status = view
+            .execution_status(ML_INFERENCE_OPERATION_ID, &next.id)
+            .await
+            .expect("next status");
+        let next_payload = next_status.parameters.expect("next payload");
+        assert_eq!(next_payload["prediction"], "normal");
+        assert_eq!(next_payload["lifecycle_state"], "rolled_back");
     }
 
     #[tokio::test]

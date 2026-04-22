@@ -161,6 +161,61 @@ pub struct LoadedModelBundle {
     pub manifest: ModelManifest,
 }
 
+/// Coarse runtime load state for the Phase 8 single-slot model loader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelRuntimeState {
+    Unloaded,
+    Ready,
+}
+
+/// Minimal runtime holder for the currently active verified model bundle.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModelRuntime {
+    active: Option<LoadedModelBundle>,
+}
+
+impl ModelRuntime {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn state(&self) -> ModelRuntimeState {
+        if self.active.is_some() {
+            ModelRuntimeState::Ready
+        } else {
+            ModelRuntimeState::Unloaded
+        }
+    }
+
+    #[must_use]
+    pub fn active_model(&self) -> Option<&LoadedModelBundle> {
+        self.active.as_ref()
+    }
+
+    pub fn load(
+        &mut self,
+        bundle: &ModelBundlePaths<'_>,
+    ) -> Result<ModelRuntimeState, ModelLoadError> {
+        let loaded = load_verified_model(bundle)?;
+        self.active = Some(loaded);
+        Ok(ModelRuntimeState::Ready)
+    }
+
+    pub fn load_reference(&mut self, ca_cert: &Path) -> Result<ModelRuntimeState, ModelLoadError> {
+        let model = reference_model_path();
+        let signature = reference_signature_path();
+        let manifest = reference_manifest_path();
+        self.load(&ModelBundlePaths {
+            model: &model,
+            signature: &signature,
+            manifest: &manifest,
+            ca_cert,
+        })
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum ModelLoadError {
     #[error("unsigned model rejected: missing detached signature at {0}")]
@@ -347,5 +402,12 @@ mod tests {
             REFERENCE_MODEL_FINGERPRINT
         );
         assert!(result.inference.advisory_only);
+    }
+
+    #[test]
+    fn model_runtime_starts_unloaded() {
+        let runtime = ModelRuntime::new();
+        assert_eq!(runtime.state(), ModelRuntimeState::Unloaded);
+        assert!(runtime.active_model().is_none());
     }
 }

@@ -14,7 +14,7 @@ use std::{fs, path::Path, process::Command};
 
 use sovd_ml::{
     ML_INFERENCE_OPERATION_TEMPLATE, MODELS_README_RELATIVE_PATH, ModelBundlePaths, ModelLoadError,
-    ModelManifest, canonical_manifest_yaml, load_verified_model, models_readme_path,
+    ModelManifest, ModelRuntime, ModelRuntimeState, canonical_manifest_yaml, models_readme_path,
     reference_manifest_path, reference_model_path, reference_signature_path,
 };
 use tempfile::TempDir;
@@ -202,29 +202,37 @@ fn unsigned_model_path_is_rejected() {
     );
     fs::write(&ca_cert, b"unused-ca").expect("write ca placeholder");
 
-    let error = load_verified_model(&ModelBundlePaths {
-        model: &model,
-        signature: &signature,
-        manifest: &manifest,
-        ca_cert: &ca_cert,
-    })
-    .expect_err("unsigned model should be rejected");
+    let mut runtime = ModelRuntime::new();
+    let error = runtime
+        .load(&ModelBundlePaths {
+            model: &model,
+            signature: &signature,
+            manifest: &manifest,
+            ca_cert: &ca_cert,
+        })
+        .expect_err("unsigned model should be rejected");
 
     assert!(matches!(error, ModelLoadError::MissingSignature(_)));
+    assert_eq!(runtime.state(), ModelRuntimeState::Unloaded);
+    assert!(runtime.active_model().is_none());
 }
 
 #[test]
 fn signed_model_path_loads_in_the_sil_harness() {
     let (_temp, ca_cert, model, manifest, signature) = signed_fixture();
 
-    let loaded = load_verified_model(&ModelBundlePaths {
-        model: &model,
-        signature: &signature,
-        manifest: &manifest,
-        ca_cert: &ca_cert,
-    })
-    .expect("signed model should load");
+    let mut runtime = ModelRuntime::new();
+    let state = runtime
+        .load(&ModelBundlePaths {
+            model: &model,
+            signature: &signature,
+            manifest: &manifest,
+            ca_cert: &ca_cert,
+        })
+        .expect("signed model should load");
 
+    assert_eq!(state, ModelRuntimeState::Ready);
+    let loaded = runtime.active_model().expect("active model");
     assert_eq!(loaded.manifest.model_name, "reference-fault-predictor");
     assert_eq!(loaded.manifest.model_version, "1.0.0");
     assert_eq!(loaded.model_path, model);

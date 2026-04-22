@@ -1410,7 +1410,7 @@ proven on HIL.
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
 | P8-ML-01 | done | repo_only | Wire ML inference operation in `sovd-server` | `POST /sovd/v1/components/{id}/operations/ml-inference/executions` round-trips |
-| P8-ML-02 | pending | repo_only | Enforce verify-before-load on every model load | Unsigned model load → error; signed load → ready |
+| P8-ML-02 | done | repo_only | Enforce verify-before-load on every model load | Unsigned model load → error; signed load → ready |
 | P8-ML-03 | pending | repo_only | Implement hot-swap (shadow slot) | Active slot + shadow slot coexist; swap is atomic |
 | P8-ML-04 | pending | repo_only | Implement rollback triggers (A, B, C per ADR-0029) | Each trigger path has a test |
 | P8-ML-05 | pending | repo_only | Wire Edge Native deployment boundary (ECO-4) | Artifact push → local slot; observability metric emitted |

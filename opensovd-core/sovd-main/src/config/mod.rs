@@ -63,6 +63,7 @@ mod tests {
     };
 
     use super::configfile::{Configuration, ServerTlsMode};
+    use sovd_server::AuthMode;
 
     #[test]
     fn defaults_use_port_20002() {
@@ -92,6 +93,11 @@ mod tests {
         assert!(!config.rate_limit.enabled);
         assert_eq!(config.rate_limit.requests_per_second, 20);
         assert_eq!(config.rate_limit.window_seconds, 1);
+        assert_eq!(config.auth.mode, AuthMode::None);
+        assert!(config.auth.trusted_ingress_headers);
+        assert!(config.auth.jwt.issuer.is_empty());
+        assert!(config.auth.jwt.audience.is_empty());
+        assert!(config.auth.jwt.jwks_path.is_empty());
     }
 
     #[test]
@@ -201,6 +207,29 @@ control_subscriber_enabled = false
         assert_eq!(mqtt.broker_host, "127.0.0.1");
         assert_eq!(mqtt.broker_port, 1883);
         assert!(!mqtt.control_subscriber_enabled);
+        Ok(())
+    }
+
+    #[test]
+    fn toml_parses_auth_overrides() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[auth]
+mode = "hybrid"
+trusted_ingress_headers = true
+
+[auth.jwt]
+issuer = "https://issuer.example"
+audience = "opensovd"
+jwks_path = "/tmp/jwks.json"
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        assert_eq!(config.auth.mode, AuthMode::Hybrid);
+        assert!(config.auth.trusted_ingress_headers);
+        assert_eq!(config.auth.jwt.issuer, "https://issuer.example");
+        assert_eq!(config.auth.jwt.audience, "opensovd");
+        assert_eq!(config.auth.jwt.jwks_path, "/tmp/jwks.json");
         Ok(())
     }
 

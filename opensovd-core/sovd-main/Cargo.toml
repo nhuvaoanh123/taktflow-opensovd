@@ -25,6 +25,13 @@ workspace = true
 name = "sovd-main"
 path = "src/main.rs"
 
+[[bin]]
+name = "cert-audit-event"
+path = "src/bin/cert-audit-event.rs"
+
+[lib]
+path = "src/lib.rs"
+
 [features]
 default = []
 score = [
@@ -53,10 +60,13 @@ tracing = { workspace = true }
 clap = { workspace = true }
 figment = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
 url = { workspace = true }
 tower-http = { workspace = true, features = ["trace"] }
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 rustls = { version = "0.23.38", default-features = false, features = ["aws-lc-rs"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
 
 [dev-dependencies]
 console-subscriber = { workspace = true }

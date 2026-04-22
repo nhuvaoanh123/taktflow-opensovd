@@ -29,8 +29,10 @@
 
 use std::sync::Arc;
 
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode, jwk::Jwk};
 use opcycle_taktflow::TaktflowOperationCycle;
 use reqwest::StatusCode;
+use serde::Serialize;
 use sovd_db_sqlite::SqliteSovdDb;
 use sovd_dfm::Dfm;
 use sovd_interfaces::{
@@ -51,7 +53,48 @@ use sovd_server::{InMemoryServer, routes};
 use tokio::net::TcpListener;
 
 const DFM_COMPONENT_ID: &str = "dfm";
-const ACCEPTED_BEARER_TOKEN: &str = "phase4-test-token";
+const TEST_JWT_ISSUER: &str = "https://issuer.phase4.example";
+const TEST_JWT_AUDIENCE: &str = "opensovd-phase4";
+const TEST_JWT_KID: &str = "phase4-auth";
+const TEST_JWT_SECRET: &[u8] = b"phase4-test-secret";
+
+#[derive(Serialize)]
+struct TestJwtClaims<'a> {
+    sub: &'a str,
+    iss: &'a str,
+    aud: &'a str,
+    exp: usize,
+}
+
+fn test_bearer_auth_config() -> sovd_server::auth::AuthConfig {
+    let mut jwk = Jwk::from_encoding_key(&EncodingKey::from_secret(TEST_JWT_SECRET), Algorithm::HS256)
+        .expect("build test jwk");
+    jwk.common.key_id = Some(TEST_JWT_KID.to_owned());
+    let jwks_json = serde_json::to_string(&jsonwebtoken::jwk::JwkSet { keys: vec![jwk] })
+        .expect("serialize jwks");
+    sovd_server::auth::AuthConfig::bearer_from_jwks_json(
+        TEST_JWT_ISSUER,
+        TEST_JWT_AUDIENCE,
+        &jwks_json,
+    )
+    .expect("bearer auth config")
+}
+
+fn test_bearer_token() -> String {
+    let mut header = Header::new(Algorithm::HS256);
+    header.kid = Some(TEST_JWT_KID.to_owned());
+    encode(
+        &header,
+        &TestJwtClaims {
+            sub: "phase4-tester",
+            iss: TEST_JWT_ISSUER,
+            aud: TEST_JWT_AUDIENCE,
+            exp: usize::MAX / 2,
+        },
+        &EncodingKey::from_secret(TEST_JWT_SECRET),
+    )
+    .expect("sign bearer token")
+}
 
 struct BootedDfm {
     base_url: String,
@@ -122,10 +165,7 @@ impl BootedDfm {
             .await
             .expect("register forward");
         let app = if with_auth {
-            routes::app_with_auth(
-                Arc::clone(&server),
-                sovd_server::auth::AuthConfig::new(vec![ACCEPTED_BEARER_TOKEN.into()]),
-            )
+            routes::app_with_auth(Arc::clone(&server), test_bearer_auth_config())
         } else {
             routes::app_with_server(Arc::clone(&server))
         };
@@ -349,7 +389,7 @@ async fn d5_authenticated_request_passes_and_correlation_id_propagates() {
         .get(booted.url("/sovd/v1/health"))
         .header(
             axum::http::header::AUTHORIZATION,
-            format!("Bearer {ACCEPTED_BEARER_TOKEN}"),
+            format!("Bearer {}", test_bearer_token()),
         )
         .header("x-request-id", "phase4-correlation-id")
         .send()
@@ -374,7 +414,7 @@ async fn d5_traceparent_is_accepted_alongside_request_id() {
         .get(booted.url("/sovd/v1/health"))
         .header(
             axum::http::header::AUTHORIZATION,
-            format!("Bearer {ACCEPTED_BEARER_TOKEN}"),
+            format!("Bearer {}", test_bearer_token()),
         )
         .header(
             "traceparent",

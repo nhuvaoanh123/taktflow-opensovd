@@ -173,7 +173,7 @@ fn base_router() -> Router<Arc<InMemoryServer>> {
 /// expose `GET /sovd/v1/openapi.json` for spec-generation tooling.
 ///
 /// This is the no-auth variant — every request is accepted. Use
-/// [`app_with_auth`] when the caller needs bearer token enforcement.
+/// [`app_with_auth`] when the caller needs the Phase 9 auth middleware.
 /// Correlation-id middleware is applied in both variants (ADR-0013).
 pub fn app_with_server(server: Arc<InMemoryServer>) -> Router {
     base_router()
@@ -185,14 +185,12 @@ pub fn app_with_server(server: Arc<InMemoryServer>) -> Router {
         .layer(axum::middleware::from_fn(correlation::middleware))
 }
 
-/// Build the full MVP router with bearer-token authentication and
-/// correlation-id middleware. Per ADR-0009 + ADR-0013.
+/// Build the full MVP router with the configured auth policy plus
+/// correlation-id middleware. Per ADR-0009, ADR-0030, and ADR-0013.
 ///
-/// Requests must carry `Authorization: Bearer <token>` where `<token>`
-/// is one of the accepted tokens in [`AuthConfig`]; `/sovd/v1/health`
-/// is subject to the same enforcement as every other route in the
-/// bearer path (Phase 4 does not carve out a health-liveness
-/// exemption — the config can add one later).
+/// `/sovd/v1/health` stays subject to the same auth policy as every
+/// other route; Phase 9 still does not carve out a health-liveness
+/// exemption.
 pub fn app_with_auth(server: Arc<InMemoryServer>, auth: AuthConfig) -> Router {
     let auth_state = Arc::new(auth);
     base_router()

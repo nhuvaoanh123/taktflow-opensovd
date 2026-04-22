@@ -27,6 +27,7 @@
 //! bench without breaking the older route tests.
 
 use std::{
+    fs,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
     sync::Arc,
@@ -46,7 +47,7 @@ use sovd_interfaces::{
     ComponentId, SovdBackend,
     traits::{fault_sink::FaultSink, operation_cycle::OperationCycle, sovd_db::SovdDb},
 };
-use sovd_server::{CdaBackend, InMemoryServer, RateLimiter, routes};
+use sovd_server::{AuthMode, CdaBackend, InMemoryServer, RateLimiter, routes};
 use tower_http::trace::{DefaultOnResponse, MakeSpan, TraceLayer};
 use url::Url;
 
@@ -486,6 +487,67 @@ fn validate_extended_vehicle_runtime(
     Ok(())
 }
 
+fn build_auth_config(
+    config: &Configuration,
+) -> Result<Option<sovd_server::AuthConfig>, Box<dyn std::error::Error>> {
+    match config.auth.mode {
+        AuthMode::None => Ok(None),
+        AuthMode::Mtls => {
+            if !config.auth.trusted_ingress_headers {
+                return Err(
+                    "auth.mode = \"mtls\" currently requires trusted_ingress_headers = true".into(),
+                );
+            }
+            if !is_loopback_address(&config.server.address) {
+                return Err(
+                    "trusted-ingress mTLS mode requires server.address to stay on loopback".into(),
+                );
+            }
+            Ok(Some(sovd_server::AuthConfig::mtls_only_trusted_ingress()))
+        }
+        AuthMode::Bearer | AuthMode::Hybrid => {
+            let issuer = config.auth.jwt.issuer.trim();
+            let audience = config.auth.jwt.audience.trim();
+            let jwks_path = config.auth.jwt.jwks_path.trim();
+            if issuer.is_empty() {
+                return Err("auth.jwt.issuer must not be empty in bearer or hybrid mode".into());
+            }
+            if audience.is_empty() {
+                return Err("auth.jwt.audience must not be empty in bearer or hybrid mode".into());
+            }
+            if jwks_path.is_empty() {
+                return Err("auth.jwt.jwks_path must not be empty in bearer or hybrid mode".into());
+            }
+            if config.auth.mode == AuthMode::Hybrid {
+                if !config.auth.trusted_ingress_headers {
+                    return Err(
+                        "auth.mode = \"hybrid\" currently requires trusted_ingress_headers = true"
+                            .into(),
+                    );
+                }
+                if !is_loopback_address(&config.server.address) {
+                    return Err(
+                        "trusted-ingress hybrid mode requires server.address to stay on loopback"
+                            .into(),
+                    );
+                }
+            }
+            let jwks_json = fs::read_to_string(jwks_path)?;
+            let auth = match config.auth.mode {
+                AuthMode::Bearer => {
+                    sovd_server::AuthConfig::bearer_from_jwks_json(issuer, audience, &jwks_json)
+                }
+                AuthMode::Hybrid => {
+                    sovd_server::AuthConfig::hybrid_from_jwks_json(issuer, audience, &jwks_json)
+                }
+                AuthMode::None | AuthMode::Mtls => unreachable!("handled above"),
+            }
+            .map_err(|err| format!("invalid auth config: {err}"))?;
+            Ok(Some(auth))
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = AppArgs::parse();
@@ -543,7 +605,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         extended_vehicle_mqtt_config(extended_vehicle_mqtt),
                     )?);
             }
-            let app = sovd_server::routes::app_with_server(Arc::clone(&assembled.server));
+            let app = match build_auth_config(&config)? {
+                Some(auth) => {
+                    tracing::info!(mode = ?auth.mode(), "Auth middleware enabled");
+                    sovd_server::routes::app_with_auth(Arc::clone(&assembled.server), auth)
+                }
+                None => sovd_server::routes::app_with_server(Arc::clone(&assembled.server)),
+            };
             (app, assembled.dfm)
         }
         ServerMode::HelloWorld => {
@@ -658,6 +726,7 @@ mod tests {
             }),
             logging: defaults.logging,
             rate_limit: defaults.rate_limit,
+            auth: defaults.auth,
         };
 
         let assembled = build_in_memory_server(&config)
@@ -688,6 +757,7 @@ mod tests {
             extended_vehicle_mqtt: None,
             logging: defaults.logging,
             rate_limit: defaults.rate_limit,
+            auth: defaults.auth,
         };
 
         let assembled = build_in_memory_server(&config)
@@ -755,6 +825,7 @@ mod tests {
             extended_vehicle_mqtt: None,
             logging: defaults.logging,
             rate_limit: defaults.rate_limit,
+            auth: defaults.auth,
         };
 
         let err = build_in_memory_server(&config)

@@ -38,7 +38,7 @@ pub mod rate_limit;
 pub mod routes;
 mod semantic_validation;
 
-pub use auth::{AuthConfig, BearerToken};
+pub use auth::{AuthConfig, AuthContext, AuthMode, BearerToken, ClientCertificateIdentity};
 pub use backends::CdaBackend;
 pub use correlation::CorrelationId;
 pub use in_memory::{InMemoryComponentServer, InMemoryServer};

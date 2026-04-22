@@ -1,0 +1,10 @@
+[Unit]
+Description=Run OpenSOVD certificate rotation sweep daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=opensovd-cert-rotation.service
+
+[Install]
+WantedBy=timers.target

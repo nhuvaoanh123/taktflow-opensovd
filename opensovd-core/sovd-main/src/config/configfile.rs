@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 use sovd_dfm::DfmBackendConfig;
-use sovd_server::RateLimitConfig;
+use sovd_server::{AuthMode, RateLimitConfig};
 use sovd_server::backends::cda::DEFAULT_CDA_PATH_PREFIX;
 
 /// Optional `[mqtt]` TOML section for the `fault-sink-mqtt` backend.
@@ -178,6 +178,47 @@ pub struct BenchFaultInjectionConfig {
     pub enabled: bool,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct AuthJwtConfig {
+    /// Required JWT issuer for bearer or hybrid auth modes.
+    #[serde(default)]
+    pub issuer: String,
+    /// Required JWT audience for bearer or hybrid auth modes.
+    #[serde(default)]
+    pub audience: String,
+    /// Path to a JWKS JSON document containing verification keys.
+    #[serde(default)]
+    pub jwks_path: String,
+}
+
+fn default_trusted_ingress_headers() -> bool {
+    true
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct AuthRuntimeConfig {
+    /// Active auth posture. `none` remains valid for local SIL only.
+    #[serde(default)]
+    pub mode: AuthMode,
+    /// Phase 9 currently consumes mTLS identity through trusted ingress
+    /// headers from nginx. Keep this true on the Pi bench path.
+    #[serde(default = "default_trusted_ingress_headers")]
+    pub trusted_ingress_headers: bool,
+    /// JWT validation settings for bearer or hybrid mode.
+    #[serde(default)]
+    pub jwt: AuthJwtConfig,
+}
+
+impl Default for AuthRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            mode: AuthMode::None,
+            trusted_ingress_headers: default_trusted_ingress_headers(),
+            jwt: AuthJwtConfig::default(),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Configuration {
     pub server: ServerConfig,
@@ -226,6 +267,9 @@ pub struct Configuration {
     /// Disabled by default; Phase 6 enables it via TOML for SIL hardening.
     #[serde(default)]
     pub rate_limit: RateLimitConfig,
+    /// Phase 9 auth posture for the local HTTP surface.
+    #[serde(default)]
+    pub auth: AuthRuntimeConfig,
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -294,6 +338,7 @@ impl Default for Configuration {
             extended_vehicle_mqtt: None,
             logging: LoggingConfig::default(),
             rate_limit: RateLimitConfig::default(),
+            auth: AuthRuntimeConfig::default(),
         }
     }
 }

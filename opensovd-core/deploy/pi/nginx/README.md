@@ -33,11 +33,21 @@ The compose file expects these host paths on the Pi:
   - nginx server private key
 - `/opt/taktflow/observer-certs/client-ca.crt`
   - trust anchor used to verify observer client certs
+- `/opt/taktflow/observer-certs/client-ca.crl.pem`
+  - CRL used to reject revoked observer client certs
+- `/opt/taktflow/observer-certs/ca-chain.crt`
+  - trusted chain used by nginx for OCSP stapling verification
 
 Create that cert material with:
 
 ```bash
 deploy/pi/scripts/provision-observer-certs.sh
+```
+
+Phase 9 adds the internal CA and revocation-capable path:
+
+```bash
+deploy/pi/scripts/provision-internal-ca.sh
 ```
 
 Default output is `/opt/taktflow/observer-certs`. The script also emits:

@@ -1,0 +1,9 @@
+[Unit]
+Description=OpenSOVD certificate rotation sweep
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/taktflow/opensovd-core
+ExecStart=/usr/bin/env bash /opt/taktflow/opensovd-core/deploy/pi/scripts/rotate-cert-if-needed.sh

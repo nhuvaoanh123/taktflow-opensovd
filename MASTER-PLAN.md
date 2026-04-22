@@ -265,7 +265,7 @@ appear is §13 Historical Status, for facts that already happened.
 | P6 | Hardening (TLS, DLT, OTel, rate limit, OTA, safety delta) | P5 HIL green | Integrator-ready; HARA/FMEA approved; OTA demonstrable on CVC |
 | P7 | Semantic Interoperability + Extended Vehicle | P6 complete | VSS read + XV pub/sub wired into server; conformance gate green |
 | P8 | Edge AI/ML Integration | P7 complete, ML model signed | Predictive fault inference green on Pi HIL; hot-swap + rollback proven |
-| P9 | Cybersecurity & Certificate Lifecycle | P6 complete, ADR-0032 (cybersecurity profile) accepted | ISO 21434 TARA + CAL approved; cert lifecycle automated |
+| P9 | Cybersecurity & Certificate Lifecycle | P6 complete, ADR-0036 (cybersecurity profile) accepted | ISO 21434 TARA + CAL approved; cert lifecycle automated |
 | P10 | Ecosystem Integration (pluggable backend, COVESA spec drift, ML artifact boundary) | P7 complete | Pluggable backend interface covered; COVESA spec drift tracked internally |
 | P11 | Conformance & Documentation Maturity | P8 + P9 + P10 complete | ISO 17978 + ISO 20078 + ISO 21434 conformance suites green; full doc set published |
 
@@ -653,7 +653,7 @@ authenticates via X.509 client certificate.
 **Role.** Default on the public SIL (VPS) once the conformance suite is
 live; validates JWTs issued by a configured IdP.
 
-**Planned ADR.** ADR-0032 — cybersecurity profile (selects IdP shape,
+**Planned ADR.** ADR-0036 — cybersecurity profile (selects IdP shape,
 token lifetime, revocation path).
 
 #### 5.2.4 SEC-4 Hybrid Auth Profile (ADR-0030)
@@ -677,7 +677,7 @@ signing.
 - OTA firmware signing
 - ML model signing (per ADR-0029)
 
-**Workflow (planned ADR-0033).**
+**Workflow (planned ADR-0037).**
 1. Issue — from the Taktflow internal CA (offline root, online
    intermediate).
 2. Rotate — automated rotation before `expiry - 30d`.
@@ -821,7 +821,7 @@ it is not a compatibility commitment to any external runtime.
 - [ADR-0016](docs/adr/0016-pluggable-score-backends.md) defines the
   pluggable-backend shape (S-CORE or other backends plug in behind the
   Taktflow defaults).
-- Planned **ADR-0034** — backend compatibility interface — will
+- Planned **ADR-0038** — backend compatibility interface — will
   formalize the exact trait, lifecycle, and data model mapping.
 
 **Constraint.** Direction is inward only: external backends (e.g. the
@@ -1422,25 +1422,27 @@ Completion note (2026-04-22): `P8-ML-07` and `P8-ML-08` are now green on the Pi 
 
 ### 7.10 P9 — Cybersecurity & Cert Lifecycle
 
-Entry: P6 complete; ADR-0032 (cybersecurity profile) accepted.
+Entry: P6 complete; ADR-0036 (cybersecurity profile) accepted.
 
 Exit: M8 — ISO 21434 TARA + CAL + cybersecurity case approved; cert
 lifecycle automated; security gate G-CS green.
 
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
-| P9-CS-01 | pending | decision_doc | Author ADR-0032 cybersecurity profile | Profile defines TARA method, CAL assignment approach, threat taxonomy |
-| P9-CS-02 | pending | decision_doc | TARA for each surface (§5.2.6 list) | All seven TARA artifacts land under `docs/cybersecurity/` |
-| P9-CS-03 | pending | decision_doc | CAL assignment matrix | Matrix lands at `docs/cybersecurity/cal-assignment.md`; every endpoint covered |
-| P9-CS-04 | pending | decision_doc | Cybersecurity case summary | Case summary land; reviewed by security lead |
-| P9-CS-05 | pending | decision_doc | Vulnerability monitoring policy | Policy land; CVE feed subscription documented |
-| P9-CS-06 | pending | decision_doc | Author ADR-0033 cert lifecycle | Profile defines issue / rotate / revoke / expire / audit workflow |
-| P9-CS-07 | pending | repo_only | Internal CA (offline root + online intermediate) scripted | Scripts idempotent; issues a test cert |
-| P9-CS-08 | pending | repo_only | Automated rotation `expiry − 30d` | Scheduler runs; rotation event audit-logged |
-| P9-CS-09 | pending | repo_only | CRL + OCSP stapling on bench entrypoint | Revocation test passes |
-| P9-CS-10 | pending | repo_only | Cert-event audit sinks per ADR-0014 | Every issue / revoke event audited in all three sinks |
-| P9-CS-11 | pending | repo_only | OAuth2/OIDC bearer validator replaces scaffold | Invalid JWT → 401; valid JWT → 200 |
-| P9-CS-12 | pending | repo_only | Hybrid auth profile end-to-end test | Missing mTLS → 400; missing bearer → 401; both present → 200 |
+| P9-CS-01 | done | decision_doc | Author ADR-0036 cybersecurity profile | Profile defines TARA method, CAL assignment approach, threat taxonomy |
+| P9-CS-02 | done | decision_doc | TARA for each surface (§5.2.6 list) | All seven TARA artifacts land under `docs/cybersecurity/` |
+| P9-CS-03 | done | decision_doc | CAL assignment matrix | Matrix lands at `docs/cybersecurity/cal-assignment.md`; every endpoint covered |
+| P9-CS-04 | done | decision_doc | Cybersecurity case summary | Case summary land; reviewed by security lead |
+| P9-CS-05 | done | decision_doc | Vulnerability monitoring policy | Policy land; CVE feed subscription documented |
+| P9-CS-06 | done | decision_doc | Author ADR-0037 cert lifecycle | Profile defines issue / rotate / revoke / expire / audit workflow |
+| P9-CS-07 | done | repo_only | Internal CA (offline root + online intermediate) scripted | Scripts idempotent; issues a test cert |
+| P9-CS-08 | done | repo_only | Automated rotation `expiry − 30d` | Scheduler runs; rotation event audit-logged |
+| P9-CS-09 | done | repo_only | CRL + OCSP stapling on bench entrypoint | Revocation test passes |
+| P9-CS-10 | done | repo_only | Cert-event audit sinks per ADR-0014 | Every issue / revoke event audited in all three sinks |
+| P9-CS-11 | done | repo_only | OAuth2/OIDC bearer validator replaces scaffold | Invalid JWT → 401; valid JWT → 200 |
+| P9-CS-12 | done | repo_only | Hybrid auth profile end-to-end test | Missing mTLS → 400; missing bearer → 401; both present → 200 |
+
+Completion note (2026-04-22): Phase 9 is now closed repo-side. The repo now carries ADR-0036 and ADR-0037 plus the full `docs/cybersecurity/` evidence set, `sovd-server` validates real JWT bearer tokens and enforces the Phase 9 trusted-ingress hybrid auth path, `sovd-main` exposes TOML auth config and ships the `cert-audit-event` helper, and the Pi deploy assets now include an internal CA bootstrap, rotation / revoke scripts, revocation smoke test, and nginx CRL + OCSP stapling config. Proofs that ran green in this closeout: `cargo test -p sovd-server --lib`, `cargo test -p sovd-main`, `cargo test -p integration-tests --test phase4_sovd_real_backends --test phase9_auth_profiles`, `bash opensovd-core/deploy/pi/scripts/test-cert-revocation.sh`, a short-lived-leaf rotation sweep that recorded one `rotate` audit event, and a provision run wired through `target/debug/cert-audit-event.exe` that recorded six `issue` events.
 
 ### 7.11 P10 — Ecosystem Integration
 
@@ -1452,7 +1454,7 @@ documented.
 
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
-| P10-ECO-01 | pending | decision_doc | Author ADR-0034 pluggable backend compatibility interface | Trait + lifecycle + data-model mapping defined |
+| P10-ECO-01 | pending | decision_doc | Author ADR-0038 pluggable backend compatibility interface | Trait + lifecycle + data-model mapping defined |
 | P10-ECO-02 | pending | repo_only | Implement `backend-adapter` crate | Crate lands; wraps `sovd-gateway` behind the compatibility trait |
 | P10-ECO-03 | pending | repo_only | Compatibility test (synthetic external caller → SOVD backend) | Synthetic caller round-trips through the adapter |
 | P10-ECO-04 | pending | decision_doc | COVESA VSS spec-drift review | `docs/ecosystem/covesa-vss-drift-1.md` lands |
@@ -1483,7 +1485,7 @@ published.
 
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
-| P11-CONF-01 | pending | decision_doc | Author ADR-0035 ISO 17978 conformance subset | Subset declared; mapping to endpoints |
+| P11-CONF-01 | pending | decision_doc | Author ADR-0039 ISO 17978 conformance subset | Subset declared; mapping to endpoints |
 | P11-CONF-02 | pending | repo_only | Implement ISO 17978 conformance suite | `test/conformance/iso-17978/` green in CI |
 | P11-CONF-03 | pending | repo_only | Implement ISO 20078 Extended Vehicle conformance | `test/conformance/iso-20078/` green in CI |
 | P11-CONF-04 | pending | repo_only | Implement edge-case / interop suite | `test/conformance/interop/` green in CI |

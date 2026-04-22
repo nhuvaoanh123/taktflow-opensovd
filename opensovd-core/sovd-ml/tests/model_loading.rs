@@ -49,6 +49,19 @@ fn signed_fixture() -> (
     std::path::PathBuf,
     std::path::PathBuf,
 ) {
+    signed_fixture_with("1.0.0", b"fake-onnx-model-v1")
+}
+
+fn signed_fixture_with(
+    model_version: &str,
+    model_bytes: &[u8],
+) -> (
+    TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+) {
     let temp = tempfile::tempdir().expect("temp dir");
     let root = temp.path();
     let ca_cert = root.join("ca.crt");
@@ -56,12 +69,12 @@ fn signed_fixture() -> (
     let manifest = root.join("reference-fault-predictor.manifest.yaml");
     let signature = root.join("reference-fault-predictor.sig");
 
-    fs::write(&model, b"fake-onnx-model-v1").expect("write model");
+    fs::write(&model, model_bytes).expect("write model");
     write_manifest(
         &manifest,
         &ModelManifest {
             model_name: "reference-fault-predictor".to_string(),
-            model_version: "1.0.0".to_string(),
+            model_version: model_version.to_string(),
             opset: 19,
             input_shape: vec![1, 16],
             output_shape: vec![1, 4],
@@ -236,4 +249,74 @@ fn signed_model_path_loads_in_the_sil_harness() {
     assert_eq!(loaded.manifest.model_name, "reference-fault-predictor");
     assert_eq!(loaded.manifest.model_version, "1.0.0");
     assert_eq!(loaded.model_path, model);
+}
+
+#[test]
+fn hot_swap_stages_verified_shadow_model_without_clobbering_active() {
+    let (_active_temp, active_ca_cert, active_model, active_manifest, active_signature) =
+        signed_fixture_with("1.0.0", b"fake-onnx-model-v1");
+    let (_shadow_temp, shadow_ca_cert, shadow_model, shadow_manifest, shadow_signature) =
+        signed_fixture_with("2.0.0", b"fake-onnx-model-v2");
+
+    let mut runtime = ModelRuntime::new();
+    runtime
+        .load(&ModelBundlePaths {
+            model: &active_model,
+            signature: &active_signature,
+            manifest: &active_manifest,
+            ca_cert: &active_ca_cert,
+        })
+        .expect("load active model");
+
+    runtime
+        .stage_shadow(&ModelBundlePaths {
+            model: &shadow_model,
+            signature: &shadow_signature,
+            manifest: &shadow_manifest,
+            ca_cert: &shadow_ca_cert,
+        })
+        .expect("stage shadow model");
+
+    let active = runtime.active_model().expect("active model");
+    let shadow = runtime.shadow_model().expect("shadow model");
+    assert_eq!(active.manifest.model_version, "1.0.0");
+    assert_eq!(active.model_path, active_model);
+    assert_eq!(shadow.manifest.model_version, "2.0.0");
+    assert_eq!(shadow.model_path, shadow_model);
+}
+
+#[test]
+fn hot_swap_promotion_is_atomic_and_retains_previous_active_as_shadow() {
+    let (_active_temp, active_ca_cert, active_model, active_manifest, active_signature) =
+        signed_fixture_with("1.0.0", b"fake-onnx-model-v1");
+    let (_shadow_temp, shadow_ca_cert, shadow_model, shadow_manifest, shadow_signature) =
+        signed_fixture_with("2.0.0", b"fake-onnx-model-v2");
+
+    let mut runtime = ModelRuntime::new();
+    runtime
+        .load(&ModelBundlePaths {
+            model: &active_model,
+            signature: &active_signature,
+            manifest: &active_manifest,
+            ca_cert: &active_ca_cert,
+        })
+        .expect("load active model");
+    runtime
+        .stage_shadow(&ModelBundlePaths {
+            model: &shadow_model,
+            signature: &shadow_signature,
+            manifest: &shadow_manifest,
+            ca_cert: &shadow_ca_cert,
+        })
+        .expect("stage shadow model");
+
+    let state = runtime.promote_shadow().expect("promote shadow");
+
+    assert_eq!(state, ModelRuntimeState::Ready);
+    let active = runtime.active_model().expect("promoted active model");
+    let shadow = runtime.shadow_model().expect("rollback target");
+    assert_eq!(active.manifest.model_version, "2.0.0");
+    assert_eq!(active.model_path, shadow_model);
+    assert_eq!(shadow.manifest.model_version, "1.0.0");
+    assert_eq!(shadow.model_path, active_model);
 }

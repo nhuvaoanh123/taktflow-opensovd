@@ -161,17 +161,18 @@ pub struct LoadedModelBundle {
     pub manifest: ModelManifest,
 }
 
-/// Coarse runtime load state for the Phase 8 single-slot model loader.
+/// Coarse runtime load state for the Phase 8 active/shadow model loader.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelRuntimeState {
     Unloaded,
     Ready,
 }
 
-/// Minimal runtime holder for the currently active verified model bundle.
+/// Minimal runtime holder for the active plus shadow verified model bundles.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModelRuntime {
     active: Option<LoadedModelBundle>,
+    shadow: Option<LoadedModelBundle>,
 }
 
 impl ModelRuntime {
@@ -194,12 +195,18 @@ impl ModelRuntime {
         self.active.as_ref()
     }
 
+    #[must_use]
+    pub fn shadow_model(&self) -> Option<&LoadedModelBundle> {
+        self.shadow.as_ref()
+    }
+
     pub fn load(
         &mut self,
         bundle: &ModelBundlePaths<'_>,
     ) -> Result<ModelRuntimeState, ModelLoadError> {
         let loaded = load_verified_model(bundle)?;
         self.active = Some(loaded);
+        self.shadow = None;
         Ok(ModelRuntimeState::Ready)
     }
 
@@ -214,10 +221,31 @@ impl ModelRuntime {
             ca_cert,
         })
     }
+
+    pub fn stage_shadow(&mut self, bundle: &ModelBundlePaths<'_>) -> Result<(), ModelLoadError> {
+        if self.active.is_none() {
+            return Err(ModelLoadError::NoActiveModel);
+        }
+        let loaded = load_verified_model(bundle)?;
+        self.shadow = Some(loaded);
+        Ok(())
+    }
+
+    pub fn promote_shadow(&mut self) -> Result<ModelRuntimeState, ModelLoadError> {
+        if self.shadow.is_none() {
+            return Err(ModelLoadError::NoShadowModel);
+        }
+        std::mem::swap(&mut self.active, &mut self.shadow);
+        Ok(self.state())
+    }
 }
 
 #[derive(Debug, Error)]
 pub enum ModelLoadError {
+    #[error("hot-swap requires an active model before staging the shadow slot")]
+    NoActiveModel,
+    #[error("hot-swap promotion requires a verified model in the shadow slot")]
+    NoShadowModel,
     #[error("unsigned model rejected: missing detached signature at {0}")]
     MissingSignature(PathBuf),
     #[error("missing model bytes at {0}")]
@@ -409,5 +437,6 @@ mod tests {
         let runtime = ModelRuntime::new();
         assert_eq!(runtime.state(), ModelRuntimeState::Unloaded);
         assert!(runtime.active_model().is_none());
+        assert!(runtime.shadow_model().is_none());
     }
 }

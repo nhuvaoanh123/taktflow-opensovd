@@ -389,7 +389,7 @@ impl Default for UdsComParams {
             },
             timeout_default: ComParamConfig {
                 name: "CP_P6Max".to_owned(),
-                default: Duration::from_secs(1),
+                default: Duration::from_secs(5),
             },
         }
     }
@@ -425,7 +425,9 @@ impl Default for DoipComParams {
             },
             diagnostic_ack_timeout: ComParamConfig {
                 name: "CP_DoIPDiagnosticAckTimeout".to_owned(),
-                default: Duration::from_secs(1),
+                // The Phase 5 bench proxy can deliver the real diagnostic
+                // response a few seconds after an immediate DoIP ACK.
+                default: Duration::from_secs(5),
             },
             retry_period: ComParamConfig {
                 name: "CP_DoIPRetryPeriod".to_owned(),

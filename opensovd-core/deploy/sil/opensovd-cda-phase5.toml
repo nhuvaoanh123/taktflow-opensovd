@@ -21,7 +21,7 @@ tester_subnet = "255.255.255.0"
 # Real IP must never be committed — set via local override only (see
 # ../../CLAUDE.md §"Never commit private data"). Replace the placeholder
 # below with the bench Pi IP before running on the bench.
-static_gateway_ip = "PI_BENCH_IP_HERE"
+static_gateway_ip = "192.168.0.197"
 # Bench proxy currently drops/mangles DoIP alive-check keepalives after routing activation.
 enable_alive_check = false
 

@@ -31,6 +31,8 @@ axum = { workspace = true, features = ["json", "tokio", "http1", "query"] }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }

@@ -38,11 +38,14 @@
 
 use std::{
     collections::HashMap,
+    fs,
+    process::Command,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
+use hex::FromHex as _;
 use opentelemetry::{
     Context as OtelContext,
     propagation::{Injector, TextMapPropagator},
@@ -51,13 +54,14 @@ use opentelemetry::{
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
+use sha2::{Digest as _, Sha256};
 use sovd_interfaces::{
     ComponentId, SovdError,
     extras::response::ResponseExtras,
     spec::{
         bulk_data::{
-            BulkDataFailureReason, BulkDataState, BulkDataTransferCreated,
-            BulkDataTransferRequest, BulkDataTransferStatus,
+            BulkDataFailureReason, BulkDataState, BulkDataTransferCreated, BulkDataTransferRequest,
+            BulkDataTransferStatus,
         },
         component::EntityCapabilities,
         data::{Datas, ReadValue},
@@ -86,14 +90,30 @@ const CDA_MAX_ATTEMPTS: u32 = 3;
 const CDA_TOTAL_BUDGET: Duration = Duration::from_millis(2_000);
 const CDA_INITIAL_BACKOFF: Duration = Duration::from_millis(50);
 const CDA_CACHE_LOCK_BUDGET: Duration = Duration::from_millis(50);
-const BULK_DATA_SC_COMPONENT_ID: &str = "sc";
+const BULK_DATA_CVC_COMPONENT_ID: &str = "cvc";
 const BULK_DATA_PROGRAMMING_SESSION: u8 = 0x02;
+const BULK_DATA_READ_DATA_BY_IDENTIFIER_SID: u8 = 0x22;
+const BULK_DATA_WRITE_DATA_BY_IDENTIFIER_SID: u8 = 0x2E;
+const BULK_DATA_ROUTINE_CONTROL_SID: u8 = 0x31;
 const BULK_DATA_REQUEST_DOWNLOAD_SID: u8 = 0x34;
 const BULK_DATA_TRANSFER_DATA_SID: u8 = 0x36;
 const BULK_DATA_TRANSFER_EXIT_SID: u8 = 0x37;
+const BULK_DATA_READ_DATA_BY_IDENTIFIER_POSITIVE_SID: u8 = 0x62;
+const BULK_DATA_WRITE_DATA_BY_IDENTIFIER_POSITIVE_SID: u8 = 0x6E;
+const BULK_DATA_ROUTINE_CONTROL_POSITIVE_SID: u8 = 0x71;
 const BULK_DATA_DEFAULT_DATA_FORMAT_IDENTIFIER: u8 = 0x00;
 const BULK_DATA_DEFAULT_ADDRESS_AND_LENGTH_FORMAT_IDENTIFIER: u8 = 0x44;
-const BULK_DATA_DEFAULT_MEMORY_ADDRESS: u32 = 0x0000_0000;
+const BULK_DATA_DEFAULT_MEMORY_ADDRESS: u32 = 0x0804_0000;
+const BULK_DATA_OTA_MANIFEST_DID: u16 = 0xF1A0;
+const BULK_DATA_OTA_STATUS_DID: u16 = 0xF1A1;
+const BULK_DATA_OTA_WITNESS_DID: u16 = 0xF1A2;
+const BULK_DATA_OTA_ABORT_ROUTINE_ID: u16 = 0x0201;
+const BULK_DATA_OTA_ROLLBACK_ROUTINE_ID: u16 = 0x0202;
+const BULK_DATA_OTA_MANIFEST_VERSION: u8 = 0x01;
+const BULK_DATA_OTA_MANIFEST_BYTES: usize = 38;
+const BULK_DATA_OTA_STATUS_BYTES: usize = 5;
+const BULK_DATA_OTA_WITNESS_BYTES: usize = 4;
+const BULK_DATA_OTA_SHA256_BYTES: usize = 32;
 
 #[derive(Debug, Clone)]
 struct LastKnownFaults {
@@ -192,6 +212,28 @@ struct BulkTransferRecord {
     next_block_sequence_counter: u8,
     max_block_length: Option<u32>,
     uploaded_bytes: Vec<u8>,
+    expected_sha256: [u8; BULK_DATA_OTA_SHA256_BYTES],
+    signature_path: Option<String>,
+    ca_cert_path: Option<String>,
+    witness_id: u32,
+}
+
+#[derive(Debug, Clone)]
+struct BulkDataManifestParameters {
+    memory_address: u32,
+    data_format_identifier: u8,
+    address_and_length_format_identifier: u8,
+    slot_hint: u8,
+    expected_sha256: [u8; BULK_DATA_OTA_SHA256_BYTES],
+    witness_id: u32,
+    signature_path: Option<String>,
+    ca_cert_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OtaStatusSnapshot {
+    state: BulkDataState,
+    reason: Option<BulkDataFailureReason>,
 }
 
 /// Forwarding backend that turns [`SovdBackend`] trait calls into SOVD
@@ -715,7 +757,7 @@ impl CdaBackend {
     fn bulk_data_enabled(&self) -> bool {
         self.component_id
             .as_str()
-            .eq_ignore_ascii_case(BULK_DATA_SC_COMPONENT_ID)
+            .eq_ignore_ascii_case(BULK_DATA_CVC_COMPONENT_ID)
     }
 
     fn bulk_data_path(&self) -> String {
@@ -743,15 +785,9 @@ impl CdaBackend {
             .map_err(|e| map_reqwest_err(&self.component_id, &e))
     }
 
-    fn map_negative_response(
-        &self,
-        operation: &'static str,
-        service: u8,
-        nrc: u8,
-    ) -> SovdError {
-        let message = format!(
-            "{operation} negative response for service 0x{service:02X}: NRC 0x{nrc:02X}"
-        );
+    fn map_negative_response(&self, operation: &'static str, service: u8, nrc: u8) -> SovdError {
+        let message =
+            format!("{operation} negative response for service 0x{service:02X}: NRC 0x{nrc:02X}");
         match nrc {
             0x24 | 0x73 => SovdError::Conflict(message),
             0x31 | 0x70 | 0x71 | 0x72 => SovdError::InvalidRequest(message),
@@ -765,7 +801,9 @@ impl CdaBackend {
         request: Vec<u8>,
         positive_sid: u8,
     ) -> Result<Vec<u8>> {
-        let response = self.send_generic_service(operation, request.clone()).await?;
+        let response = self
+            .send_generic_service(operation, request.clone())
+            .await?;
         let Some(&sid) = response.first() else {
             return Err(SovdError::Transport(format!(
                 "{operation} returned an empty response"
@@ -784,9 +822,9 @@ impl CdaBackend {
         Ok(response)
     }
 
-    fn request_download_parameters(
+    fn parse_bulk_data_manifest(
         request: &BulkDataTransferRequest,
-    ) -> Result<(u32, u8, u8)> {
+    ) -> Result<BulkDataManifestParameters> {
         let Some(manifest) = request.manifest.as_object() else {
             return Err(SovdError::InvalidRequest(
                 "manifest must be a JSON object".to_owned(),
@@ -854,11 +892,445 @@ impl CdaBackend {
             .transpose()?
             .unwrap_or(BULK_DATA_DEFAULT_ADDRESS_AND_LENGTH_FORMAT_IDENTIFIER);
 
-        Ok((
+        let expected_sha256 = manifest
+            .get("sha256")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                SovdError::InvalidRequest(
+                    "manifest.sha256 must be a 64-character hex string".to_owned(),
+                )
+            })
+            .and_then(Self::parse_sha256_hex)?;
+
+        let witness_id = manifest
+            .get("witnessId")
+            .map(|value| {
+                value.as_u64().ok_or_else(|| {
+                    SovdError::InvalidRequest(
+                        "manifest.witnessId must be an unsigned integer".to_owned(),
+                    )
+                })
+            })
+            .transpose()?
+            .map(|value| {
+                u32::try_from(value).map_err(|_| {
+                    SovdError::InvalidRequest("manifest.witnessId exceeds 32-bit range".to_owned())
+                })
+            })
+            .transpose()?
+            .unwrap_or_else(|| {
+                ((u32::from(expected_sha256[0])) << 24)
+                    | ((u32::from(expected_sha256[1])) << 16)
+                    | ((u32::from(expected_sha256[2])) << 8)
+                    | u32::from(expected_sha256[3])
+            });
+
+        let signature_path = Self::optional_manifest_path(manifest, "signaturePath")?;
+        let ca_cert_path = Self::optional_manifest_path(manifest, "caCertPath")?;
+        if signature_path.is_some() && ca_cert_path.is_none() {
+            return Err(SovdError::InvalidRequest(
+                "manifest.caCertPath is required when manifest.signaturePath is present".to_owned(),
+            ));
+        }
+        if signature_path.is_none() && ca_cert_path.is_some() {
+            return Err(SovdError::InvalidRequest(
+                "manifest.signaturePath is required when manifest.caCertPath is present".to_owned(),
+            ));
+        }
+
+        Ok(BulkDataManifestParameters {
             memory_address,
             data_format_identifier,
             address_and_length_format_identifier,
-        ))
+            slot_hint: Self::target_slot_hint(request.target_slot.as_deref()),
+            expected_sha256,
+            witness_id,
+            signature_path,
+            ca_cert_path,
+        })
+    }
+
+    fn optional_manifest_path(
+        manifest: &serde_json::Map<String, serde_json::Value>,
+        key: &str,
+    ) -> Result<Option<String>> {
+        manifest
+            .get(key)
+            .map(|value| {
+                let Some(path) = value.as_str() else {
+                    return Err(SovdError::InvalidRequest(format!(
+                        "manifest.{key} must be a string path"
+                    )));
+                };
+                let trimmed = path.trim();
+                if trimmed.is_empty() {
+                    return Err(SovdError::InvalidRequest(format!(
+                        "manifest.{key} must not be empty"
+                    )));
+                }
+                Ok(trimmed.to_owned())
+            })
+            .transpose()
+    }
+
+    fn parse_sha256_hex(raw: &str) -> Result<[u8; BULK_DATA_OTA_SHA256_BYTES]> {
+        let trimmed = raw.trim();
+        let trimmed = trimmed.strip_prefix("0x").unwrap_or(trimmed);
+        let mut digest = [0u8; BULK_DATA_OTA_SHA256_BYTES];
+        <[u8; BULK_DATA_OTA_SHA256_BYTES]>::from_hex(trimmed)
+            .map(|decoded| {
+                digest.copy_from_slice(&decoded);
+                digest
+            })
+            .map_err(|_| {
+                SovdError::InvalidRequest(
+                    "manifest.sha256 must be a 64-character hex string".to_owned(),
+                )
+            })
+    }
+
+    fn target_slot_hint(target_slot: Option<&str>) -> u8 {
+        match target_slot.map(|slot| slot.trim().to_ascii_lowercase()) {
+            Some(slot)
+                if matches!(
+                    slot.as_str(),
+                    "a" | "slot-a" | "slot_a" | "bank-a" | "bank_a"
+                ) =>
+            {
+                0x01
+            }
+            Some(slot)
+                if matches!(
+                    slot.as_str(),
+                    "b" | "slot-b" | "slot_b" | "bank-b" | "bank_b"
+                ) =>
+            {
+                0x02
+            }
+            _ => 0x00,
+        }
+    }
+
+    fn ota_manifest_payload(
+        manifest: &BulkDataManifestParameters,
+    ) -> [u8; BULK_DATA_OTA_MANIFEST_BYTES] {
+        let mut payload = [0u8; BULK_DATA_OTA_MANIFEST_BYTES];
+        payload[0] = BULK_DATA_OTA_MANIFEST_VERSION;
+        payload[1] = manifest.slot_hint;
+        payload[2..6].copy_from_slice(&manifest.witness_id.to_be_bytes());
+        payload[6..38].copy_from_slice(&manifest.expected_sha256);
+        payload
+    }
+
+    async fn write_data_by_identifier(
+        &self,
+        operation: &'static str,
+        did: u16,
+        payload: &[u8],
+    ) -> Result<()> {
+        let mut request = Vec::with_capacity(payload.len().saturating_add(3));
+        request.push(BULK_DATA_WRITE_DATA_BY_IDENTIFIER_SID);
+        request.extend_from_slice(&did.to_be_bytes());
+        request.extend_from_slice(payload);
+        let response = self
+            .send_checked_generic_service(
+                operation,
+                request,
+                BULK_DATA_WRITE_DATA_BY_IDENTIFIER_POSITIVE_SID,
+            )
+            .await?;
+        if response.len() < 3 || response[1..3] != did.to_be_bytes() {
+            return Err(SovdError::Transport(format!(
+                "{operation} did not echo DID 0x{did:04X}"
+            )));
+        }
+        Ok(())
+    }
+
+    async fn read_data_by_identifier(&self, operation: &'static str, did: u16) -> Result<Vec<u8>> {
+        let mut request = Vec::with_capacity(3);
+        request.push(BULK_DATA_READ_DATA_BY_IDENTIFIER_SID);
+        request.extend_from_slice(&did.to_be_bytes());
+        let response = self
+            .send_checked_generic_service(
+                operation,
+                request,
+                BULK_DATA_READ_DATA_BY_IDENTIFIER_POSITIVE_SID,
+            )
+            .await?;
+        if response.len() < 3 || response[1..3] != did.to_be_bytes() {
+            return Err(SovdError::Transport(format!(
+                "{operation} did not echo DID 0x{did:04X}"
+            )));
+        }
+        Ok(response[3..].to_vec())
+    }
+
+    async fn call_routine_control(
+        &self,
+        operation: &'static str,
+        subfunction: u8,
+        routine_id: u16,
+    ) -> Result<Vec<u8>> {
+        let mut request = Vec::with_capacity(4);
+        request.push(BULK_DATA_ROUTINE_CONTROL_SID);
+        request.push(subfunction);
+        request.extend_from_slice(&routine_id.to_be_bytes());
+        let response = self
+            .send_checked_generic_service(
+                operation,
+                request,
+                BULK_DATA_ROUTINE_CONTROL_POSITIVE_SID,
+            )
+            .await?;
+        if response.len() < 4
+            || response[1] != subfunction
+            || response[2..4] != routine_id.to_be_bytes()
+        {
+            return Err(SovdError::Transport(format!(
+                "{operation} did not echo routine 0x{routine_id:04X}"
+            )));
+        }
+        Ok(response[4..].to_vec())
+    }
+
+    fn parse_ota_status_payload(payload: &[u8]) -> Result<OtaStatusSnapshot> {
+        if payload.len() < BULK_DATA_OTA_STATUS_BYTES {
+            return Err(SovdError::Transport(
+                "bulk_data_status response truncated".to_owned(),
+            ));
+        }
+
+        let state = match payload[0] {
+            0x00 => BulkDataState::Idle,
+            0x01 => BulkDataState::Downloading,
+            0x02 => BulkDataState::Verifying,
+            0x03 => BulkDataState::Committed,
+            0x04 => BulkDataState::Failed,
+            0x05 => BulkDataState::Rolledback,
+            other => {
+                return Err(SovdError::Transport(format!(
+                    "bulk_data_status returned unknown OTA state 0x{other:02X}"
+                )));
+            }
+        };
+
+        let reason = match payload[1] {
+            0x00 => None,
+            0x01 => Some(BulkDataFailureReason::SignatureInvalid),
+            0x02 => Some(BulkDataFailureReason::FlashWriteFailed),
+            0x03 => Some(BulkDataFailureReason::PowerLoss),
+            0x04 => Some(BulkDataFailureReason::AbortRequested),
+            _ => Some(BulkDataFailureReason::Other),
+        };
+
+        Ok(OtaStatusSnapshot {
+            state,
+            reason: if state == BulkDataState::Failed {
+                reason
+            } else {
+                None
+            },
+        })
+    }
+
+    fn verify_uploaded_payload_digest(
+        expected_sha256: &[u8; BULK_DATA_OTA_SHA256_BYTES],
+        payload: &[u8],
+    ) -> Result<()> {
+        let actual = Sha256::digest(payload);
+        if actual.as_slice() != expected_sha256 {
+            return Err(SovdError::InvalidRequest(
+                "uploaded image digest does not match manifest.sha256".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn verify_detached_cms_signature(
+        signature_path: &str,
+        ca_cert_path: &str,
+        payload: &[u8],
+    ) -> Result<()> {
+        let scratch = std::env::temp_dir().join(format!("opensovd-ota-verify-{}", Uuid::new_v4()));
+        let payload_path = scratch.join("payload.bin");
+        let verify_out_path = scratch.join("verified.bin");
+
+        fs::create_dir_all(&scratch)
+            .map_err(|e| SovdError::Internal(format!("create OTA verification dir: {e}")))?;
+        fs::write(&payload_path, payload)
+            .map_err(|e| SovdError::Internal(format!("write OTA verification payload: {e}")))?;
+
+        let output = Command::new("openssl")
+            .args([
+                "cms",
+                "-verify",
+                "-binary",
+                "-in",
+                signature_path,
+                "-inform",
+                "PEM",
+                "-content",
+                &payload_path.display().to_string(),
+                "-CAfile",
+                ca_cert_path,
+                "-out",
+                &verify_out_path.display().to_string(),
+            ])
+            .output()
+            .map_err(|error| {
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    SovdError::Internal("openssl executable not available on PATH".to_owned())
+                } else {
+                    SovdError::Transport(format!("spawn openssl cms verify: {error}"))
+                }
+            });
+
+        let _ = fs::remove_file(&payload_path);
+        let _ = fs::remove_file(&verify_out_path);
+        let _ = fs::remove_dir_all(&scratch);
+
+        let output = output?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            let message = if stderr.is_empty() {
+                "manifest signature verification failed".to_owned()
+            } else {
+                format!("manifest signature verification failed: {stderr}")
+            };
+            return Err(SovdError::InvalidRequest(message));
+        }
+
+        Ok(())
+    }
+
+    fn verify_uploaded_payload(
+        record: &BulkTransferRecord,
+        final_chunk_bytes: &[u8],
+    ) -> Result<()> {
+        let mut payload = Vec::with_capacity(
+            record
+                .uploaded_bytes
+                .len()
+                .saturating_add(final_chunk_bytes.len()),
+        );
+        payload.extend_from_slice(&record.uploaded_bytes);
+        payload.extend_from_slice(final_chunk_bytes);
+
+        Self::verify_uploaded_payload_digest(&record.expected_sha256, &payload)?;
+        if let (Some(signature_path), Some(ca_cert_path)) = (
+            record.signature_path.as_deref(),
+            record.ca_cert_path.as_deref(),
+        ) {
+            Self::verify_detached_cms_signature(signature_path, ca_cert_path, &payload)?;
+        }
+        Ok(())
+    }
+
+    async fn set_bulk_transfer_failed(
+        &self,
+        transfer_id: &str,
+        bytes_received: u64,
+        uploaded_bytes: Option<&[u8]>,
+        reason: BulkDataFailureReason,
+    ) -> Result<()> {
+        let mut transfers = self.bulk_transfers.lock().await;
+        let record = transfers
+            .get_mut(transfer_id)
+            .ok_or_else(|| SovdError::NotFound {
+                entity: format!("bulk-data transfer \"{transfer_id}\""),
+            })?;
+        record.status.state = BulkDataState::Failed;
+        record.status.bytes_received = bytes_received;
+        record.status.reason = Some(reason);
+        if let Some(bytes) = uploaded_bytes {
+            record.uploaded_bytes.extend_from_slice(bytes);
+            record.next_block_sequence_counter = record.next_block_sequence_counter.wrapping_add(1);
+        }
+        Ok(())
+    }
+
+    async fn refresh_bulk_transfer_status(
+        &self,
+        transfer_id: &str,
+    ) -> Result<BulkDataTransferStatus> {
+        let snapshot = {
+            let transfers = self.bulk_transfers.lock().await;
+            transfers
+                .get(transfer_id)
+                .cloned()
+                .ok_or_else(|| SovdError::NotFound {
+                    entity: format!("bulk-data transfer \"{transfer_id}\""),
+                })?
+        };
+
+        let ota_payload = match self
+            .read_data_by_identifier("bulk_data_status", BULK_DATA_OTA_STATUS_DID)
+            .await
+        {
+            Ok(payload) => payload,
+            Err(error) => {
+                if matches!(
+                    snapshot.status.state,
+                    BulkDataState::Downloading
+                        | BulkDataState::Verifying
+                        | BulkDataState::Committed
+                        | BulkDataState::Failed
+                        | BulkDataState::Rolledback
+                ) {
+                    return Ok(snapshot.status);
+                }
+                return Err(error);
+            }
+        };
+        let ota_status = Self::parse_ota_status_payload(&ota_payload)?;
+
+        if matches!(
+            ota_status.state,
+            BulkDataState::Committed | BulkDataState::Rolledback
+        ) {
+            let witness = self
+                .read_data_by_identifier("bulk_data_witness", BULK_DATA_OTA_WITNESS_DID)
+                .await?;
+            if witness.len() != BULK_DATA_OTA_WITNESS_BYTES {
+                return Err(SovdError::Transport(
+                    "bulk_data_witness response truncated".to_owned(),
+                ));
+            }
+            let observed_witness_id =
+                u32::from_be_bytes([witness[0], witness[1], witness[2], witness[3]]);
+            if observed_witness_id != snapshot.witness_id {
+                return Err(SovdError::Transport(format!(
+                    "bulk_data_witness mismatch: expected 0x{:08X}, got 0x{observed_witness_id:08X}",
+                    snapshot.witness_id
+                )));
+            }
+        }
+
+        let reason = if ota_status.state == BulkDataState::Failed {
+            match (snapshot.status.reason, ota_status.reason) {
+                (
+                    Some(BulkDataFailureReason::SignatureInvalid),
+                    Some(BulkDataFailureReason::AbortRequested),
+                ) => Some(BulkDataFailureReason::SignatureInvalid),
+                (_, reason) => reason.or(snapshot.status.reason),
+            }
+        } else {
+            None
+        };
+
+        let mut updated = snapshot.status.clone();
+        updated.state = ota_status.state;
+        updated.reason = reason;
+
+        let mut transfers = self.bulk_transfers.lock().await;
+        let record = transfers
+            .get_mut(transfer_id)
+            .ok_or_else(|| SovdError::NotFound {
+                entity: format!("bulk-data transfer \"{transfer_id}\""),
+            })?;
+        record.status = updated.clone();
+        Ok(updated)
     }
 
     fn parse_max_block_length(response: &[u8]) -> Result<Option<u32>> {
@@ -1444,8 +1916,7 @@ impl SovdBackend for CdaBackend {
             }
         }
 
-        let (memory_address, data_format_identifier, address_and_length_format_identifier) =
-            Self::request_download_parameters(&request)?;
+        let manifest = Self::parse_bulk_data_manifest(&request)?;
         let total_bytes = u32::try_from(request.image_size).map_err(|_| {
             SovdError::InvalidRequest("image-size exceeds 32-bit UDS download range".to_owned())
         })?;
@@ -1457,19 +1928,22 @@ impl SovdBackend for CdaBackend {
         )
         .await?;
 
+        self.write_data_by_identifier(
+            "bulk_data_manifest",
+            BULK_DATA_OTA_MANIFEST_DID,
+            &Self::ota_manifest_payload(&manifest),
+        )
+        .await?;
+
         let mut request_download = vec![
             BULK_DATA_REQUEST_DOWNLOAD_SID,
-            data_format_identifier,
-            address_and_length_format_identifier,
+            manifest.data_format_identifier,
+            manifest.address_and_length_format_identifier,
         ];
-        request_download.extend_from_slice(&memory_address.to_be_bytes());
+        request_download.extend_from_slice(&manifest.memory_address.to_be_bytes());
         request_download.extend_from_slice(&total_bytes.to_be_bytes());
         let response = self
-            .send_checked_generic_service(
-                "bulk_data_request_download",
-                request_download,
-                0x74,
-            )
+            .send_checked_generic_service("bulk_data_request_download", request_download, 0x74)
             .await?;
         let max_block_length = Self::parse_max_block_length(&response)?;
 
@@ -1489,6 +1963,10 @@ impl SovdBackend for CdaBackend {
                 next_block_sequence_counter: 1,
                 max_block_length,
                 uploaded_bytes: Vec::new(),
+                expected_sha256: manifest.expected_sha256,
+                signature_path: manifest.signature_path,
+                ca_cert_path: manifest.ca_cert_path,
+                witness_id: manifest.witness_id,
             },
         );
 
@@ -1498,11 +1976,7 @@ impl SovdBackend for CdaBackend {
         })
     }
 
-    async fn upload_bulk_data_chunk(
-        &self,
-        transfer_id: &str,
-        chunk: BulkDataChunk,
-    ) -> Result<()> {
+    async fn upload_bulk_data_chunk(&self, transfer_id: &str, chunk: BulkDataChunk) -> Result<()> {
         let snapshot = {
             let transfers = self.bulk_transfers.lock().await;
             transfers
@@ -1520,7 +1994,13 @@ impl SovdBackend for CdaBackend {
             )));
         }
         let chunk_len = u64::try_from(chunk.bytes.len()).unwrap_or(u64::MAX);
-        if chunk.range.end.saturating_sub(chunk.range.start).saturating_add(1) != chunk_len {
+        if chunk
+            .range
+            .end
+            .saturating_sub(chunk.range.start)
+            .saturating_add(1)
+            != chunk_len
+        {
             return Err(SovdError::InvalidRequest(
                 "chunk body length does not match Content-Range".to_owned(),
             ));
@@ -1568,11 +2048,7 @@ impl SovdBackend for CdaBackend {
         transfer_payload.push(snapshot.next_block_sequence_counter);
         transfer_payload.extend_from_slice(&chunk.bytes);
         let response = self
-            .send_checked_generic_service(
-                "bulk_data_transfer_data",
-                transfer_payload,
-                0x76,
-            )
+            .send_checked_generic_service("bulk_data_transfer_data", transfer_payload, 0x76)
             .await?;
         if response.get(1).copied() != Some(snapshot.next_block_sequence_counter) {
             return Err(SovdError::Transport(format!(
@@ -1584,12 +2060,42 @@ impl SovdBackend for CdaBackend {
 
         let final_chunk = chunk.range.end.saturating_add(1) == snapshot.status.total_bytes;
         if final_chunk {
-            self.send_checked_generic_service(
-                "bulk_data_transfer_exit",
-                vec![BULK_DATA_TRANSFER_EXIT_SID],
-                0x77,
-            )
-            .await?;
+            if let Err(error) = Self::verify_uploaded_payload(&snapshot, &chunk.bytes) {
+                let _ = self
+                    .call_routine_control(
+                        "bulk_data_abort_after_signature_failure",
+                        0x01,
+                        BULK_DATA_OTA_ABORT_ROUTINE_ID,
+                    )
+                    .await;
+                self.set_bulk_transfer_failed(
+                    transfer_id,
+                    chunk.range.end.saturating_add(1),
+                    Some(&chunk.bytes),
+                    BulkDataFailureReason::SignatureInvalid,
+                )
+                .await?;
+                return Err(error);
+            }
+
+            let transfer_exit_result = self
+                .send_checked_generic_service(
+                    "bulk_data_transfer_exit",
+                    vec![BULK_DATA_TRANSFER_EXIT_SID],
+                    0x77,
+                )
+                .await;
+            if let Err(error) = transfer_exit_result {
+                self.set_bulk_transfer_failed(
+                    transfer_id,
+                    chunk.range.end.saturating_add(1),
+                    Some(&chunk.bytes),
+                    BulkDataFailureReason::Other,
+                )
+                .await?;
+                let _ = self.refresh_bulk_transfer_status(transfer_id).await;
+                return Err(error);
+            }
         }
 
         let mut transfers = self.bulk_transfers.lock().await;
@@ -1607,47 +2113,60 @@ impl SovdBackend for CdaBackend {
         }
         record.uploaded_bytes.extend_from_slice(&chunk.bytes);
         record.status.bytes_received = chunk.range.end.saturating_add(1);
-        record.next_block_sequence_counter =
-            record.next_block_sequence_counter.wrapping_add(1);
+        record.next_block_sequence_counter = record.next_block_sequence_counter.wrapping_add(1);
         record.status.state = if final_chunk {
-            BulkDataState::Committed
+            BulkDataState::Verifying
         } else {
             BulkDataState::Downloading
         };
+        record.status.reason = None;
         Ok(())
     }
 
     async fn bulk_data_status(&self, transfer_id: &str) -> Result<BulkDataTransferStatus> {
-        let transfers = self.bulk_transfers.lock().await;
-        transfers
-            .get(transfer_id)
-            .map(|record| record.status.clone())
-            .ok_or_else(|| SovdError::NotFound {
-                entity: format!("bulk-data transfer \"{transfer_id}\""),
-            })
+        self.refresh_bulk_transfer_status(transfer_id).await
     }
 
     async fn cancel_bulk_data(&self, transfer_id: &str) -> Result<()> {
-        let mut transfers = self.bulk_transfers.lock().await;
-        let record = transfers
-            .get_mut(transfer_id)
-            .ok_or_else(|| SovdError::NotFound {
-                entity: format!("bulk-data transfer \"{transfer_id}\""),
-            })?;
-        match record.status.state {
+        let status = self.refresh_bulk_transfer_status(transfer_id).await?;
+        match status.state {
             BulkDataState::Downloading | BulkDataState::Verifying => {
-                record.status.state = BulkDataState::Failed;
-                record.status.reason = Some(BulkDataFailureReason::AbortRequested);
+                let _ = self
+                    .call_routine_control("bulk_data_abort", 0x01, BULK_DATA_OTA_ABORT_ROUTINE_ID)
+                    .await?;
+                self.set_bulk_transfer_failed(
+                    transfer_id,
+                    status.bytes_received,
+                    None,
+                    BulkDataFailureReason::AbortRequested,
+                )
+                .await?;
                 Ok(())
             }
             BulkDataState::Failed
-                if record.status.reason == Some(BulkDataFailureReason::AbortRequested) =>
+                if status.reason == Some(BulkDataFailureReason::AbortRequested) =>
             {
                 Ok(())
             }
-            BulkDataState::Committed => Err(SovdError::InvalidRequest(
-                "rollback is not implemented for the TMS570 bulk-data start slice".to_owned(),
-            )),
+            BulkDataState::Committed => {
+                let _ = self
+                    .call_routine_control(
+                        "bulk_data_rollback",
+                        0x01,
+                        BULK_DATA_OTA_ROLLBACK_ROUTINE_ID,
+                    )
+                    .await?;
+                let mut transfers = self.bulk_transfers.lock().await;
+                let record = transfers
+                    .get_mut(transfer_id)
+                    .ok_or_else(|| SovdError::NotFound {
+                        entity: format!("bulk-data transfer \"{transfer_id}\""),
+                    })?;
+                record.status.state = BulkDataState::Rolledback;
+                record.status.reason = None;
+                Ok(())
+            }
+            BulkDataState::Rolledback => Ok(()),
             _ => Ok(()),
         }
     }
@@ -1711,23 +2230,217 @@ mod tests {
     }
 
     #[test]
-    fn request_download_parameters_default_to_phase6_bench_values() {
-        let (memory_address, data_format_identifier, alfid) =
-            CdaBackend::request_download_parameters(&BulkDataTransferRequest {
-                manifest: serde_json::json!({}),
-                image_size: 256,
-                target_slot: None,
-            })
-            .expect("parse defaults");
-        assert_eq!(memory_address, BULK_DATA_DEFAULT_MEMORY_ADDRESS);
+    fn bulk_data_manifest_defaults_to_phase6_cvc_values() {
+        let parsed = CdaBackend::parse_bulk_data_manifest(&BulkDataTransferRequest {
+            manifest: serde_json::json!({
+                "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            }),
+            image_size: 256,
+            target_slot: None,
+        })
+        .expect("parse defaults");
+        assert_eq!(parsed.memory_address, BULK_DATA_DEFAULT_MEMORY_ADDRESS);
         assert_eq!(
-            data_format_identifier,
+            parsed.data_format_identifier,
             BULK_DATA_DEFAULT_DATA_FORMAT_IDENTIFIER
         );
         assert_eq!(
-            alfid,
+            parsed.address_and_length_format_identifier,
             BULK_DATA_DEFAULT_ADDRESS_AND_LENGTH_FORMAT_IDENTIFIER
         );
+        assert_eq!(parsed.slot_hint, 0x00);
+    }
+
+    #[test]
+    fn bulk_data_manifest_maps_slot_hint_and_sha256() {
+        let parsed = CdaBackend::parse_bulk_data_manifest(&BulkDataTransferRequest {
+            manifest: serde_json::json!({
+                "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "witnessId": 23,
+            }),
+            image_size: 128,
+            target_slot: Some("slot-b".to_owned()),
+        })
+        .expect("parse manifest");
+        assert_eq!(parsed.slot_hint, 0x02);
+        assert_eq!(parsed.witness_id, 23);
+        assert_eq!(parsed.expected_sha256, [0xFF; BULK_DATA_OTA_SHA256_BYTES]);
+    }
+
+    #[test]
+    fn parse_ota_status_payload_maps_failed_signature_invalid() {
+        let snapshot = CdaBackend::parse_ota_status_payload(&[0x04, 0x01, 0x02, 0x01, 0x00])
+            .expect("parse ota status");
+        assert_eq!(snapshot.state, BulkDataState::Failed);
+        assert_eq!(
+            snapshot.reason,
+            Some(BulkDataFailureReason::SignatureInvalid)
+        );
+    }
+
+    #[tokio::test]
+    async fn bulk_data_flow_writes_manifest_polls_committed_and_rolls_back() {
+        use std::sync::{
+            Arc as StdArc,
+            atomic::{AtomicBool, Ordering},
+        };
+
+        use axum::{
+            Router,
+            body::Bytes,
+            extract::State,
+            response::{IntoResponse, Response},
+            routing::put,
+        };
+        use tokio::{net::TcpListener, sync::Mutex as TokioMutex};
+
+        #[derive(Clone)]
+        struct BulkDataMockState {
+            manifest_payload: StdArc<TokioMutex<Vec<u8>>>,
+            request_download_payload: StdArc<TokioMutex<Vec<u8>>>,
+            rollback_called: StdArc<AtomicBool>,
+        }
+
+        async fn genericservice(State(state): State<BulkDataMockState>, body: Bytes) -> Response {
+            let request = body.to_vec();
+            match request.as_slice() {
+                [0x10, BULK_DATA_PROGRAMMING_SESSION] => vec![0x50, BULK_DATA_PROGRAMMING_SESSION],
+                [0x2E, 0xF1, 0xA0, rest @ ..] => {
+                    *state.manifest_payload.lock().await = rest.to_vec();
+                    vec![0x6E, 0xF1, 0xA0]
+                }
+                [0x34, 0x00, 0x44, rest @ ..] => {
+                    *state.request_download_payload.lock().await = rest.to_vec();
+                    vec![0x74, 0x20, 0x00, 0x82]
+                }
+                [0x36, 0x01, ..] => vec![0x76, 0x01],
+                [0x37] => vec![0x77],
+                [0x22, 0xF1, 0xA1] => vec![0x62, 0xF1, 0xA1, 0x03, 0x00, 0x02, 0x01, 0x00],
+                [0x22, 0xF1, 0xA2] => vec![0x62, 0xF1, 0xA2, 0x12, 0x34, 0x56, 0x78],
+                [0x31, 0x01, 0x02, 0x02] => {
+                    state.rollback_called.store(true, Ordering::SeqCst);
+                    vec![0x71, 0x01, 0x02, 0x02, 0x05]
+                }
+                other => panic!("unexpected genericservice payload: {other:02X?}"),
+            }
+            .into_response()
+        }
+
+        let state = BulkDataMockState {
+            manifest_payload: StdArc::new(TokioMutex::new(Vec::new())),
+            request_download_payload: StdArc::new(TokioMutex::new(Vec::new())),
+            rollback_called: StdArc::new(AtomicBool::new(false)),
+        };
+        let app = Router::new()
+            .route(
+                "/vehicle/v15/components/cvc/genericservice",
+                put(genericservice),
+            )
+            .with_state(state.clone());
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve mock CDA");
+        });
+
+        let image = [0x01, 0x02, 0x03, 0x04];
+        let digest = Sha256::digest(image);
+        let backend = CdaBackend::new(
+            ComponentId::new("cvc"),
+            Url::parse(&format!("http://{addr}/")).expect("parse mock CDA URL"),
+        )
+        .expect("construct backend");
+        let created = backend
+            .start_bulk_data(BulkDataTransferRequest {
+                manifest: serde_json::json!({
+                    "sha256": hex::encode(digest),
+                    "witnessId": 0x12345678u32,
+                }),
+                image_size: image.len() as u64,
+                target_slot: Some("slot-b".to_owned()),
+            })
+            .await
+            .expect("start bulk data");
+
+        backend
+            .upload_bulk_data_chunk(
+                &created.transfer_id,
+                BulkDataChunk {
+                    range: sovd_interfaces::types::bulk_data::ContentRange {
+                        start: 0,
+                        end: (image.len() - 1) as u64,
+                        total: image.len() as u64,
+                    },
+                    bytes: image.to_vec(),
+                },
+            )
+            .await
+            .expect("upload final chunk");
+
+        let status = backend
+            .bulk_data_status(&created.transfer_id)
+            .await
+            .expect("poll committed status");
+        assert_eq!(status.state, BulkDataState::Committed);
+
+        backend
+            .cancel_bulk_data(&created.transfer_id)
+            .await
+            .expect("rollback committed image");
+
+        assert!(
+            state.rollback_called.load(Ordering::SeqCst),
+            "rollback routine should be invoked on committed cancel"
+        );
+        assert_eq!(
+            *state.manifest_payload.lock().await,
+            [
+                BULK_DATA_OTA_MANIFEST_VERSION,
+                0x02,
+                0x12,
+                0x34,
+                0x56,
+                0x78,
+                digest[0],
+                digest[1],
+                digest[2],
+                digest[3],
+                digest[4],
+                digest[5],
+                digest[6],
+                digest[7],
+                digest[8],
+                digest[9],
+                digest[10],
+                digest[11],
+                digest[12],
+                digest[13],
+                digest[14],
+                digest[15],
+                digest[16],
+                digest[17],
+                digest[18],
+                digest[19],
+                digest[20],
+                digest[21],
+                digest[22],
+                digest[23],
+                digest[24],
+                digest[25],
+                digest[26],
+                digest[27],
+                digest[28],
+                digest[29],
+                digest[30],
+                digest[31],
+            ]
+        );
+        assert_eq!(
+            *state.request_download_payload.lock().await,
+            vec![0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04]
+        );
+
+        handle.abort();
     }
 
     #[test]

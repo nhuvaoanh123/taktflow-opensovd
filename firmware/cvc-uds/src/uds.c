@@ -17,6 +17,7 @@
 
 #include "uds.h"
 #include "can_drv.h"
+#include "ota.h"
 
 extern void busy_wait_ms(unsigned int ms);   /* implemented in main.c */
 
@@ -39,13 +40,8 @@ extern void busy_wait_ms(unsigned int ms);   /* implemented in main.c */
 #define ISO_TP_MULTI_TIMEOUT_MS               150U
 #define ISO_TP_FC_CTS                         0x30U
 #define ISO_TP_FC_OVERFLOW                    0x32U
+#define ISO_TP_REQUEST_STMIN_MS               2U
 
-#define UDS_DOWNLOAD_REGION_START             0x00020000U
-#define UDS_DOWNLOAD_BUFFER_BYTES             1024U
-#define UDS_DOWNLOAD_REGION_END               \
-    (UDS_DOWNLOAD_REGION_START + UDS_DOWNLOAD_BUFFER_BYTES - 1U)
-#define UDS_MAX_NUMBER_OF_BLOCK_LENGTH        130U
-#define UDS_TRANSFER_DATA_MAX_RECORD          (UDS_MAX_NUMBER_OF_BLOCK_LENGTH - 2U)
 #define DID_RESPONSE_MAX_BYTES                32U
 #define VIN_LENGTH                            17U
 #define ROUTINE_MOTOR_SELF_TEST               0x0000U
@@ -53,19 +49,10 @@ extern void busy_wait_ms(unsigned int ms);   /* implemented in main.c */
 #define ROUTINE_STATE_RUNNING                 0x01U
 #define ROUTINE_STATE_PASSED                  0x02U
 
-typedef struct
-{
-    uint8 active;
-    uint8 expected_block_sequence_counter;
-    uint32 buffer_offset;
-    uint32 total_size;
-    uint32 bytes_received;
-} uds_download_state_t;
-
 static uint8 g_session = SESSION_DEFAULT;
-static uds_download_state_t g_download = { 0U, 1U, 0U, 0U, 0U };
-static uint8 g_download_buffer[UDS_DOWNLOAD_BUFFER_BYTES];
 static uint8 g_motor_self_test_state = ROUTINE_STATE_IDLE;
+static uint8 g_last_write_len = 0U;
+static uint8 g_last_write_preview[8] = { 0U };
 static uint8 g_vin[VIN_LENGTH] = {
     'T', 'A', 'K', 'T', 'F', 'L', 'W', 'C', 'V',
     'C', '0', '0', '0', '0', '0', '0', '1'
@@ -88,32 +75,6 @@ static const uint8 k_dtcs[] = {
 static void fill_pad(uint8 buf[CAN_DLC_MAX], uint32 from)
 {
     for (uint32 i = from; i < CAN_DLC_MAX; i++) { buf[i] = 0x00U; }
-}
-
-static void reset_download_state(void)
-{
-    g_download.active = 0U;
-    g_download.expected_block_sequence_counter = 1U;
-    g_download.buffer_offset = 0U;
-    g_download.total_size = 0U;
-    g_download.bytes_received = 0U;
-}
-
-static uint32 download_request_in_range(uint32 address, uint32 size)
-{
-    uint32 last_address;
-    uint32 last_offset;
-
-    if (size == 0U) { return 0U; }
-    if (address < UDS_DOWNLOAD_REGION_START) { return 0U; }
-
-    last_address = address + size - 1U;
-    if (last_address < address) { return 0U; }
-    if (last_address > UDS_DOWNLOAD_REGION_END) { return 0U; }
-
-    last_offset = last_address - UDS_DOWNLOAD_REGION_START;
-    if (last_offset >= UDS_DOWNLOAD_BUFFER_BYTES) { return 0U; }
-    return 1U;
 }
 
 static uint32 send_flow_control(uint8 flow_status, uint8 block_size, uint8 st_min)
@@ -219,7 +180,10 @@ static uint32 recv_request(uint8 payload[ISO_TP_RX_BUFFER_BYTES], uint32 *payloa
         payload[i] = frame[2U + i];
     }
 
-    if (send_flow_control(ISO_TP_FC_CTS, 0U, 0U) == 0U) {
+    /* The STM32 HIL path cannot reliably drain a zero-gap CF burst once the
+     * request grows beyond a few frames. Advertise a small STmin so the Linux
+     * ISO-TP sender spaces CFs out instead of overrunning RX FIFO0. */
+    if (send_flow_control(ISO_TP_FC_CTS, 0U, ISO_TP_REQUEST_STMIN_MS) == 0U) {
         return 1U;
     }
 
@@ -352,7 +316,7 @@ static void svc_session_control(const uint8 *req, uint32 len)
     }
     g_session = subf;
     if (subf != SESSION_PROGRAMMING) {
-        reset_download_state();
+        ota_reset_download_state();
     }
     if (subf == SESSION_DEFAULT) {
         g_motor_self_test_state = ROUTINE_STATE_IDLE;
@@ -369,13 +333,11 @@ static void svc_ecu_reset(const uint8 *req, uint32 len)
     if (subf != 0x01U /* hardReset */ && subf != 0x03U /* softReset */) {
         (void)send_negative(0x11U, NRC_SUBFUNCTION_NOT_SUPPORTED); return;
     }
-    reset_download_state();
+    ota_reset_download_state();
     g_motor_self_test_state = ROUTINE_STATE_IDLE;
     g_session = SESSION_DEFAULT;
     (void)send_positive(0x11U, &subf, 1U);
-    /* TODO(phase3): trigger software reset via SYSESR after TX completes.
-     * For the minimum firmware we just ack - the bench does not verify the
-     * actual reset. */
+    ota_schedule_plain_reset();
 }
 
 static void svc_clear_dtc(const uint8 *req, uint32 len)
@@ -452,7 +414,24 @@ static void svc_read_did(const uint8 *req, uint32 len)
         (void)send_did(0xF186U, &s, 1U);
         return;
     }
+    case 0xF1A3U: {
+        uint8 debug[9];
+        debug[0] = g_last_write_len;
+        for (uint32 i = 0U; i < 8U; i++) {
+            debug[1U + i] = g_last_write_preview[i];
+        }
+        (void)send_did(0xF1A3U, debug, 9U);
+        return;
+    }
     default:
+        {
+            uint8 bytes[DID_RESPONSE_MAX_BYTES];
+            uint32 n = 0U;
+            if (ota_read_did(did, bytes, &n) != 0U) {
+                (void)send_did(did, bytes, n);
+                return;
+            }
+        }
         (void)send_negative(0x22U, NRC_REQUEST_OUT_OF_RANGE);
         return;
     }
@@ -462,17 +441,23 @@ static void svc_write_did(const uint8 *req, uint32 len)
 {
     uint16 did;
 
-    if (len < 3U) { (void)send_negative(0x2EU, NRC_INCORRECT_MESSAGE_LENGTH); return; }
-    did = ((uint16)req[1] << 8U) | req[2];
-    if (did != 0xF190U) {
-        (void)send_negative(0x2EU, NRC_REQUEST_OUT_OF_RANGE); return;
-    }
-    if (len != (uint32)(3U + VIN_LENGTH)) {
-        (void)send_negative(0x2EU, NRC_INCORRECT_MESSAGE_LENGTH); return;
+    g_last_write_len = (len > 0xFFU) ? 0xFFU : (uint8)len;
+    for (uint32 i = 0U; i < 8U; i++) {
+        g_last_write_preview[i] = (i < len) ? req[i] : 0U;
     }
 
-    for (uint32 i = 0U; i < VIN_LENGTH; i++) {
-        g_vin[i] = req[3U + i];
+    if (len < 3U) { (void)send_negative(0x2EU, NRC_INCORRECT_MESSAGE_LENGTH); return; }
+    did = ((uint16)req[1] << 8U) | req[2];
+    if (did == 0xF190U) {
+        if (len != (uint32)(3U + VIN_LENGTH)) {
+            (void)send_negative(0x2EU, NRC_INCORRECT_MESSAGE_LENGTH); return;
+        }
+
+        for (uint32 i = 0U; i < VIN_LENGTH; i++) {
+            g_vin[i] = req[3U + i];
+        }
+    } else if (ota_write_did(did, &req[3], len - 3U) == 0U) {
+        (void)send_negative(0x2EU, NRC_REQUEST_OUT_OF_RANGE); return;
     }
 
     {
@@ -493,6 +478,13 @@ static void svc_routine_control(const uint8 *req, uint32 len)
     subf = req[1] & 0x7FU;
     routine_id = ((uint16)req[2] << 8U) | req[3];
     if (routine_id != ROUTINE_MOTOR_SELF_TEST) {
+        uint8 ota_payload[8];
+        uint32 ota_len = 0U;
+
+        if (ota_handle_routine(subf, routine_id, ota_payload, &ota_len) != 0U) {
+            send_routine_positive(subf, routine_id, ota_payload, ota_len);
+            return;
+        }
         (void)send_negative(0x31U, NRC_REQUEST_OUT_OF_RANGE); return;
     }
 
@@ -525,15 +517,13 @@ static void svc_request_download(const uint8 *req, uint32 len)
     uint32 memory_address;
     uint32 total_size;
     uint8 payload[3];
+    uint16 max_block_length;
 
     if (g_session != SESSION_PROGRAMMING) {
         (void)send_negative(0x34U, NRC_CONDITIONS_NOT_CORRECT); return;
     }
     if (len != 11U) {
         (void)send_negative(0x34U, NRC_INCORRECT_MESSAGE_LENGTH); return;
-    }
-    if (g_download.active != 0U) {
-        (void)send_negative(0x34U, NRC_REQUEST_SEQUENCE_ERROR); return;
     }
     if (req[1] != 0x00U || req[2] != 0x44U) {
         (void)send_negative(0x34U, NRC_REQUEST_OUT_OF_RANGE); return;
@@ -548,26 +538,19 @@ static void svc_request_download(const uint8 *req, uint32 len)
                  ((uint32)req[9] << 8U) |
                  (uint32)req[10];
 
-    if (download_request_in_range(memory_address, total_size) == 0U) {
+    if (ota_begin_download(memory_address, total_size, &max_block_length) == 0U) {
         (void)send_negative(0x34U, NRC_REQUEST_OUT_OF_RANGE); return;
     }
 
-    reset_download_state();
-    g_download.active = 1U;
-    g_download.buffer_offset = memory_address - UDS_DOWNLOAD_REGION_START;
-    g_download.total_size = total_size;
-
     payload[0] = 0x20U;
-    payload[1] = (uint8)(UDS_MAX_NUMBER_OF_BLOCK_LENGTH >> 8U);
-    payload[2] = (uint8)(UDS_MAX_NUMBER_OF_BLOCK_LENGTH & 0xFFU);
+    payload[1] = (uint8)(max_block_length >> 8U);
+    payload[2] = (uint8)(max_block_length & 0xFFU);
     (void)send_positive(0x34U, payload, 3U);
 }
 
 static void svc_transfer_data(const uint8 *req, uint32 len)
 {
     uint8 block_sequence_counter;
-    uint32 record_len;
-    uint32 write_offset;
 
     if (g_session != SESSION_PROGRAMMING) {
         (void)send_negative(0x36U, NRC_CONDITIONS_NOT_CORRECT); return;
@@ -575,33 +558,11 @@ static void svc_transfer_data(const uint8 *req, uint32 len)
     if (len < 3U) {
         (void)send_negative(0x36U, NRC_INCORRECT_MESSAGE_LENGTH); return;
     }
-    if (g_download.active == 0U) {
-        (void)send_negative(0x36U, NRC_REQUEST_SEQUENCE_ERROR); return;
-    }
 
     block_sequence_counter = req[1];
-    if (block_sequence_counter != g_download.expected_block_sequence_counter) {
-        (void)send_negative(0x36U, NRC_WRONG_BLOCK_SEQUENCE_COUNTER); return;
-    }
-
-    record_len = len - 2U;
-    if (record_len == 0U || record_len > UDS_TRANSFER_DATA_MAX_RECORD) {
+    if (ota_transfer_data(block_sequence_counter, &req[2], len - 2U) == 0U) {
         (void)send_negative(0x36U, NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED); return;
     }
-    if (g_download.bytes_received + record_len > g_download.total_size) {
-        (void)send_negative(0x36U, NRC_REQUEST_OUT_OF_RANGE); return;
-    }
-
-    write_offset = g_download.buffer_offset + g_download.bytes_received;
-    if (write_offset + record_len > UDS_DOWNLOAD_BUFFER_BYTES) {
-        (void)send_negative(0x36U, NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED); return;
-    }
-
-    for (uint32 i = 0U; i < record_len; i++) {
-        g_download_buffer[write_offset + i] = req[2U + i];
-    }
-    g_download.bytes_received += record_len;
-    g_download.expected_block_sequence_counter++;
     (void)send_positive(0x36U, &block_sequence_counter, 1U);
 }
 
@@ -614,14 +575,9 @@ static void svc_request_transfer_exit(const uint8 *req, uint32 len)
     if (len != 1U) {
         (void)send_negative(0x37U, NRC_INCORRECT_MESSAGE_LENGTH); return;
     }
-    if (g_download.active == 0U) {
+    if (ota_request_transfer_exit() == 0U) {
         (void)send_negative(0x37U, NRC_REQUEST_SEQUENCE_ERROR); return;
     }
-    if (g_download.bytes_received != g_download.total_size) {
-        (void)send_negative(0x37U, NRC_REQUEST_SEQUENCE_ERROR); return;
-    }
-
-    g_download.active = 0U;
     (void)send_positive(0x37U, 0, 0U);
 }
 

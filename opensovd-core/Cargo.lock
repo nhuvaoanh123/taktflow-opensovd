@@ -3602,11 +3602,13 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
+ "hex",
  "opentelemetry",
  "opentelemetry_sdk",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "sovd-interfaces",
  "tokio",
  "tower",

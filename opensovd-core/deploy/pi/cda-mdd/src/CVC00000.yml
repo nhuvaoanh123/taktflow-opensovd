@@ -126,6 +126,15 @@ types:
     encoding: "US-ASCII"
   session_type:
     base: u8
+  ota_manifest_fixed:
+    base: bytes
+    length: 38
+  ota_status_fixed:
+    base: bytes
+    length: 5
+  ota_witness_fixed:
+    base: bytes
+    length: 4
 
 # -----------------------------------------------------------------------------
 # DIDs — Data Identifiers
@@ -146,6 +155,33 @@ dids:
     param_name: "EcuSessionType"
     description: "Currently active diagnostic session"
     type: session_type
+    access: public_read
+    readable: true
+    writable: false
+  # 0xF1A0 — OTA manifest (host writes expected hash + witness id before download)
+  0xF1A0:
+    name: "OtaManifestDataIdentifier"
+    param_name: "OtaManifest"
+    description: "OTA manifest carrying witness id and expected SHA-256 for the inactive bank image"
+    type: ota_manifest_fixed
+    access: extended_session
+    readable: false
+    writable: true
+  # 0xF1A1 — OTA status mirror for SOVD bulk-data status polling
+  0xF1A1:
+    name: "OtaStatusDataIdentifier"
+    param_name: "OtaStatus"
+    description: "OTA state, reason, active slot, witness counter, and manifest-ready flag"
+    type: ota_status_fixed
+    access: public_read
+    readable: true
+    writable: false
+  # 0xF1A2 — OTA boot witness echoed after a successful slot switch
+  0xF1A2:
+    name: "OtaWitnessDataIdentifier"
+    param_name: "OtaWitness"
+    description: "Current OTA witness identifier for the last committed image"
+    type: ota_witness_fixed
     access: public_read
     readable: true
     writable: false
@@ -221,7 +257,23 @@ services:
       on: 0x01
       off: 0x02
 
-  # 0x31 — RoutineControl (for motor self-test)
+  requestDownload:
+    enabled: true
+    max_number_of_block_length: 130
+    regions:
+      - name: "inactive_cvc_bank"
+        start: 0x08040000
+        end: 0x0807F7FF
+        access: programming_only
+
+  transferData:
+    enabled: true
+    max_block_sequence_counter: 255
+
+  requestTransferExit:
+    enabled: true
+
+  # 0x31 — RoutineControl (motor self-test + OTA abort/rollback)
   routineControl:
     enabled: true
 
@@ -234,6 +286,16 @@ routines:
     description: "CVC motor self-test — drives motor through defined current/temp profile and reports result"
     access: public
     operations: [start, stop, result]
+  0x0201:
+    name: ota_abort
+    description: "Abort an in-flight OTA transfer before commit"
+    access: extended_session
+    operations: [start, result]
+  0x0202:
+    name: ota_rollback
+    description: "Rollback to the prior slot after a committed OTA image"
+    access: extended_session
+    operations: [start, result]
 
 # -----------------------------------------------------------------------------
 # DTCs — Diagnostic Trouble Codes

@@ -890,7 +890,7 @@ Taktflow diverges from the S-CORE diagram, the divergence is the spec.
 | SOVD Gateway | [`opensovd-core/sovd-gateway/`](opensovd-core/sovd-gateway/) | aligned; no action |
 | CDA | [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/) | aligned; ODX→MDD compile step is internal pipeline detail (ADR-0008) |
 | UDS2SOVD Proxy | crate exists, not wired | **close (Track A)** — T1 benches need legacy UDS tester ingress |
-| Service / Flash App | OTA on CVC (P6-05) | **close (Track A)** — T1s must flash via the SOVD surface; endpoint exposure outstanding |
+| Service / Flash App | OTA on CVC (P6-05) | aligned — Phase 6 live bench now proves signed SOVD bulk-data flashing, commit, and rollback on CVC |
 | Config Manager (IPC peer) | TOML + env inside `sovd-server` | **do not close** — monolith retained; see design decision below |
 | Authentication Manager (IPC peer) | tower middleware inside `sovd-server` | **do not close** — same rationale |
 | Crypto (IPC peer) | inline in OTA + ML signing paths | **do not close** — same rationale |
@@ -1276,8 +1276,30 @@ FMEA approved; OTA demonstrable end-to-end on CVC.
 | P6-02 | done | repo_only | Roll DLT tracing to every intended Rust binary | `sovd-main`, `ws-bridge`, and `xtask` now share the `sovd-tracing` bootstrap; `sovd-main` request spans carry correlation ids, and `opensovd-core/docs/phase6-dlt-rollout-checklist.md` records per-binary coverage plus the current Windows DLT-host limitation |
 | P6-03 | done | repo_only | Roll OpenTelemetry to production path | `sovd-main` ingress spans now propagate into `sovd-server::backends::CdaBackend`, forwarded CDA requests carry W3C `traceparent`, `classic-diagnostic-adapter/cda-sovd` joins the same trace, and `opensovd-core/docs/phase6-otlp-production-path.md` records the verifier plus the current Windows OpenSSL limitation for full `opensovd-cda` verification |
 | P6-04 | done | decision_doc | Complete safety approval package (HARA + FMEA) | Review pack now lives under `docs/safety/analysis/phase6-hara-delta.md`, `docs/safety/analysis/phase6-fmea-delta.md`, and `docs/safety/approvals/`; the package is review-ready and waiting only for formal sign-off in `docs/safety/approvals/phase6-signoff-sheet.md` |
-| P6-05 | pending | live_bench | Implement + prove CVC OTA end-to-end | Signed download, verify, commit, rollback demonstrated; boot-OK witness recorded |
-| P6-06 | pending | repo_only | Finalize integrator guide (beyond skeleton) | Every section has concrete install/config/troubleshoot content |
+| P6-05 | done | live_bench | Implement + prove CVC OTA end-to-end | Signed download, verify, commit, rollback demonstrated; boot-OK witness recorded |
+| P6-06 | done | repo_only | Finalize integrator guide (beyond skeleton) | `docs/integration/README.md` now gives concrete host-selection, install, config, auth-profile, deployment-mode, and troubleshooting instructions tied to the checked-in scripts and config files |
+
+Completion note (2026-04-22): P6-05 is now closed on the live bench. The
+physical CVC on ST-LINK `001A00363235510B37333439` was reflashed with the OTA
+firmware, the STM32 FDCAN path was tightened to admit only tester traffic on
+`0x7E0` and to advertise a small ISO-TP `STmin`, and the Pi bench then proved a
+signed SOVD bulk-data OTA end-to-end against `payload.bin`
+(`SHA-256 = 8B611777A40291E6EEE4A1F059AE10B49DF4A9EC861EE15EE762FC55A99827DF`).
+The final witness rerun against the rebuilt Pi `sovd-main` created transfer
+`1c472849-e5e0-4184-8da4-8834539359b7`, reached `Committed` after upload, then
+`Rolledback` after `DELETE`, with direct CAN witness reads
+`62F1A10300020300` / `62F1A28B611777` after commit and
+`62F1A10500010400` / `62F1A28B611777` after rollback. Bench evidence lives at
+`/home/taktflow-pi/p6-05-live-ota/witness-summary.json` and
+`/home/taktflow-pi/p6-05-live-ota/witness.log`.
+
+Completion note (2026-04-22): P6-06 is now closed repo-side. The former
+integrator-guide skeleton at `docs/integration/README.md` was expanded into a
+concrete bring-up document that names the canonical authority host per
+deployment mode, the exact checked-in config files to start from, the
+recommended auth profile and its required operational inputs, the actual Pi and
+VPS deploy commands, and a troubleshooting matrix tied to the repo's current
+launchers and systemd units.
 
 ### 7.8 P7 — Semantic Interoperability + Extended Vehicle
 

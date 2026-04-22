@@ -9,6 +9,7 @@
 #include "platform_types.h"
 #include "main.h"
 #include "can_drv.h"
+#include "ota.h"
 #include "uds.h"
 
 #define LED_PIN          GPIO_PIN_5
@@ -99,6 +100,7 @@ int main(void)
     board_gpio_init();
     HAL_GPIO_WritePin(LED_PORT, LED_PIN, GPIO_PIN_SET);
     can_drv_init();
+    ota_init();
 
     for (;;) {
         busy_wait_ms(1U);
@@ -106,6 +108,7 @@ int main(void)
         heartbeat_ms++;
 
         (void)uds_poll();
+        ota_poll();
 
         if (heartbeat_ms >= CVC_HEARTBEAT_MS) {
             heartbeat_ms = 0U;

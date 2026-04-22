@@ -33,8 +33,11 @@ static uint32 can_drv_configure_filter(void)
     filter.FilterIndex  = 0U;
     filter.FilterType   = FDCAN_FILTER_MASK;
     filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-    filter.FilterID1    = 0x000U;
-    filter.FilterID2    = 0x000U;
+    /* Only admit tester requests for 0x7E0. Accept-all filtering lets our
+     * own 0x7E8 responses and heartbeat traffic pile into RX FIFO0, which
+     * starves long ISO-TP request reception on the live bench. */
+    filter.FilterID1    = CAN_UDS_REQ_ID;
+    filter.FilterID2    = 0x7FFU;
 
     if (HAL_FDCAN_ConfigFilter(&g_hfdcan1, &filter) != HAL_OK) {
         return 0U;
@@ -42,7 +45,7 @@ static uint32 can_drv_configure_filter(void)
 
     if (HAL_FDCAN_ConfigGlobalFilter(
             &g_hfdcan1,
-            FDCAN_ACCEPT_IN_RX_FIFO0,
+            FDCAN_REJECT,
             FDCAN_REJECT,
             FDCAN_REJECT_REMOTE,
             FDCAN_REJECT_REMOTE) != HAL_OK) {

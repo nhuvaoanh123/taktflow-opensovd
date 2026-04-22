@@ -39,17 +39,22 @@ use clap::Parser;
 use opcycle_taktflow::TaktflowOperationCycle;
 use sovd_db_sqlite::SqliteSovdDb;
 use sovd_dfm::{Dfm, FaultSinkBackend, OperationCycleBackend, PersistenceBackend};
+use sovd_extended_vehicle::{
+    ExtendedVehicleMqttConfig, MqttPublisher, load_config as load_extended_vehicle_config,
+};
 use sovd_interfaces::{
     ComponentId, SovdBackend,
     traits::{fault_sink::FaultSink, operation_cycle::OperationCycle, sovd_db::SovdDb},
 };
-use sovd_server::{CdaBackend, InMemoryServer, RateLimiter};
+use sovd_server::{CdaBackend, InMemoryServer, RateLimiter, routes};
 use tower_http::trace::{DefaultOnResponse, MakeSpan, TraceLayer};
 use url::Url;
 
 #[cfg(feature = "fault-sink-mqtt")]
 use crate::config::configfile::MqttConfig;
-use crate::config::configfile::{CdaForwardConfig, Configuration, ServerMode, ServerTlsMode};
+use crate::config::configfile::{
+    CdaForwardConfig, Configuration, ExtendedVehicleMqttRuntimeConfig, ServerMode, ServerTlsMode,
+};
 
 mod config;
 mod tracing_setup;
@@ -266,10 +271,19 @@ async fn build_in_memory_server(
     config: &Configuration,
 ) -> Result<AssembledServer, Box<dyn std::error::Error>> {
     validate_component_topology(config)?;
-    let server = Arc::new(
-        InMemoryServer::new_with_demo_components(&config.local_demo_components)?
-            .with_bench_fault_injection_enabled(config.bench_fault_injection.enabled),
-    );
+    let mut server = InMemoryServer::new_with_demo_components(&config.local_demo_components)?
+        .with_bench_fault_injection_enabled(config.bench_fault_injection.enabled);
+    if let Some(extended_vehicle_mqtt) = config.extended_vehicle_mqtt.as_ref() {
+        tracing::info!(
+            broker_host = %extended_vehicle_mqtt.broker_host,
+            broker_port = extended_vehicle_mqtt.broker_port,
+            "Attaching Extended Vehicle MQTT publisher"
+        );
+        server = server.with_extended_vehicle_publisher(Arc::new(MqttPublisher::new(
+            extended_vehicle_mqtt_config(extended_vehicle_mqtt),
+        )));
+    }
+    let server = Arc::new(server);
 
     let mut dfm_arc: Option<Arc<Dfm>> = None;
     if let Some(component_id) = configured_dfm_component_id(config) {
@@ -294,6 +308,15 @@ async fn build_in_memory_server(
         server,
         dfm: dfm_arc,
     })
+}
+
+fn extended_vehicle_mqtt_config(
+    config: &ExtendedVehicleMqttRuntimeConfig,
+) -> ExtendedVehicleMqttConfig {
+    ExtendedVehicleMqttConfig {
+        broker_host: config.broker_host.clone(),
+        broker_port: config.broker_port,
+    }
 }
 
 /// Build an `MqttFaultSink` from a `MqttConfig`.
@@ -444,6 +467,25 @@ async fn serve_app(
     Ok(())
 }
 
+fn validate_extended_vehicle_runtime(
+    config: &Configuration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(extended_vehicle_mqtt) = config.extended_vehicle_mqtt.as_ref() else {
+        return Ok(());
+    };
+
+    let extended_vehicle = load_extended_vehicle_config()?;
+    tracing::info!(
+        vehicle_id = %extended_vehicle.vehicle_id,
+        bench_id = %extended_vehicle.bench_id,
+        broker_host = %extended_vehicle_mqtt.broker_host,
+        broker_port = extended_vehicle_mqtt.broker_port,
+        control_subscriber_enabled = extended_vehicle_mqtt.control_subscriber_enabled,
+        "Validated Extended Vehicle runtime config"
+    );
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = AppArgs::parse();
@@ -456,6 +498,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     args.update_config(&mut config);
     let _tracing_guard = tracing_setup::init(&config.logging)?;
+    validate_extended_vehicle_runtime(&config)?;
 
     if config.logging.dlt.enabled {
         tracing::info!(
@@ -473,6 +516,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    let mut extended_vehicle_control_task: Option<tokio::task::JoinHandle<()>> = None;
     let (app, dfm_for_fanout) = match config.server.mode {
         ServerMode::InMemory => {
             tracing::info!(
@@ -483,6 +527,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Booting InMemoryServer with configured local demo surface and forwards"
             );
             let assembled = build_in_memory_server(&config).await?;
+            if let Some(extended_vehicle_mqtt) = config
+                .extended_vehicle_mqtt
+                .as_ref()
+                .filter(|mqtt| mqtt.control_subscriber_enabled)
+            {
+                tracing::info!(
+                    broker_host = %extended_vehicle_mqtt.broker_host,
+                    broker_port = extended_vehicle_mqtt.broker_port,
+                    "Starting Extended Vehicle MQTT control subscriber"
+                );
+                extended_vehicle_control_task =
+                    Some(routes::extended_vehicle::spawn_control_subscriber(
+                        Arc::clone(&assembled.server),
+                        extended_vehicle_mqtt_config(extended_vehicle_mqtt),
+                    )?);
+            }
             let app = sovd_server::routes::app_with_server(Arc::clone(&assembled.server));
             (app, assembled.dfm)
         }
@@ -491,6 +551,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             (sovd_server::app(), None)
         }
     };
+    let _extended_vehicle_control_task = extended_vehicle_control_task;
 
     // ADR-0024 T24.2.x: build the write-side fan-out sink. The DFM is
     // the primary FaultSink (owns persistence and read side); when the
@@ -580,6 +641,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn build_in_memory_server_attaches_extended_vehicle_publisher_when_configured() {
+        let defaults = crate::config::default_config();
+        let config = Configuration {
+            server: defaults.server,
+            backend: defaults.backend,
+            dfm_component_id: Some(String::new()),
+            local_demo_components: vec!["cvc".to_owned()],
+            cda_forwards: Vec::new(),
+            bench_fault_injection: defaults.bench_fault_injection,
+            mqtt: None,
+            extended_vehicle_mqtt: Some(ExtendedVehicleMqttRuntimeConfig {
+                broker_host: "127.0.0.1".to_owned(),
+                broker_port: 1883,
+                control_subscriber_enabled: true,
+            }),
+            logging: defaults.logging,
+            rate_limit: defaults.rate_limit,
+        };
+
+        let assembled = build_in_memory_server(&config)
+            .await
+            .expect("extended vehicle mqtt server should build");
+        assert!(assembled.server.extended_vehicle_publisher().is_some());
+    }
+
+    #[tokio::test]
     async fn build_in_memory_server_supports_bcm_local_plus_cda_forward() {
         // 3-ECU bench per ADR-0023: bcm is the virtual/local surface;
         // cvc is forwarded to CDA. Replaces the earlier tcu-local variant.
@@ -598,6 +685,7 @@ mod tests {
             }],
             bench_fault_injection: defaults.bench_fault_injection,
             mqtt: None,
+            extended_vehicle_mqtt: None,
             logging: defaults.logging,
             rate_limit: defaults.rate_limit,
         };
@@ -664,6 +752,7 @@ mod tests {
             }],
             bench_fault_injection: defaults.bench_fault_injection,
             mqtt: None,
+            extended_vehicle_mqtt: None,
             logging: defaults.logging,
             rate_limit: defaults.rate_limit,
         };

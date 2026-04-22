@@ -635,12 +635,17 @@ async fn build_current_vehicle_state(
     config: &ExtendedVehicleConfig,
 ) -> Result<VehicleState, ApiError> {
     require_enabled(config, "state")?;
-    let soc = read_integer_data(server, CVC_COMPONENT, "battery_soc").await?;
+    let high_voltage_active = match read_integer_data(server, CVC_COMPONENT, "battery_soc").await {
+        Ok(soc) => soc > 0,
+        Err(_) => read_voltage_data(server, CVC_COMPONENT, "battery_voltage")
+            .await?
+            .is_some_and(|voltage| voltage > 0.0),
+    };
     Ok(VehicleState {
         vehicle_id: config.vehicle_id.clone(),
         ignition_class: "drive-ready".to_owned(),
         motion_state: "parked".to_owned(),
-        high_voltage_active: soc > 0,
+        high_voltage_active,
         observed_at: now_rfc3339(),
     })
 }

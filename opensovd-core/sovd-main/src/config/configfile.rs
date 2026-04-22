@@ -52,6 +52,24 @@ fn default_mqtt_bench_id() -> String {
     "sovd-hil".to_owned()
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct ExtendedVehicleMqttRuntimeConfig {
+    /// Hostname or IP address of the MQTT broker used for Extended Vehicle
+    /// publish / control topics.
+    pub broker_host: String,
+    /// TCP port of the MQTT broker (default: 1883).
+    #[serde(default = "default_mqtt_broker_port")]
+    pub broker_port: u16,
+    /// Whether sovd-main should also consume `control/subscribe` commands
+    /// from the broker.
+    #[serde(default = "default_control_subscriber_enabled")]
+    pub control_subscriber_enabled: bool,
+}
+
+fn default_control_subscriber_enabled() -> bool {
+    true
+}
+
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ServerTlsMode {
@@ -194,6 +212,11 @@ pub struct Configuration {
     /// registered as a fault-sink alongside the DFM.
     #[serde(default)]
     pub mqtt: Option<MqttConfig>,
+    /// Optional Extended Vehicle MQTT bridge. When present, sovd-main wires
+    /// the `/sovd/v1/extended/vehicle/*` subscription lifecycle to the
+    /// configured broker and optionally consumes control commands.
+    #[serde(default)]
+    pub extended_vehicle_mqtt: Option<ExtendedVehicleMqttRuntimeConfig>,
     /// Shared logging and tracing configuration for the local SIL runtime.
     /// `[logging.otel]` and `[logging.dlt]` stay disabled by default until
     /// Phase 6 enables them for specific slices.
@@ -268,6 +291,7 @@ impl Default for Configuration {
             cda_forwards: Vec::new(),
             bench_fault_injection: BenchFaultInjectionConfig::default(),
             mqtt: None,
+            extended_vehicle_mqtt: None,
             logging: LoggingConfig::default(),
             rate_limit: RateLimitConfig::default(),
         }

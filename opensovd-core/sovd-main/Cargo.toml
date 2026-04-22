@@ -38,6 +38,7 @@ insecure-http-fallback = []
 
 [dependencies]
 sovd-server = { workspace = true }
+sovd-extended-vehicle = { workspace = true }
 sovd-dfm = { workspace = true }
 sovd-interfaces = { workspace = true }
 sovd-db-sqlite = { workspace = true }

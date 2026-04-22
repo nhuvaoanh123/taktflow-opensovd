@@ -79,6 +79,7 @@ mod tests {
         assert_eq!(config.dfm_component_id.as_deref(), Some("dfm"));
         assert!(config.cda_forwards.is_empty());
         assert!(!config.bench_fault_injection.enabled);
+        assert!(config.extended_vehicle_mqtt.is_none());
         assert!(!config.logging.otel.enabled);
         assert_eq!(config.logging.otel.endpoint, "http://127.0.0.1:4317");
         assert_eq!(config.logging.otel.service_name, "sovd-main");
@@ -184,6 +185,26 @@ service_name = "sovd-main-local"
     }
 
     #[test]
+    fn toml_parses_extended_vehicle_mqtt_overrides() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[extended_vehicle_mqtt]
+broker_host = "127.0.0.1"
+broker_port = 1883
+control_subscriber_enabled = false
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        let mqtt = config
+            .extended_vehicle_mqtt
+            .ok_or("missing extended_vehicle_mqtt")?;
+        assert_eq!(mqtt.broker_host, "127.0.0.1");
+        assert_eq!(mqtt.broker_port, 1883);
+        assert!(!mqtt.control_subscriber_enabled);
+        Ok(())
+    }
+
+    #[test]
     fn toml_parses_dlt_overrides() -> Result<(), Box<dyn std::error::Error>> {
         let config_str = r#"
 [logging.dlt]
@@ -200,6 +221,26 @@ app_description = "OpenSOVD core DLT smoke"
             config.logging.dlt.app_description,
             "OpenSOVD core DLT smoke"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn checked_in_pi_template_parses() -> Result<(), Box<dyn std::error::Error>> {
+        let template = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or("sovd-main crate should live under opensovd-core")?
+            .join("deploy")
+            .join("pi")
+            .join("opensovd-pi.toml");
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::file(&template));
+        let config: Configuration = figment.extract()?;
+        let mqtt = config
+            .extended_vehicle_mqtt
+            .ok_or("opensovd-pi.toml should enable extended_vehicle_mqtt")?;
+        assert_eq!(mqtt.broker_host, "127.0.0.1");
+        assert_eq!(mqtt.broker_port, 1883);
+        assert!(mqtt.control_subscriber_enabled);
         Ok(())
     }
 
@@ -241,6 +282,12 @@ app_description = "OpenSOVD core DLT smoke"
                 .iter()
                 .all(|forward| forward.path_prefix == "vehicle/v15")
         );
+        let mqtt = config
+            .extended_vehicle_mqtt
+            .ok_or("opensovd-pi-phase5-hybrid.toml should enable extended_vehicle_mqtt")?;
+        assert_eq!(mqtt.broker_host, "127.0.0.1");
+        assert_eq!(mqtt.broker_port, 1883);
+        assert!(mqtt.control_subscriber_enabled);
         Ok(())
     }
 }

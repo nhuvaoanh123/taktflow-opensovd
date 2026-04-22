@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# Phase 7 XV-2 - HIL pub/sub proof for the Pi-hosted Extended Vehicle slice.
+#
+# The bench client subscribes to the Pi broker, creates a `state`
+# subscription over REST, and proves that the Pi publishes the matching
+# MQTT lifecycle and snapshot messages.
+
+name: hil_extended_vehicle_pubsub
+
+gate:
+  bench_env: TAKTFLOW_BENCH
+  bench_env_value: "1"
+  readiness_env: PHASE5_BENCH_READY
+  readiness_env_value: "1"
+  tcp_addr: 192.0.2.10:21002
+  base_url: http://192.0.2.10:21002
+  mqtt_addr: 192.0.2.10:1883
+  not_ready_reason: >-
+    The Pi bench has not yet declared the Extended Vehicle MQTT path
+    ready. Keep this HIL slice gated until sovd-main is deployed with
+    the XV MQTT bridge enabled and a reachable Mosquitto listener.
+
+catalog_call:
+  name: extended_vehicle_catalog
+  method: GET
+  path: /sovd/v1/extended/vehicle/
+  expect_status: 200
+  expect_type: sovd_extended_vehicle::ExtendedVehicleCatalog
+
+state_call:
+  name: extended_vehicle_state
+  method: GET
+  path: /sovd/v1/extended/vehicle/state
+  expect_status: 200
+  expect_type: sovd_extended_vehicle::VehicleState
+
+subscription_create:
+  name: create_extended_vehicle_state_subscription
+  method: POST
+  path: /sovd/v1/extended/vehicle/subscriptions
+  expect_status: 201
+  expect_type: sovd_extended_vehicle::ExtendedVehicleSubscription
+  request:
+    data_item: state
+
+subscription_delete:
+  name: delete_extended_vehicle_state_subscription
+  method: DELETE
+  path_template: /sovd/v1/extended/vehicle/subscriptions/{id}
+  expect_status: 204
+
+mqtt:
+  topic_filter: sovd/extended-vehicle/#
+  state_topic: sovd/extended-vehicle/state
+  control_ack_topic: sovd/extended-vehicle/control/ack
+  consume_deadline_ms: 8000
+  expected_vehicle_id: taktflow-pilot-ev-001
+  expected_ignition_class: drive-ready
+  expected_motion_state: parked

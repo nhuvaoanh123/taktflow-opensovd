@@ -1367,6 +1367,18 @@ proves that the pinned SC fault is visible in the REST list/detail path and
 that creating a `fault-log` subscription emits the expected ADR-0027 MQTT event
 before the subscription is deleted again.
 
+Blocker note (2026-04-22): `P7-XV-06` remains pending even though the repo-side
+enablement is now landed. `sovd-main` now wires the Extended Vehicle MQTT
+publisher/control runtime, the Pi deploy script now syncs
+`extended-vehicle.toml`, and the new bench-gated scenario
+`opensovd-core/test/hil/scenarios/hil_extended_vehicle_pubsub.yaml` plus
+`integration-tests/tests/phase7_hil_extended_vehicle_pubsub.rs` can witness the
+flow once the bench is redeployed. The live proof is still red today because
+the current Pi at `192.168.0.197:21002` still returns `404` on
+`/sovd/v1/extended/vehicle/*`, and TCP `192.168.0.197:1883` is not listening,
+so the required Pi-to-Mosquitto publish witness cannot be honestly recorded
+until deployment/access is restored.
+
 ### 7.9 P8 — Edge AI/ML Integration
 
 Entry: P7 complete; ML reference model signed and present on Pi.

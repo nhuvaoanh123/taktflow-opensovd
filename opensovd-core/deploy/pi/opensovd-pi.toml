@@ -15,5 +15,10 @@ mode = "http"
 [backend]
 sqlite_path = "/opt/taktflow/sovd-main/dfm.db"
 
+[extended_vehicle_mqtt]
+broker_host = "127.0.0.1"
+broker_port = 1883
+control_subscriber_enabled = true
+
 [logging.otel]
 enabled = false

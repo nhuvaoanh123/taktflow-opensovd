@@ -66,6 +66,10 @@ pub const PI_SOVD_MAIN_ADDR_ENV: &str = "TAKTFLOW_PI_SOVD_MAIN_ADDR";
 pub const DEFAULT_PI_SOVD_MAIN_ADDR: &str = "192.0.2.10:21002";
 pub const PI_SOVD_MAIN_BASE_URL_ENV: &str = "TAKTFLOW_PI_SOVD_MAIN_BASE_URL";
 
+/// Pi MQTT broker endpoint used by the Extended Vehicle HIL scenarios.
+pub const PI_MQTT_ADDR_ENV: &str = "TAKTFLOW_PI_MQTT_ADDR";
+pub const DEFAULT_PI_MQTT_ADDR: &str = "192.0.2.10:1883";
+
 /// Pi SSH host used for ecu-sim lifecycle control.
 pub const PI_SSH_HOST_ENV: &str = "TAKTFLOW_PI_SSH_HOST";
 pub const DEFAULT_PI_SSH_HOST: &str = "bench-pi@192.0.2.10";
@@ -96,6 +100,11 @@ pub fn pi_sovd_main_base_url() -> String {
 }
 
 #[must_use]
+pub fn pi_mqtt_addr() -> String {
+    env::var(PI_MQTT_ADDR_ENV).unwrap_or_else(|_| DEFAULT_PI_MQTT_ADDR.to_owned())
+}
+
+#[must_use]
 pub fn pi_ssh_host() -> String {
     env::var(PI_SSH_HOST_ENV).unwrap_or_else(|_| DEFAULT_PI_SSH_HOST.to_owned())
 }
@@ -106,6 +115,11 @@ pub fn pi_ssh_host() -> String {
 pub fn override_pi_sovd_gate(tcp_addr: &mut String, base_url: &mut String) {
     *tcp_addr = pi_sovd_main_addr();
     *base_url = pi_sovd_main_base_url();
+}
+
+/// Apply the live Pi MQTT override to a Phase 7 Extended Vehicle gate.
+pub fn override_pi_mqtt_addr(mqtt_addr: &mut String) {
+    *mqtt_addr = pi_mqtt_addr();
 }
 
 /// Apply the live Pi SSH override to scenario steps that need bench-side

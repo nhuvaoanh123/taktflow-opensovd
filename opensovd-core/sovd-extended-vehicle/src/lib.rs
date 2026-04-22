@@ -18,7 +18,7 @@
 //! stable path/topic constants, and DTOs in one place so OpenAPI
 //! generation and tests share the same contract.
 
-use std::{fs, path::Path, sync::Arc, time::Duration};
+use std::{env, fs, path::Path, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use chrono::{SecondsFormat, Utc};
@@ -31,6 +31,8 @@ use utoipa::ToSchema;
 
 const CONFIG_DIR: &str = "config";
 const CONFIG_FILE: &str = "extended-vehicle.toml";
+pub const CONFIG_FILE_ENV: &str = "SOVD_EXTENDED_VEHICLE_CONFIG_FILE";
+pub const LEGACY_CONFIG_FILE_ENV: &str = "OPENSOVD_EXTENDED_VEHICLE_CONFIG_FILE";
 const REST_ROOT: &str = "/sovd/v1/extended/vehicle";
 const VEHICLE_INFO_PATH: &str = "/sovd/v1/extended/vehicle/vehicle-info";
 const STATE_PATH: &str = "/sovd/v1/extended/vehicle/state";
@@ -270,10 +272,37 @@ pub enum ExtendedVehicleError {
     Serialize(#[from] serde_json::Error),
 }
 
-fn config_path() -> std::path::PathBuf {
+fn default_config_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(CONFIG_DIR)
         .join(CONFIG_FILE)
+}
+
+fn config_path() -> std::path::PathBuf {
+    if let Some(path) = env::var_os(CONFIG_FILE_ENV)
+        .or_else(|| env::var_os(LEGACY_CONFIG_FILE_ENV))
+        .map(std::path::PathBuf::from)
+    {
+        return path;
+    }
+
+    if let Ok(current_dir) = env::current_dir() {
+        let cwd_candidate = current_dir.join(CONFIG_FILE);
+        if cwd_candidate.exists() {
+            return cwd_candidate;
+        }
+    }
+
+    if let Ok(current_exe) = env::current_exe() {
+        if let Some(parent) = current_exe.parent() {
+            let exe_candidate = parent.join(CONFIG_FILE);
+            if exe_candidate.exists() {
+                return exe_candidate;
+            }
+        }
+    }
+
+    default_config_path()
 }
 
 pub fn load_config() -> Result<ExtendedVehicleConfig, ExtendedVehicleError> {

@@ -77,6 +77,7 @@ TARGET_TRIPLE=${TARGET_TRIPLE:-aarch64-unknown-linux-gnu}
 SOVD_MAIN_BIN=${SOVD_MAIN_BIN:-$REPO_ROOT/target/$TARGET_TRIPLE/release/sovd-main}
 WS_BRIDGE_BIN=${WS_BRIDGE_BIN:-$REPO_ROOT/target/$TARGET_TRIPLE/release/ws-bridge}
 SOVD_CONFIG_FILE=${SOVD_CONFIG_FILE:-$DEPLOY_DIR/opensovd-pi.toml}
+EXTENDED_VEHICLE_CONFIG_FILE=${EXTENDED_VEHICLE_CONFIG_FILE:-$REPO_ROOT/sovd-extended-vehicle/config/extended-vehicle.toml}
 CARGO_BUILD_BACKEND=${CARGO_BUILD_BACKEND:-auto}
 PHASE5_CDA_BASE_URL=${PHASE5_CDA_BASE_URL:-}
 PHASE5_CDA_PLACEHOLDER=${PHASE5_CDA_PLACEHOLDER:-http://198.51.100.10:20002}
@@ -284,8 +285,15 @@ rsync -az --chmod=F755 "$SOVD_MAIN_BIN" "$PI:$REMOTE_SOVD_DIR/sovd-main"
 
 log "[3/6] rsync sovd-main config -> $PI:$REMOTE_SOVD_DIR/opensovd.toml"
 rsync -az "$SOVD_CONFIG_SOURCE" "$PI:$REMOTE_SOVD_DIR/opensovd.toml"
+if [ -f "$EXTENDED_VEHICLE_CONFIG_FILE" ]; then
+    log "[3a/6] rsync Extended Vehicle config -> $PI:$REMOTE_SOVD_DIR/extended-vehicle.toml"
+    rsync -az "$EXTENDED_VEHICLE_CONFIG_FILE" "$PI:$REMOTE_SOVD_DIR/extended-vehicle.toml"
+else
+    warn "Extended Vehicle config not found at $EXTENDED_VEHICLE_CONFIG_FILE - XV routes will fall back to the build-host path"
+fi
 # CRLF -> LF (matches install-ecu-sim.sh pattern)
 ssh "$PI" "sed -i 's/\r\$//' $REMOTE_SOVD_DIR/opensovd.toml"
+ssh "$PI" "test ! -f $REMOTE_SOVD_DIR/extended-vehicle.toml || sed -i 's/\r\$//' $REMOTE_SOVD_DIR/extended-vehicle.toml"
 log "[3b/6] repairing ownership under /opt/taktflow"
 ssh "$PI" "sudo chown -R taktflow-pi:taktflow-pi $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_WS_BRIDGE_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_OBS_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR"
 

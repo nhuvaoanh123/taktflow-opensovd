@@ -3583,6 +3583,7 @@ dependencies = [
  "sovd-db-score",
  "sovd-db-sqlite",
  "sovd-dfm",
+ "sovd-extended-vehicle",
  "sovd-interfaces",
  "sovd-server",
  "sovd-tracing",

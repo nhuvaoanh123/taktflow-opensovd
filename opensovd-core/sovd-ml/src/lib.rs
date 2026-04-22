@@ -17,7 +17,8 @@
 //! Later slices add:
 //! - ONNX runtime loading (`ort`)
 //! - verify-before-load enforcement from ADR-0029
-//! - the SOVD operation `/sovd/v1/components/{id}/operations/ml-inference/`
+//! - real inference behind the SOVD operation
+//!   `/sovd/v1/components/{id}/operations/ml-inference/`
 
 use std::{
     fs,
@@ -25,12 +26,21 @@ use std::{
     process::Command,
 };
 
+use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Canonical SOVD operation path for ML inference per ADR-0028.
 pub const ML_INFERENCE_OPERATION_TEMPLATE: &str =
     "/sovd/v1/components/{id}/operations/ml-inference/";
+/// Stable operation id advertised by `sovd-server`.
+pub const ML_INFERENCE_OPERATION_ID: &str = "ml-inference";
+/// Reference demo model name surfaced before the real runtime lands.
+pub const REFERENCE_MODEL_NAME: &str = "reference-fault-predictor";
+/// Reference demo model version surfaced before hot-swap/versioning lands.
+pub const REFERENCE_MODEL_VERSION: &str = "1.0.0";
+/// Stable demo fingerprint carried in the Phase 8 operation payload.
+pub const REFERENCE_MODEL_FINGERPRINT: &str = "sha256:7b0f1b5f2b8c2a7e8d4d0f9c3f6b1a22";
 
 /// Relative path reserved for the reference ONNX artifact.
 pub const REFERENCE_MODEL_RELATIVE_PATH: &str = "models/reference-fault-predictor.onnx";
@@ -43,6 +53,34 @@ pub const REFERENCE_MANIFEST_RELATIVE_PATH: &str = "models/reference-fault-predi
 
 /// Relative path reserved for layout notes and artifact provenance.
 pub const MODELS_README_RELATIVE_PATH: &str = "models/README.md";
+
+/// Nested inference payload returned by the P8-ML-01 demo execution.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InferenceEnvelope {
+    pub output: serde_json::Value,
+    pub confidence: f64,
+    pub model_fingerprint: String,
+    pub timestamp: String,
+    pub advisory_only: bool,
+}
+
+/// Typed advisory-only inference result used until real model execution lands.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StubInferenceResult {
+    pub model_name: String,
+    pub model_version: String,
+    pub prediction: String,
+    pub confidence: f64,
+    pub fingerprint: String,
+    pub updated_at: String,
+    pub source: String,
+    pub advisory_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request: Option<serde_json::Value>,
+    pub inference: InferenceEnvelope,
+}
 
 pub fn crate_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -62,6 +100,39 @@ pub fn reference_manifest_path() -> PathBuf {
 
 pub fn models_readme_path() -> PathBuf {
     crate_root().join(MODELS_README_RELATIVE_PATH)
+}
+
+pub fn canned_inference_result(
+    component_id: &str,
+    request: Option<serde_json::Value>,
+) -> StubInferenceResult {
+    let (prediction, confidence, source) = if component_id == "cvc" {
+        ("warning", 0.82, "demo-cvc-fault-window")
+    } else {
+        ("normal", 0.94, "demo-baseline")
+    };
+    let timestamp = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+
+    StubInferenceResult {
+        model_name: REFERENCE_MODEL_NAME.to_owned(),
+        model_version: REFERENCE_MODEL_VERSION.to_owned(),
+        prediction: prediction.to_owned(),
+        confidence,
+        fingerprint: REFERENCE_MODEL_FINGERPRINT.to_owned(),
+        updated_at: timestamp.clone(),
+        source: source.to_owned(),
+        advisory_only: true,
+        request,
+        inference: InferenceEnvelope {
+            output: serde_json::json!({
+                "prediction": prediction,
+            }),
+            confidence,
+            model_fingerprint: REFERENCE_MODEL_FINGERPRINT.to_owned(),
+            timestamp,
+            advisory_only: true,
+        },
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -235,4 +306,46 @@ pub fn load_verified_model(
         model_path: bundle.model.to_path_buf(),
         manifest,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canned_inference_result_matches_cvc_demo_contract() {
+        let result = canned_inference_result(
+            "cvc",
+            Some(serde_json::json!({
+                "mode": "single-shot",
+                "input_window": "last-5-fault-events",
+            })),
+        );
+
+        assert_eq!(result.model_name, REFERENCE_MODEL_NAME);
+        assert_eq!(result.model_version, REFERENCE_MODEL_VERSION);
+        assert_eq!(result.prediction, "warning");
+        assert_eq!(result.confidence, 0.82);
+        assert_eq!(result.fingerprint, REFERENCE_MODEL_FINGERPRINT);
+        assert_eq!(result.source, "demo-cvc-fault-window");
+        assert!(result.advisory_only);
+        assert_eq!(
+            result.request,
+            Some(serde_json::json!({
+                "mode": "single-shot",
+                "input_window": "last-5-fault-events",
+            }))
+        );
+        assert_eq!(
+            result.inference.output,
+            serde_json::json!({
+                "prediction": "warning",
+            })
+        );
+        assert_eq!(
+            result.inference.model_fingerprint,
+            REFERENCE_MODEL_FINGERPRINT
+        );
+        assert!(result.inference.advisory_only);
+    }
 }

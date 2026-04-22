@@ -70,6 +70,7 @@ use sovd_interfaces::{
     types::bulk_data::BulkDataChunk,
     types::error::Result,
 };
+use sovd_ml::{ML_INFERENCE_OPERATION_ID, canned_inference_result};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -87,8 +88,7 @@ struct ExecutionRecord {
     operation_id: String,
     /// Current lifecycle status.
     status: ExecutionStatus,
-    /// Parameters supplied at `POST` time, echoed back on `GET` for demo
-    /// visibility.
+    /// Execution payload returned by `GET .../executions/{id}`.
     parameters: Option<serde_json::Value>,
 }
 
@@ -1179,24 +1179,36 @@ impl SovdServer for InMemoryComponentServer {
         request: StartExecutionRequest,
     ) -> Result<StartExecutionAsyncResponse> {
         let op_id = operation_id.to_owned();
-        self.with_state_mut(|state| {
+        let component_id = self.component.as_str().to_owned();
+        let parameters = request.parameters;
+        self.with_state_mut(move |state| {
             if !state.operations.iter().any(|o| o.id == op_id) {
                 return Err(SovdError::NotFound {
                     entity: format!("operation \"{op_id}\""),
                 });
             }
+            let (status, stored_parameters) = if op_id == ML_INFERENCE_OPERATION_ID {
+                let result =
+                    serde_json::to_value(canned_inference_result(&component_id, parameters))
+                        .map_err(|error| {
+                            SovdError::Internal(format!("serialize ml inference result: {error}"))
+                        })?;
+                (ExecutionStatus::Completed, Some(result))
+            } else {
+                (ExecutionStatus::Running, parameters)
+            };
             let exec_id = Uuid::new_v4().to_string();
             state.executions.insert(
                 exec_id.clone(),
                 ExecutionRecord {
                     operation_id: op_id.clone(),
-                    status: ExecutionStatus::Running,
-                    parameters: request.parameters,
+                    status,
+                    parameters: stored_parameters,
                 },
             );
             Ok(StartExecutionAsyncResponse {
                 id: exec_id,
-                status: Some(ExecutionStatus::Running),
+                status: Some(status),
             })
         })
         .await
@@ -1477,6 +1489,7 @@ fn demo_component_state(id: &str) -> Option<ComponentState> {
             &[
                 demo_op("motor_self_test", "Motor self test", true),
                 demo_op("hv_precharge", "HV precharge routine", true),
+                ml_demo_op(),
                 demo_op("read_vin", "Read VIN", false),
             ],
             &[
@@ -1548,6 +1561,17 @@ fn demo_op(id: &str, name: &str, asynchronous: bool) -> OperationDescription {
         proximity_proof_required: false,
         asynchronous_execution: asynchronous,
         tags: None,
+    }
+}
+
+fn ml_demo_op() -> OperationDescription {
+    OperationDescription {
+        id: ML_INFERENCE_OPERATION_ID.to_owned(),
+        name: Some("ML fault inference".to_owned()),
+        translation_id: None,
+        proximity_proof_required: false,
+        asynchronous_execution: true,
+        tags: Some(vec!["ml".to_owned(), "advisory-only".to_owned()]),
     }
 }
 
@@ -1644,6 +1668,42 @@ mod tests {
             .await
             .expect("exec status");
         assert_eq!(status.status, Some(ExecutionStatus::Running));
+    }
+
+    #[tokio::test]
+    async fn ml_inference_execution_completes_with_advisory_payload() {
+        let server = InMemoryServer::new_with_demo_data();
+        let view = server
+            .component_server(&ComponentId::new("cvc"))
+            .await
+            .expect("component view");
+        let started = view
+            .start_execution(
+                ML_INFERENCE_OPERATION_ID,
+                StartExecutionRequest {
+                    timeout: Some(5),
+                    parameters: Some(serde_json::json!({
+                        "mode": "single-shot",
+                        "input_window": "last-5-fault-events",
+                    })),
+                    proximity_response: None,
+                },
+            )
+            .await
+            .expect("start ml execution");
+        assert_eq!(started.status, Some(ExecutionStatus::Completed));
+        let status = view
+            .execution_status(ML_INFERENCE_OPERATION_ID, &started.id)
+            .await
+            .expect("ml exec status");
+        assert_eq!(status.status, Some(ExecutionStatus::Completed));
+        let payload = status.parameters.expect("ml payload");
+        assert_eq!(payload["prediction"], "warning");
+        assert_eq!(payload["advisory_only"], true);
+        assert_eq!(
+            payload["request"]["input_window"],
+            serde_json::json!("last-5-fault-events")
+        );
     }
 
     #[tokio::test]

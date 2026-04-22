@@ -1747,6 +1747,7 @@ dependencies = [
  "sovd-dfm",
  "sovd-extended-vehicle",
  "sovd-interfaces",
+ "sovd-ml",
  "sovd-server",
  "tempfile",
  "tokio",
@@ -3613,7 +3614,9 @@ dependencies = [
 name = "sovd-ml"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "serde",
+ "serde_json",
  "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",
@@ -3636,6 +3639,7 @@ dependencies = [
  "sovd-covesa",
  "sovd-extended-vehicle",
  "sovd-interfaces",
+ "sovd-ml",
  "tokio",
  "tower",
  "tower-http",

@@ -25,7 +25,9 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+chrono = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 serde_yaml = "0.9"
 thiserror = { workspace = true }
 

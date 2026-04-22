@@ -1415,8 +1415,10 @@ proven on HIL.
 | P8-ML-04 | done | repo_only | Implement rollback triggers (A, B, C per ADR-0029) | Each trigger path has a test |
 | P8-ML-05 | done | repo_only | Wire Edge Native deployment boundary (ECO-4) | Artifact push → local slot; observability metric emitted |
 | P8-ML-06 | done | repo_only | Dashboard UC21 widget renders live inference | Widget round-trips against `sovd-server` on SIL |
-| P8-ML-07 | pending | live_bench | Demonstrate predictive fault prediction on Pi HIL | End-to-end ML advisory visible on bench dashboard |
-| P8-ML-08 | pending | live_bench | Demonstrate rollback on Pi HIL | Forced trigger → rollback → advisory stops |
+| P8-ML-07 | done | live_bench | Demonstrate predictive fault prediction on Pi HIL | End-to-end ML advisory visible on bench dashboard |
+| P8-ML-08 | done | live_bench | Demonstrate rollback on Pi HIL | Forced trigger → rollback → advisory stops |
+
+Completion note (2026-04-22): `P8-ML-07` and `P8-ML-08` are now green on the Pi bench. The observer dashboard at `https://192.168.0.197/` was refreshed with the Phase 8 UC21 widget, and a live mTLS browser proof now shows the CVC predictive advisory on the dashboard with model version `1.0.0`. The rollback witness then runs against the Pi HIL API and returns the safe baseline payload (`model_version=0.9.0`, `lifecycle_state=rolled_back`, `advisory_active=false`). Closing this also required aligning the checked-in Pi `sovd-main.service` deploy asset with the current HTTP safety guard by binding `sovd-main` on `127.0.0.1:21002` behind nginx instead of `0.0.0.0:21002`.
 
 ### 7.10 P9 — Cybersecurity & Cert Lifecycle
 

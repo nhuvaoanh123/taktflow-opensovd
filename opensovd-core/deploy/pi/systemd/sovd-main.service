@@ -6,10 +6,11 @@
 #
 # Phase 5 Line A D1 — sovd-main systemd unit on the Raspberry Pi bench.
 #
-# Binds 0.0.0.0:21002 so the dev host can reach the SOVD HTTP API over
-# the bench LAN (192.0.2.0/24). The port is a fixed allocation from
-# phase-5-line-a.md and does NOT collide with ecu-sim (:13400) or the
-# CAN-to-DoIP proxy (:13401).
+# Binds 127.0.0.1:21002 and relies on the observer nginx front end for
+# any bench-LAN access. This matches opensovd-pi.toml, the Phase 5
+# deploy verification, and the current sovd-main HTTP safety guard
+# which rejects plain HTTP on non-loopback listeners unless the binary
+# is built with the insecure-http-fallback feature.
 
 [Unit]
 Description=Taktflow OpenSOVD sovd-main (Phase 5 Line A D1 Pi deploy)
@@ -23,7 +24,7 @@ Group=taktflow-pi
 WorkingDirectory=/opt/taktflow/sovd-main
 ExecStart=/opt/taktflow/sovd-main/sovd-main \
     --config-file /opt/taktflow/sovd-main/opensovd.toml \
-    --listen-address 0.0.0.0 \
+    --listen-address 127.0.0.1 \
     --listen-port 21002
 Restart=on-failure
 RestartSec=5

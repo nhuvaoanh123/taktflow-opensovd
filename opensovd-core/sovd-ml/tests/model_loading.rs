@@ -14,11 +14,11 @@ use std::{fs, path::Path, process::Command};
 
 use chrono::{Duration, Utc};
 use sovd_ml::{
-    INFERENCE_FAILURE_ROLLBACK_THRESHOLD, ML_INFERENCE_OPERATION_TEMPLATE,
-    MODELS_README_RELATIVE_PATH, ModelBundlePaths, ModelLoadError, ModelManifest, ModelRuntime,
-    ModelRuntimeState, PERIODIC_REVERIFICATION_INTERVAL_HOURS, RollbackTrigger,
-    canonical_manifest_yaml, models_readme_path, reference_manifest_path, reference_model_path,
-    reference_signature_path,
+    EDGE_NATIVE_ARTIFACT_PUSH_TOTAL_METRIC, INFERENCE_FAILURE_ROLLBACK_THRESHOLD, LocalModelSlot,
+    ML_INFERENCE_OPERATION_TEMPLATE, MODELS_README_RELATIVE_PATH, Metrics, ModelBundlePaths,
+    ModelLoadError, ModelManifest, ModelRuntime, ModelRuntimeState,
+    PERIODIC_REVERIFICATION_INTERVAL_HOURS, RollbackTrigger, canonical_manifest_yaml,
+    models_readme_path, reference_manifest_path, reference_model_path, reference_signature_path,
 };
 use tempfile::TempDir;
 
@@ -434,6 +434,129 @@ fn trigger_b_rolls_back_when_due_reverification_fails() {
             .model_version,
         "1.0.0"
     );
+}
+
+#[test]
+fn edge_native_push_loads_active_slot_and_emits_metric() {
+    let (_temp, ca_cert, model, manifest, signature) = signed_fixture();
+    let mut runtime = ModelRuntime::new();
+    let metrics = Metrics::default();
+
+    let record = runtime
+        .push_edge_native_artifact(
+            &ModelBundlePaths {
+                model: &model,
+                signature: &signature,
+                manifest: &manifest,
+                ca_cert: &ca_cert,
+            },
+            &metrics,
+        )
+        .expect("edge native artifact push");
+
+    assert_eq!(record.slot, LocalModelSlot::Active);
+    assert_eq!(record.model_version, "1.0.0");
+    assert_eq!(
+        runtime
+            .active_model()
+            .expect("active model after push")
+            .manifest
+            .model_version,
+        "1.0.0"
+    );
+    let rendered = metrics.render();
+    assert!(rendered.contains(&format!("{EDGE_NATIVE_ARTIFACT_PUSH_TOTAL_METRIC} 1")));
+    assert!(rendered.contains("sovd_ml_edge_native_artifact_push_active_total 1"));
+    assert!(rendered.contains("sovd_ml_edge_native_artifact_push_shadow_total 0"));
+}
+
+#[test]
+fn edge_native_push_stages_shadow_slot_and_emits_metric() {
+    let (_active_temp, active_ca_cert, active_model, active_manifest, active_signature) =
+        signed_fixture_with("1.0.0", b"fake-onnx-model-v1");
+    let (_shadow_temp, shadow_ca_cert, shadow_model, shadow_manifest, shadow_signature) =
+        signed_fixture_with("2.0.0", b"fake-onnx-model-v2");
+    let mut runtime = ModelRuntime::new();
+    let metrics = Metrics::default();
+
+    runtime
+        .push_edge_native_artifact(
+            &ModelBundlePaths {
+                model: &active_model,
+                signature: &active_signature,
+                manifest: &active_manifest,
+                ca_cert: &active_ca_cert,
+            },
+            &metrics,
+        )
+        .expect("initial edge native push");
+    let record = runtime
+        .push_edge_native_artifact(
+            &ModelBundlePaths {
+                model: &shadow_model,
+                signature: &shadow_signature,
+                manifest: &shadow_manifest,
+                ca_cert: &shadow_ca_cert,
+            },
+            &metrics,
+        )
+        .expect("shadow edge native push");
+
+    assert_eq!(record.slot, LocalModelSlot::Shadow);
+    assert_eq!(record.model_version, "2.0.0");
+    assert_eq!(
+        runtime
+            .shadow_model()
+            .expect("shadow model after push")
+            .manifest
+            .model_version,
+        "2.0.0"
+    );
+    let rendered = metrics.render();
+    assert!(rendered.contains(&format!("{EDGE_NATIVE_ARTIFACT_PUSH_TOTAL_METRIC} 2")));
+    assert!(rendered.contains("sovd_ml_edge_native_artifact_push_active_total 1"));
+    assert!(rendered.contains("sovd_ml_edge_native_artifact_push_shadow_total 1"));
+}
+
+#[test]
+fn edge_native_push_rejected_artifact_increments_verify_failure_metric() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let model = temp.path().join("reference-fault-predictor.onnx");
+    let manifest = temp.path().join("reference-fault-predictor.manifest.yaml");
+    let signature = temp.path().join("reference-fault-predictor.sig");
+    let ca_cert = temp.path().join("ca.crt");
+    fs::write(&model, b"fake-onnx-model-v1").expect("write model");
+    write_manifest(
+        &manifest,
+        &ModelManifest {
+            model_name: "reference-fault-predictor".to_string(),
+            model_version: "1.0.0".to_string(),
+            opset: 19,
+            input_shape: vec![1, 16],
+            output_shape: vec![1, 4],
+            signer_identity: "CN=Unsigned".to_string(),
+            signing_timestamp: "2026-04-19T23:10:00Z".to_string(),
+        },
+    );
+    fs::write(&ca_cert, b"unused-ca").expect("write ca placeholder");
+
+    let mut runtime = ModelRuntime::new();
+    let metrics = Metrics::default();
+    let error = runtime
+        .push_edge_native_artifact(
+            &ModelBundlePaths {
+                model: &model,
+                signature: &signature,
+                manifest: &manifest,
+                ca_cert: &ca_cert,
+            },
+            &metrics,
+        )
+        .expect_err("unsigned artifact push should fail");
+
+    assert!(matches!(error, ModelLoadError::MissingSignature(_)));
+    let rendered = metrics.render();
+    assert!(rendered.contains("sovd_ml_verify_failures_total 1"));
 }
 
 #[test]

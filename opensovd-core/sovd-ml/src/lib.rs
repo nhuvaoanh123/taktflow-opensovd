@@ -24,6 +24,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
@@ -47,6 +48,8 @@ pub const INFERENCE_FAILURE_ROLLBACK_THRESHOLD: u32 = 5;
 pub const PERIODIC_REVERIFICATION_INTERVAL_HOURS: i64 = 24;
 /// ADR-0029 default confidence floor below which an inference counts as failed.
 pub const DEFAULT_CONFIDENCE_FLOOR: f64 = 0.1;
+/// Prometheus counter emitted when Edge Native pushes an artifact into a local slot.
+pub const EDGE_NATIVE_ARTIFACT_PUSH_TOTAL_METRIC: &str = "sovd_ml_edge_native_artifact_push_total";
 
 /// Relative path reserved for the reference ONNX artifact.
 pub const REFERENCE_MODEL_RELATIVE_PATH: &str = "models/reference-fault-predictor.onnx";
@@ -191,6 +194,21 @@ pub enum RollbackTrigger {
     OperatorRequested,
 }
 
+/// Local target slot chosen for an Edge Native artifact push.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalModelSlot {
+    Active,
+    Shadow,
+}
+
+/// Deployment record emitted when Edge Native forwards an artifact push.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EdgeNativeArtifactPushRecord {
+    pub slot: LocalModelSlot,
+    pub model_version: String,
+    pub at: DateTime<Utc>,
+}
+
 /// Structured rollback audit record emitted by `ModelRuntime`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RollbackRecord {
@@ -200,6 +218,61 @@ pub struct RollbackRecord {
     pub from_model_version: String,
     pub to_model_version: String,
     pub at: DateTime<Utc>,
+}
+
+/// Hand-rolled Prometheus-style metrics surface for the Edge ML runtime.
+#[derive(Debug, Default)]
+pub struct Metrics {
+    pub edge_native_artifact_push_total: AtomicU64,
+    pub edge_native_artifact_push_active_total: AtomicU64,
+    pub edge_native_artifact_push_shadow_total: AtomicU64,
+    pub verify_failures_total: AtomicU64,
+}
+
+impl Metrics {
+    pub fn inc_edge_native_artifact_push(&self, slot: LocalModelSlot) {
+        self.edge_native_artifact_push_total
+            .fetch_add(1, Ordering::Relaxed);
+        match slot {
+            LocalModelSlot::Active => {
+                self.edge_native_artifact_push_active_total
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            LocalModelSlot::Shadow => {
+                self.edge_native_artifact_push_shadow_total
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+
+    pub fn inc_verify_failure(&self) {
+        self.verify_failures_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn render(&self) -> String {
+        let total = self.edge_native_artifact_push_total.load(Ordering::Relaxed);
+        let active = self
+            .edge_native_artifact_push_active_total
+            .load(Ordering::Relaxed);
+        let shadow = self
+            .edge_native_artifact_push_shadow_total
+            .load(Ordering::Relaxed);
+        let verify_failures = self.verify_failures_total.load(Ordering::Relaxed);
+        format!(
+            "# HELP sovd_ml_edge_native_artifact_push_total Edge Native artifact pushes accepted by sovd-ml.\n\
+             # TYPE sovd_ml_edge_native_artifact_push_total counter\n\
+             sovd_ml_edge_native_artifact_push_total {total}\n\
+             # HELP sovd_ml_edge_native_artifact_push_active_total Edge Native artifact pushes loaded into the active slot.\n\
+             # TYPE sovd_ml_edge_native_artifact_push_active_total counter\n\
+             sovd_ml_edge_native_artifact_push_active_total {active}\n\
+             # HELP sovd_ml_edge_native_artifact_push_shadow_total Edge Native artifact pushes staged into the shadow slot.\n\
+             # TYPE sovd_ml_edge_native_artifact_push_shadow_total counter\n\
+             sovd_ml_edge_native_artifact_push_shadow_total {shadow}\n\
+             # HELP sovd_ml_verify_failures_total Model verification failures observed by sovd-ml.\n\
+             # TYPE sovd_ml_verify_failures_total counter\n\
+             sovd_ml_verify_failures_total {verify_failures}\n"
+        )
+    }
 }
 
 /// Minimal runtime holder for the active plus shadow verified model bundles.
@@ -364,6 +437,58 @@ impl ModelRuntime {
             "operator_requested".to_owned(),
             Some(session_id.to_owned()),
         )
+    }
+
+    pub fn push_edge_native_artifact(
+        &mut self,
+        bundle: &ModelBundlePaths<'_>,
+        metrics: &Metrics,
+    ) -> Result<EdgeNativeArtifactPushRecord, ModelLoadError> {
+        let at = Utc::now();
+        let result = if self.active.is_none() {
+            match self.load(bundle) {
+                Ok(_) => {
+                    let version = self
+                        .active_model()
+                        .ok_or(ModelLoadError::NoLoadedModel)?
+                        .manifest
+                        .model_version
+                        .clone();
+                    Ok((LocalModelSlot::Active, version))
+                }
+                Err(error) => Err(error),
+            }
+        } else {
+            match self.stage_shadow(bundle) {
+                Ok(()) => {
+                    let version = self
+                        .shadow_model()
+                        .ok_or(ModelLoadError::NoRollbackTarget)?
+                        .manifest
+                        .model_version
+                        .clone();
+                    Ok((LocalModelSlot::Shadow, version))
+                }
+                Err(error) => Err(error),
+            }
+        };
+
+        match result {
+            Ok((slot, model_version)) => {
+                metrics.inc_edge_native_artifact_push(slot);
+                Ok(EdgeNativeArtifactPushRecord {
+                    slot,
+                    model_version,
+                    at,
+                })
+            }
+            Err(error) => {
+                if is_verification_error(&error) {
+                    metrics.inc_verify_failure();
+                }
+                Err(error)
+            }
+        }
     }
 
     fn rollback(
@@ -571,6 +696,22 @@ fn load_runtime_slot(
     })
 }
 
+fn is_verification_error(error: &ModelLoadError) -> bool {
+    matches!(
+        error,
+        ModelLoadError::MissingSignature(_)
+            | ModelLoadError::MissingModel(_)
+            | ModelLoadError::MissingManifest(_)
+            | ModelLoadError::Read { .. }
+            | ModelLoadError::ParseManifest { .. }
+            | ModelLoadError::SerializeManifest(_)
+            | ModelLoadError::CreateTempDir { .. }
+            | ModelLoadError::WritePayload { .. }
+            | ModelLoadError::OpenSslUnavailable
+            | ModelLoadError::VerifyFailed(_)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -618,5 +759,15 @@ mod tests {
         assert_eq!(runtime.state(), ModelRuntimeState::Unloaded);
         assert!(runtime.active_model().is_none());
         assert!(runtime.shadow_model().is_none());
+    }
+
+    #[test]
+    fn metrics_render_initially_zero() {
+        let metrics = Metrics::default();
+        let rendered = metrics.render();
+        assert!(rendered.contains("sovd_ml_edge_native_artifact_push_total 0"));
+        assert!(rendered.contains("sovd_ml_edge_native_artifact_push_active_total 0"));
+        assert!(rendered.contains("sovd_ml_edge_native_artifact_push_shadow_total 0"));
+        assert!(rendered.contains("sovd_ml_verify_failures_total 0"));
     }
 }

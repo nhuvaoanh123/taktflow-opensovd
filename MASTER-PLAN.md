@@ -1320,7 +1320,7 @@ G-SEM green.
 | P7-XV-02 | done | repo_only | Wire MQTT publisher for XV topics | All 6 topics in §5.7.2 emit per subscription lifecycle |
 | P7-XV-03 | done | repo_only | Wire MQTT subscriber for `control/subscribe` | Subscription create/delete round-trips |
 | P7-XV-04 | done | repo_only | SIL scenario `sil_extended_vehicle_state.yaml` | State topic publishes expected snapshot |
-| P7-XV-05 | pending | repo_only | SIL scenario `sil_extended_vehicle_fault_log.yaml` *(expand)* | Fault log + drill-in + subscription round-trip |
+| P7-XV-05 | done | repo_only | SIL scenario `sil_extended_vehicle_fault_log.yaml` *(expand)* | Fault log + drill-in + subscription round-trip |
 | P7-XV-06 | pending | live_bench | HIL scenario `hil_extended_vehicle_pubsub.yaml` | Pi publishes to Mosquitto; bench client consumes |
 | P7-CORE-SDK-01 | pending | repo_only | Scaffold reference Rust SDK crate (`sovd-client-rust`) | Crate exists; typed wrappers for every `/sovd/v1/*` endpoint; health-endpoint smoke test green |
 | P7-CORE-SDK-02 | pending | repo_only | SDK retry + timeout + correlation-id propagation | Policies configurable; unit tests cover both |
@@ -1358,6 +1358,14 @@ scenario-driven integration harness now loads that YAML, boots the local
 Extended Vehicle MQTT publish path, reads `/sovd/v1/extended/vehicle/state`,
 creates a `state` subscription, and proves that the ADR-0027 state topic emits
 the expected bench-scoped snapshot.
+
+Completion note (2026-04-22): P7-XV-05 is now closed repo-side. The expanded
+`opensovd-core/test/sil/scenarios/sil_extended_vehicle_fault_log.yaml` now pins
+the Extended Vehicle fault-log list, drill-in detail, and fault-log
+subscription create/delete flow, and the scenario-driven integration harness
+proves that the pinned SC fault is visible in the REST list/detail path and
+that creating a `fault-log` subscription emits the expected ADR-0027 MQTT event
+before the subscription is deleted again.
 
 ### 7.9 P8 — Edge AI/ML Integration
 
@@ -1525,7 +1533,7 @@ rate-limit / integrator-guide work stability. G-CS blocks P11.
 | `sil_sovd_07_large_list.yaml` | Paginated fault list |
 | `sil_sovd_08_error_handling.yaml` | Error envelopes |
 | `sil_covesa_dtc_list.yaml` | VSS → DTC-list read (skeleton landed) |
-| `sil_extended_vehicle_fault_log.yaml` | EV fault-log REST + MQTT (skeleton landed) |
+| `sil_extended_vehicle_fault_log.yaml` | EV fault-log REST + MQTT + drill-in subscription round-trip |
 | `sil_sovd_ml_inference.yaml` | ML inference operation (skeleton, disabled) |
 | `sil_sovd_iso_17978_1_2_compliance.yaml` | ISO 17978-1.2 subset (skeleton, disabled) |
 

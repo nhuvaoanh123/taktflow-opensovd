@@ -8,44 +8,49 @@
 # terms of the Apache License Version 2.0 which is available at
 # https://www.apache.org/licenses/LICENSE-2.0
 #
-# Upstream Phase 2 SIL scenario skeleton - Extended Vehicle fault-log flow.
+# Phase 7 SIL scenario - Extended Vehicle fault-log event flow.
 #
-# Disabled until `sovd-extended-vehicle` mounts the REST catalog and
-# fault-log routes in SIL and publishes the ADR-0027 MQTT event topic.
+# This scenario is executable in local SIL. It pins the Extended Vehicle
+# fault-log list + drill-in slice and verifies that creating a
+# `fault-log` subscription causes the ADR-0027 MQTT topic to emit the
+# expected fault event before the subscription is deleted again.
 
 name: sil_extended_vehicle_fault_log
 scenario_class: event_flow
-disabled: true
-reason: >-
-  Enable when `sovd-extended-vehicle` exposes the REST fault-log surface
-  under `/sovd/v1/extended/vehicle/*` in SIL and publishes
-  `sovd/extended-vehicle/fault-log/new` on the local MQTT bus.
 
 topology:
   description: >-
-    Local SIL flow. Tester talks to `sovd-main`; the
-    `sovd-extended-vehicle` adapter serves the ISO-20078-shaped
-    fault-log view over REST and mirrors new entries on the MQTT topic
-    root from ADR-0027.
+    Local SIL flow. Tester talks to the in-memory `sovd-server`
+    surface; the `sovd-extended-vehicle` adapter serves the
+    ISO-20078-shaped fault-log view over REST and mirrors fault-log
+    subscription events on the ADR-0027 MQTT topic.
 
   test_client:
     host: 127.0.0.1
     process: integration-tests (cargo test, local SIL)
-  sovd_main:
+  sovd_server:
     host: 127.0.0.1
-    port: 21002
+    route_builder: opensovd-core/sovd-server/src/routes/mod.rs
   extended_vehicle_adapter:
     crate: opensovd-core/sovd-extended-vehicle
     config: opensovd-core/sovd-extended-vehicle/config/extended-vehicle.toml
   mqtt_bus:
     host: 127.0.0.1
-    port: 1883
-    topic_root: sovd/extended-vehicle/
+    topic: sovd/extended-vehicle/fault-log/new
 
 contracts:
   rest_root: /sovd/v1/extended/vehicle
   fault_log_endpoint: /sovd/v1/extended/vehicle/fault-log
+  fault_log_detail_template: /sovd/v1/extended/vehicle/fault-log/{log_id}
+  subscription_endpoint: /sovd/v1/extended/vehicle/subscriptions
   publish_topic: sovd/extended-vehicle/fault-log/new
+
+expected_primary_fault:
+  log_id: flt-sc-u0100
+  component_id: sc
+  dtc: U0100
+  lifecycle_state: confirmed
+  source_fault_path: /sovd/v1/components/sc/faults/U0100
 
 calls:
   - name: extended_vehicle_catalog
@@ -60,13 +65,40 @@ calls:
     expect_status: 200
     expect_type: extended_vehicle.fault_log_list
 
+  - name: read_fault_log_detail
+    method: GET
+    path_template: /sovd/v1/extended/vehicle/fault-log/{log_id}
+    depends_on: read_fault_log
+    expect_status: 200
+    expect_type: extended_vehicle.fault_log_detail
+
+  - name: create_fault_log_subscription
+    method: POST
+    path: /sovd/v1/extended/vehicle/subscriptions
+    body:
+      data_item: fault-log
+    expect_status: 201
+    expect_type: extended_vehicle.subscription
+
   - name: subscribe_fault_log_new
     protocol: MQTT
     action: SUBSCRIBE
     topic: sovd/extended-vehicle/fault-log/new
-    expect_payload_contains: fault_log_id
+    expect_min_messages: 1
+    expect_payload_fields:
+      fault_log_id: flt-sc-u0100
+      component_id: sc
+      dtc: U0100
+      lifecycle_state: confirmed
+
+  - name: delete_fault_log_subscription
+    method: DELETE
+    path_template: /sovd/v1/extended/vehicle/subscriptions/{subscription_id}
+    depends_on: create_fault_log_subscription
+    expect_status: 204
 
 evidence:
   - the Extended Vehicle catalog advertises the fault-log item
-  - the REST fault-log view returns the ADR-0027-shaped list contract
-  - the MQTT publish topic emits fault-log identifiers for new entries
+  - the REST fault-log list returns the ADR-0027-shaped list contract and the drill-in path resolves the pinned SC fault
+  - creating then deleting a `fault-log` subscription round-trips through the Extended Vehicle subscription registry
+  - the MQTT fault-log topic emits the expected pinned fault event for the subscription lifecycle

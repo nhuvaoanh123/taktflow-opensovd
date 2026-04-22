@@ -27,6 +27,23 @@
 #define OTA_ROUTINE_ABORT    0x0201U
 #define OTA_ROUTINE_ROLLBACK 0x0202U
 
+/* Detailed error codes available via ota_last_error() after any failing
+ * ota_* call. Lets the UDS dispatcher map to specific ISO-14229 NRCs
+ * instead of collapsing everything to NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED. */
+#define OTA_ERR_NONE              0x00U
+#define OTA_ERR_WRONG_STATE       0x01U  /* state machine rejected the call */
+#define OTA_ERR_WRONG_SEQ         0x02U  /* block_sequence_counter mismatch */
+#define OTA_ERR_BAD_LENGTH        0x03U  /* record length out of bounds */
+#define OTA_ERR_OVERFLOW          0x04U  /* would exceed declared total_size */
+#define OTA_ERR_FLASH             0x05U  /* HAL flash op failed */
+#define OTA_ERR_NO_MANIFEST       0x06U  /* DID 0xF1A0 never written this session */
+#define OTA_ERR_MANIFEST_LOCKED   0x07U  /* manifest already locked for this transfer */
+#define OTA_ERR_BAD_ADDRESS       0x08U  /* 0x34 memory_address != inactive bank base */
+#define OTA_ERR_BAD_SIZE          0x09U  /* 0x34 total_size out of bounds */
+#define OTA_ERR_BAD_DID           0x0AU  /* DID not owned by OTA */
+#define OTA_ERR_HASH_MISMATCH     0x0BU  /* verify step: sha256 != expected */
+#define OTA_ERR_INCOMPLETE        0x0CU  /* transfer exit before all bytes received */
+
 void ota_init(void);
 void ota_poll(void);
 void ota_schedule_plain_reset(void);
@@ -39,5 +56,10 @@ uint32 ota_handle_routine(uint8 subf, uint16 routine_id, uint8 *bytes, uint32 *l
 uint32 ota_begin_download(uint32 address, uint32 total_size, uint16 *max_block_length);
 uint32 ota_transfer_data(uint8 block_sequence_counter, const uint8 *bytes, uint32 len);
 uint32 ota_request_transfer_exit(void);
+
+/* Returns the specific error code from the most recent failing ota_*
+ * call. OTA_ERR_NONE if the last call succeeded or if no call has been
+ * made since ota_init. */
+uint8 ota_last_error(void);
 
 #endif

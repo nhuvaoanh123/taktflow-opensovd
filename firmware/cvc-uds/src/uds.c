@@ -34,7 +34,30 @@ extern void busy_wait_ms(unsigned int ms);   /* implemented in main.c */
 #define NRC_REQUEST_SEQUENCE_ERROR            0x24U
 #define NRC_REQUEST_OUT_OF_RANGE              0x31U
 #define NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED      0x70U
+#define NRC_GENERAL_PROGRAMMING_FAILURE       0x72U
 #define NRC_WRONG_BLOCK_SEQUENCE_COUNTER      0x73U
+
+/* Map an ota_last_error() code to the closest ISO-14229 NRC. Used by the
+ * 0x34 / 0x36 / 0x37 / 0x2E handlers to return informative failures
+ * instead of collapsing everything to NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED. */
+static uint8 ota_err_to_nrc(uint8 ota_err, uint8 fallback_nrc)
+{
+    switch (ota_err) {
+    case OTA_ERR_WRONG_STATE:      return NRC_REQUEST_SEQUENCE_ERROR;
+    case OTA_ERR_WRONG_SEQ:        return NRC_WRONG_BLOCK_SEQUENCE_COUNTER;
+    case OTA_ERR_BAD_LENGTH:       return NRC_INCORRECT_MESSAGE_LENGTH;
+    case OTA_ERR_OVERFLOW:         return NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED;
+    case OTA_ERR_FLASH:            return NRC_GENERAL_PROGRAMMING_FAILURE;
+    case OTA_ERR_NO_MANIFEST:      return NRC_CONDITIONS_NOT_CORRECT;
+    case OTA_ERR_MANIFEST_LOCKED:  return NRC_CONDITIONS_NOT_CORRECT;
+    case OTA_ERR_BAD_ADDRESS:      return NRC_REQUEST_OUT_OF_RANGE;
+    case OTA_ERR_BAD_SIZE:         return NRC_REQUEST_OUT_OF_RANGE;
+    case OTA_ERR_BAD_DID:          return NRC_REQUEST_OUT_OF_RANGE;
+    case OTA_ERR_HASH_MISMATCH:    return NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED;
+    case OTA_ERR_INCOMPLETE:       return NRC_REQUEST_SEQUENCE_ERROR;
+    default:                       return fallback_nrc;
+    }
+}
 
 #define ISO_TP_RX_BUFFER_BYTES                160U
 #define ISO_TP_MULTI_TIMEOUT_MS               150U
@@ -457,7 +480,8 @@ static void svc_write_did(const uint8 *req, uint32 len)
             g_vin[i] = req[3U + i];
         }
     } else if (ota_write_did(did, &req[3], len - 3U) == 0U) {
-        (void)send_negative(0x2EU, NRC_REQUEST_OUT_OF_RANGE); return;
+        (void)send_negative(0x2EU, ota_err_to_nrc(ota_last_error(), NRC_REQUEST_OUT_OF_RANGE));
+        return;
     }
 
     {
@@ -539,7 +563,8 @@ static void svc_request_download(const uint8 *req, uint32 len)
                  (uint32)req[10];
 
     if (ota_begin_download(memory_address, total_size, &max_block_length) == 0U) {
-        (void)send_negative(0x34U, NRC_REQUEST_OUT_OF_RANGE); return;
+        (void)send_negative(0x34U, ota_err_to_nrc(ota_last_error(), NRC_REQUEST_OUT_OF_RANGE));
+        return;
     }
 
     payload[0] = 0x20U;
@@ -561,7 +586,8 @@ static void svc_transfer_data(const uint8 *req, uint32 len)
 
     block_sequence_counter = req[1];
     if (ota_transfer_data(block_sequence_counter, &req[2], len - 2U) == 0U) {
-        (void)send_negative(0x36U, NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED); return;
+        (void)send_negative(0x36U, ota_err_to_nrc(ota_last_error(), NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED));
+        return;
     }
     (void)send_positive(0x36U, &block_sequence_counter, 1U);
 }
@@ -576,7 +602,8 @@ static void svc_request_transfer_exit(const uint8 *req, uint32 len)
         (void)send_negative(0x37U, NRC_INCORRECT_MESSAGE_LENGTH); return;
     }
     if (ota_request_transfer_exit() == 0U) {
-        (void)send_negative(0x37U, NRC_REQUEST_SEQUENCE_ERROR); return;
+        (void)send_negative(0x37U, ota_err_to_nrc(ota_last_error(), NRC_REQUEST_SEQUENCE_ERROR));
+        return;
     }
     (void)send_positive(0x37U, 0, 0U);
 }

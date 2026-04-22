@@ -66,6 +66,13 @@ static uint8 g_witness_counter = 0U;
 static uint32 g_witness_id = 0UL;
 static ota_pending_action_t g_pending_action = OTA_PENDING_NONE;
 static uint32 g_pending_action_delay_ms = 0U;
+static uint8 g_last_error = OTA_ERR_NONE;
+
+static uint32 ota_fail(uint8 err)
+{
+    g_last_error = err;
+    return 0U;
+}
 
 static uint32 ota_dual_bank_enabled(void)
 {
@@ -282,14 +289,6 @@ static uint32 ota_hash_inactive_image(uint8 out[SHA256_DIGEST_BYTES])
     return 1U;
 }
 
-static uint32 ota_witness_id_from_sha256(const uint8 digest[SHA256_DIGEST_BYTES])
-{
-    return ((uint32)digest[0] << 24U)
-         | ((uint32)digest[1] << 16U)
-         | ((uint32)digest[2] << 8U)
-         | (uint32)digest[3];
-}
-
 static void ota_apply_pending_bank_switch(uint8 target_slot)
 {
     FLASH_OBProgramInitTypeDef option_bytes = { 0 };
@@ -323,6 +322,7 @@ void ota_init(void)
     g_witness_id = 0UL;
     g_pending_action = OTA_PENDING_NONE;
     g_pending_action_delay_ms = 0U;
+    g_last_error = OTA_ERR_NONE;
     ota_clear_manifest();
 
     metadata = ota_active_metadata();
@@ -394,9 +394,21 @@ uint32 ota_read_did(uint16 did, uint8 *bytes, uint32 *len)
 
 uint32 ota_write_did(uint16 did, const uint8 *bytes, uint32 len)
 {
-    if (did != OTA_DID_MANIFEST || len < OTA_MANIFEST_BYTES) {
-        return 0U;
+    g_last_error = OTA_ERR_NONE;
+
+    if (did != OTA_DID_MANIFEST) {
+        return ota_fail(OTA_ERR_BAD_DID);
     }
+    if (len < OTA_MANIFEST_BYTES) {
+        return ota_fail(OTA_ERR_BAD_LENGTH);
+    }
+    /* Lock the manifest once a transfer is in flight. Accepting a second
+     * manifest mid-transfer would let an attacker swap the expected hash
+     * after some image bytes have already landed on the inactive bank. */
+    if (g_state == OTA_STATE_DOWNLOADING || g_state == OTA_STATE_VERIFYING) {
+        return ota_fail(OTA_ERR_MANIFEST_LOCKED);
+    }
+
     g_download.manifest_ready = 1U;
     g_download.witness_id = ((uint32)bytes[2] << 24U)
                           | ((uint32)bytes[3] << 16U)
@@ -452,20 +464,33 @@ uint32 ota_handle_routine(uint8 subf, uint16 routine_id, uint8 *bytes, uint32 *l
 
 uint32 ota_begin_download(uint32 address, uint32 total_size, uint16 *max_block_length)
 {
+    g_last_error = OTA_ERR_NONE;
+
+    /* Must have received the manifest first. Without it we would be
+     * self-certifying whatever image lands, defeating the integrity
+     * check entirely. */
+    if (g_download.manifest_ready == 0U) {
+        return ota_fail(OTA_ERR_NO_MANIFEST);
+    }
+    /* Reject re-entry mid-transfer. Starting a new 0x34 while one is
+     * live would stomp buffered state and potentially corrupt flash. */
+    if (g_state == OTA_STATE_DOWNLOADING || g_state == OTA_STATE_VERIFYING) {
+        return ota_fail(OTA_ERR_WRONG_STATE);
+    }
     if (address != OTA_INACTIVE_BANK_BASE) {
-        return 0U;
+        return ota_fail(OTA_ERR_BAD_ADDRESS);
     }
     if (total_size == 0U || total_size > OTA_IMAGE_MAX_BYTES) {
-        return 0U;
+        return ota_fail(OTA_ERR_BAD_SIZE);
     }
 
     if (HAL_FLASH_Unlock() != HAL_OK) {
-        return 0U;
+        return ota_fail(OTA_ERR_FLASH);
     }
     if (ota_erase_pages(ota_inactive_bank_constant(), 0U, 128U) == 0U) {
         HAL_FLASH_Lock();
         ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_FLASH_WRITE);
-        return 0U;
+        return ota_fail(OTA_ERR_FLASH);
     }
     HAL_FLASH_Lock();
 
@@ -484,22 +509,24 @@ uint32 ota_transfer_data(uint8 block_sequence_counter, const uint8 *bytes, uint3
 {
     uint32 offset = 0U;
 
+    g_last_error = OTA_ERR_NONE;
+
     if (g_state != OTA_STATE_DOWNLOADING) {
-        return 0U;
+        return ota_fail(OTA_ERR_WRONG_STATE);
     }
     if (block_sequence_counter != g_download.expected_block_sequence_counter) {
-        return 0U;
+        return ota_fail(OTA_ERR_WRONG_SEQ);
     }
     if (len == 0U || len > OTA_MAX_TRANSFER_RECORD) {
-        return 0U;
+        return ota_fail(OTA_ERR_BAD_LENGTH);
     }
     if (g_download.bytes_received + len > g_download.total_size) {
-        return 0U;
+        return ota_fail(OTA_ERR_OVERFLOW);
     }
 
     if (HAL_FLASH_Unlock() != HAL_OK) {
         ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_FLASH_WRITE);
-        return 0U;
+        return ota_fail(OTA_ERR_FLASH);
     }
 
     while (offset < len) {
@@ -512,7 +539,7 @@ uint32 ota_transfer_data(uint8 block_sequence_counter, const uint8 *bytes, uint3
                 ) == 0U) {
                 HAL_FLASH_Lock();
                 ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_FLASH_WRITE);
-                return 0U;
+                return ota_fail(OTA_ERR_FLASH);
             }
             g_download.programmed_bytes += 8U;
             g_download.pending_doubleword_len = 0U;
@@ -530,23 +557,33 @@ uint32 ota_request_transfer_exit(void)
     uint8 digest[SHA256_DIGEST_BYTES];
     uint32 flush_address;
 
+    g_last_error = OTA_ERR_NONE;
+
     if (g_state != OTA_STATE_DOWNLOADING) {
-        return 0U;
+        return ota_fail(OTA_ERR_WRONG_STATE);
+    }
+    /* Require a manifest. The previous implementation self-certified the
+     * received image when no manifest was present — meaning an attacker
+     * who skipped the 0xF1A0 write would still get a "Committed" verdict
+     * with the firmware inventing its own witness. This is the single
+     * biggest integrity hole closed by the hardening pass. */
+    if (g_download.manifest_ready == 0U) {
+        return ota_fail(OTA_ERR_NO_MANIFEST);
     }
     if (g_download.bytes_received != g_download.total_size) {
-        return 0U;
+        return ota_fail(OTA_ERR_INCOMPLETE);
     }
 
     if (g_download.pending_doubleword_len != 0U) {
         flush_address = OTA_INACTIVE_BANK_BASE + g_download.programmed_bytes;
         if (HAL_FLASH_Unlock() != HAL_OK) {
             ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_FLASH_WRITE);
-            return 0U;
+            return ota_fail(OTA_ERR_FLASH);
         }
         if (ota_program_bytes(flush_address, g_download.pending_doubleword, g_download.pending_doubleword_len) == 0U) {
             HAL_FLASH_Lock();
             ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_FLASH_WRITE);
-            return 0U;
+            return ota_fail(OTA_ERR_FLASH);
         }
         HAL_FLASH_Lock();
         g_download.programmed_bytes += g_download.pending_doubleword_len;
@@ -555,33 +592,26 @@ uint32 ota_request_transfer_exit(void)
     if (g_download.programmed_bytes != g_download.total_size) {
         ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_FLASH_WRITE);
         ota_clear_manifest();
-        return 0U;
+        return ota_fail(OTA_ERR_FLASH);
     }
 
     ota_set_runtime_status(OTA_STATE_VERIFYING, OTA_REASON_NONE);
     (void)ota_hash_inactive_image(digest);
-    if (g_download.manifest_ready != 0U) {
-        if (memcmp(digest, g_download.expected_sha256, SHA256_DIGEST_BYTES) != 0) {
-            ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_SIGNATURE_INVALID);
-            ota_clear_manifest();
-            return 0U;
-        }
-    } else {
-        for (uint32 i = 0U; i < SHA256_DIGEST_BYTES; i++) {
-            g_download.expected_sha256[i] = digest[i];
-        }
-        g_download.witness_id = ota_witness_id_from_sha256(digest);
+    if (memcmp(digest, g_download.expected_sha256, SHA256_DIGEST_BYTES) != 0) {
+        ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_SIGNATURE_INVALID);
+        ota_clear_manifest();
+        return ota_fail(OTA_ERR_HASH_MISMATCH);
     }
     g_witness_id = g_download.witness_id;
 
     if (HAL_FLASH_Unlock() != HAL_OK) {
         ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_FLASH_WRITE);
-        return 0U;
+        return ota_fail(OTA_ERR_FLASH);
     }
     if (ota_write_metadata_to_inactive_bank(OTA_STATE_COMMITTED, OTA_REASON_NONE) == 0U) {
         HAL_FLASH_Lock();
         ota_set_runtime_status(OTA_STATE_FAILED, OTA_REASON_FLASH_WRITE);
-        return 0U;
+        return ota_fail(OTA_ERR_FLASH);
     }
     HAL_FLASH_Lock();
 
@@ -589,4 +619,9 @@ uint32 ota_request_transfer_exit(void)
     g_pending_action_delay_ms = OTA_PENDING_RESET_DELAY_MS;
     ota_clear_manifest();
     return 1U;
+}
+
+uint8 ota_last_error(void)
+{
+    return g_last_error;
 }

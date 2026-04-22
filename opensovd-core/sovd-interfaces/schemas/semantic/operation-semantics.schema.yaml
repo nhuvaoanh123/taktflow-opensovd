@@ -1,0 +1,59 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://eclipse-opensovd.dev/schemas/semantic/operation-semantics.schema.yaml"
+title: "OpenSOVD operation semantic binding schema"
+description: >
+  Contract for semantic binding files that describe operation intent,
+  execution class, and caller-visible meaning for routine-backed SOVD
+  operations.
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - domain
+  - operations
+properties:
+  schema_version:
+    type: integer
+    minimum: 1
+    description: Monotonic version for the local operation semantic contract.
+  domain:
+    type: string
+    minLength: 1
+    description: Semantic domain name for the operation binding set.
+  operations:
+    type: array
+    minItems: 1
+    description: Declared operation semantic bindings.
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - semantic_role
+        - execution_mode
+        - visibility
+      properties:
+        operation_id:
+          type: string
+          minLength: 1
+          description: Stable SOVD operation identifier.
+        semantic_role:
+          type: string
+          minLength: 1
+          description: High-level intent label for the operation.
+        execution_mode:
+          type: string
+          enum:
+            - synchronous
+            - asynchronous
+          description: Execution class visible to the caller.
+        visibility:
+          type: string
+          enum:
+            - internal
+            - tester
+            - semantic-adapter
+          description: Which caller class may discover the operation.
+        notes:
+          type: string
+          description: Optional translator note preserved with the binding.

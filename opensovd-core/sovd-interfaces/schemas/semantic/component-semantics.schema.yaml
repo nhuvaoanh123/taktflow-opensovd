@@ -1,0 +1,57 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://eclipse-opensovd.dev/schemas/semantic/component-semantics.schema.yaml"
+title: "OpenSOVD component semantic binding schema"
+description: >
+  Contract for semantic binding files that assign stable semantic roles
+  and capability groupings to SOVD components across backend-specific ids.
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - domain
+  - components
+properties:
+  schema_version:
+    type: integer
+    minimum: 1
+    description: Monotonic version for the local component semantic contract.
+  domain:
+    type: string
+    minLength: 1
+    description: Semantic domain name for the component binding set.
+  components:
+    type: array
+    minItems: 1
+    description: Declared component semantic bindings.
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - component_id
+        - semantic_role
+        - capability_group
+        - backend_kind
+      properties:
+        component_id:
+          type: string
+          minLength: 1
+          description: Stable component identifier exposed on the SOVD surface.
+        semantic_role:
+          type: string
+          minLength: 1
+          description: Semantic role assigned to the component.
+        capability_group:
+          type: string
+          minLength: 1
+          description: Named grouping for the component's exposed capabilities.
+        backend_kind:
+          type: string
+          enum:
+            - local
+            - cda
+            - dfm
+            - gateway
+          description: Backend class that primarily serves the component.
+        notes:
+          type: string
+          description: Optional translator note preserved with the binding.

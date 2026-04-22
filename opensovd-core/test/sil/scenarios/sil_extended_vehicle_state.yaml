@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# Phase 7 SIL scenario - Extended Vehicle state publish happy path.
+#
+# This scenario is executable in local SIL. It pins the first ADR-0027
+# state topic slice: a tester reads the Extended Vehicle state view,
+# creates a `state` subscription, and expects the MQTT state topic to
+# emit the same bench-scoped snapshot.
+
+name: sil_extended_vehicle_state
+scenario_class: happy_path
+
+topology:
+  description: >-
+    Local SIL flow. Tester talks to the in-memory `sovd-server` surface;
+    the `sovd-extended-vehicle` adapter serves `/sovd/v1/extended/vehicle/state`
+    over REST and publishes the ADR-0027 state topic when a `state`
+    subscription is created.
+
+  test_client:
+    host: 127.0.0.1
+    process: integration-tests (cargo test, local SIL)
+  sovd_server:
+    host: 127.0.0.1
+    route_builder: opensovd-core/sovd-server/src/routes/mod.rs
+  extended_vehicle_adapter:
+    crate: opensovd-core/sovd-extended-vehicle
+    config: opensovd-core/sovd-extended-vehicle/config/extended-vehicle.toml
+  mqtt_bus:
+    host: 127.0.0.1
+    topic: sovd/extended-vehicle/state
+
+contracts:
+  rest_root: /sovd/v1/extended/vehicle
+  state_endpoint: /sovd/v1/extended/vehicle/state
+  subscription_endpoint: /sovd/v1/extended/vehicle/subscriptions
+  publish_topic: sovd/extended-vehicle/state
+
+expected_snapshot:
+  vehicle_id: taktflow-pilot-ev-001
+  ignition_class: drive-ready
+  motion_state: parked
+  high_voltage_active: true
+
+calls:
+  - name: read_state
+    method: GET
+    path: /sovd/v1/extended/vehicle/state
+    expect_status: 200
+    expect_type: extended_vehicle.vehicle_state
+
+  - name: create_state_subscription
+    method: POST
+    path: /sovd/v1/extended/vehicle/subscriptions
+    body:
+      data_item: state
+    expect_status: 201
+    expect_type: extended_vehicle.subscription
+
+  - name: subscribe_state_topic
+    protocol: MQTT
+    action: SUBSCRIBE
+    topic: sovd/extended-vehicle/state
+    expect_min_messages: 2
+    expect_payload_fields:
+      vehicle_id: taktflow-pilot-ev-001
+      ignition_class: drive-ready
+      motion_state: parked
+      high_voltage_active: true
+
+evidence:
+  - the Extended Vehicle state endpoint returns the ADR-0027 vehicle state contract
+  - creating a `state` subscription causes the MQTT state topic to emit at least one periodic snapshot
+  - the published MQTT state payload matches the pinned bench-scoped state fields

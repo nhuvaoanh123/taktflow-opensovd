@@ -1319,7 +1319,7 @@ G-SEM green.
 | P7-XV-01 | done | repo_only | Mount Extended Vehicle REST surface in `sovd-server` | All 9 endpoints in §5.7.1 respond per OpenAPI contract |
 | P7-XV-02 | done | repo_only | Wire MQTT publisher for XV topics | All 6 topics in §5.7.2 emit per subscription lifecycle |
 | P7-XV-03 | done | repo_only | Wire MQTT subscriber for `control/subscribe` | Subscription create/delete round-trips |
-| P7-XV-04 | pending | repo_only | SIL scenario `sil_extended_vehicle_state.yaml` | State topic publishes expected snapshot |
+| P7-XV-04 | done | repo_only | SIL scenario `sil_extended_vehicle_state.yaml` | State topic publishes expected snapshot |
 | P7-XV-05 | pending | repo_only | SIL scenario `sil_extended_vehicle_fault_log.yaml` *(expand)* | Fault log + drill-in + subscription round-trip |
 | P7-XV-06 | pending | live_bench | HIL scenario `hil_extended_vehicle_pubsub.yaml` | Pi publishes to Mosquitto; bench client consumes |
 | P7-CORE-SDK-01 | pending | repo_only | Scaffold reference Rust SDK crate (`sovd-client-rust`) | Crate exists; typed wrappers for every `/sovd/v1/*` endpoint; health-endpoint smoke test green |
@@ -1350,6 +1350,14 @@ REST surface so control acks, status events, and teardown behavior stay aligned.
 The broker-backed integration coverage now proves MQTT create/delete commands
 round-trip all the way into the REST subscription registry and back out through
 the ADR-0027 publish topics.
+
+Completion note (2026-04-22): P7-XV-04 is now closed repo-side. The new SIL
+scenario asset `opensovd-core/test/sil/scenarios/sil_extended_vehicle_state.yaml`
+pins the Extended Vehicle state happy path end to end, and the
+scenario-driven integration harness now loads that YAML, boots the local
+Extended Vehicle MQTT publish path, reads `/sovd/v1/extended/vehicle/state`,
+creates a `state` subscription, and proves that the ADR-0027 state topic emits
+the expected bench-scoped snapshot.
 
 ### 7.9 P8 — Edge AI/ML Integration
 

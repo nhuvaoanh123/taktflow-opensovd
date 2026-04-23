@@ -34,6 +34,7 @@ pub mod backends;
 pub mod correlation;
 pub mod in_memory;
 pub mod openapi;
+pub mod ota;
 pub mod rate_limit;
 pub mod routes;
 mod semantic_validation;

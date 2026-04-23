@@ -354,6 +354,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-adapter"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "sovd-gateway",
+ "sovd-interfaces",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

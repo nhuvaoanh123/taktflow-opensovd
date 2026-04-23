@@ -68,8 +68,8 @@ use sovd_interfaces::{
         error::{DataError, GenericError},
         fault::{FaultFilter, ListOfFaults},
         operation::{
-            Capability, ExecutionStatus, ExecutionStatusResponse, StartExecutionAsyncResponse,
-            StartExecutionRequest,
+            Capability, ExecutionStatus, ExecutionStatusResponse, OperationDescription,
+            OperationsList, StartExecutionAsyncResponse, StartExecutionRequest,
         },
     },
     traits::backend::{BackendKind, SovdBackend},
@@ -114,6 +114,10 @@ const BULK_DATA_OTA_MANIFEST_BYTES: usize = 38;
 const BULK_DATA_OTA_STATUS_BYTES: usize = 5;
 const BULK_DATA_OTA_WITNESS_BYTES: usize = 4;
 const BULK_DATA_OTA_SHA256_BYTES: usize = 32;
+const FLASH_OPERATION_ID: &str = "flash";
+const FLASH_OPERATION_TAG: &str = "ota";
+const FLASH_ACTION_START: &str = "start";
+const FLASH_ACTION_ROLLBACK: &str = "rollback";
 
 #[derive(Debug, Clone)]
 struct LastKnownFaults {
@@ -203,7 +207,25 @@ struct CdaSyncExecutionResponse {
 #[derive(Debug, Clone)]
 struct CdaExecutionRecord {
     operation_id: String,
-    status: ExecutionStatusResponse,
+    kind: CdaExecutionKind,
+}
+
+#[derive(Debug, Clone)]
+enum CdaExecutionKind {
+    Standard(ExecutionStatusResponse),
+    Flash(FlashExecutionRecord),
+}
+
+#[derive(Debug, Clone)]
+struct FlashExecutionRecord {
+    transfer_id: String,
+    action: FlashExecutionAction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FlashExecutionAction {
+    Start,
+    Rollback,
 }
 
 #[derive(Debug, Clone)]
@@ -234,6 +256,20 @@ struct BulkDataManifestParameters {
 struct OtaStatusSnapshot {
     state: BulkDataState,
     reason: Option<BulkDataFailureReason>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FlashOperationParameters {
+    #[serde(default = "default_flash_action")]
+    action: String,
+    #[serde(default)]
+    transfer: Option<BulkDataTransferRequest>,
+    #[serde(default, rename = "transfer-id")]
+    transfer_id: Option<String>,
+}
+
+fn default_flash_action() -> String {
+    FLASH_ACTION_START.to_owned()
 }
 
 /// Forwarding backend that turns [`SovdBackend`] trait calls into SOVD
@@ -765,6 +801,138 @@ impl CdaBackend {
             "{LOCAL_COMPONENT_BASE_PATH_PREFIX}/{}/bulk-data",
             self.component_id
         )
+    }
+
+    fn operations_path(&self) -> String {
+        format!(
+            "{LOCAL_COMPONENT_BASE_PATH_PREFIX}/{}/operations",
+            self.component_id
+        )
+    }
+
+    fn is_flash_operation(&self, operation_id: &str) -> bool {
+        self.bulk_data_enabled() && operation_id.eq_ignore_ascii_case(FLASH_OPERATION_ID)
+    }
+
+    fn flash_operation_description() -> OperationDescription {
+        OperationDescription {
+            id: FLASH_OPERATION_ID.to_owned(),
+            name: Some("Flash firmware".to_owned()),
+            translation_id: None,
+            proximity_proof_required: false,
+            asynchronous_execution: true,
+            tags: Some(vec![FLASH_OPERATION_TAG.to_owned()]),
+        }
+    }
+
+    fn parse_flash_action(raw: &str) -> Result<FlashExecutionAction> {
+        if raw.eq_ignore_ascii_case(FLASH_ACTION_START) {
+            Ok(FlashExecutionAction::Start)
+        } else if raw.eq_ignore_ascii_case(FLASH_ACTION_ROLLBACK) {
+            Ok(FlashExecutionAction::Rollback)
+        } else {
+            Err(SovdError::InvalidRequest(format!(
+                "flash action must be \"{FLASH_ACTION_START}\" or \"{FLASH_ACTION_ROLLBACK}\""
+            )))
+        }
+    }
+
+    fn parse_flash_operation_parameters(
+        parameters: Option<serde_json::Value>,
+    ) -> Result<FlashOperationParameters> {
+        let raw = parameters.ok_or_else(|| {
+            SovdError::InvalidRequest(
+                "flash operation requires parameters with an action and transfer context".to_owned(),
+            )
+        })?;
+        serde_json::from_value(raw).map_err(|error| {
+            SovdError::InvalidRequest(format!("flash operation parameters decode failed: {error}"))
+        })
+    }
+
+    async fn start_flash_execution(
+        &self,
+        request: StartExecutionRequest,
+    ) -> Result<StartExecutionAsyncResponse> {
+        let parameters = Self::parse_flash_operation_parameters(request.parameters)?;
+        match Self::parse_flash_action(&parameters.action)? {
+            FlashExecutionAction::Start => {
+                let transfer = parameters.transfer.ok_or_else(|| {
+                    SovdError::InvalidRequest(
+                        "flash start requires a nested transfer request".to_owned(),
+                    )
+                })?;
+                let created = self.start_bulk_data(transfer).await?;
+                let execution_id = self
+                    .store_execution_record_with_id(
+                        created.transfer_id.clone(),
+                        FLASH_OPERATION_ID,
+                        CdaExecutionKind::Flash(FlashExecutionRecord {
+                            transfer_id: created.transfer_id,
+                            action: FlashExecutionAction::Start,
+                        }),
+                    )
+                    .await;
+                Ok(StartExecutionAsyncResponse {
+                    id: execution_id,
+                    status: Some(ExecutionStatus::Running),
+                })
+            }
+            FlashExecutionAction::Rollback => {
+                let transfer_id = parameters.transfer_id.ok_or_else(|| {
+                    SovdError::InvalidRequest(
+                        "flash rollback requires a transfer-id parameter".to_owned(),
+                    )
+                })?;
+                self.cancel_bulk_data(&transfer_id).await?;
+                let execution_id = self
+                    .store_execution_record(
+                        FLASH_OPERATION_ID,
+                        CdaExecutionKind::Flash(FlashExecutionRecord {
+                            transfer_id,
+                            action: FlashExecutionAction::Rollback,
+                        }),
+                    )
+                    .await;
+                Ok(StartExecutionAsyncResponse {
+                    id: execution_id,
+                    status: Some(ExecutionStatus::Running),
+                })
+            }
+        }
+    }
+
+    async fn flash_execution_status(
+        &self,
+        execution: &FlashExecutionRecord,
+    ) -> Result<ExecutionStatusResponse> {
+        let transfer_status = self.bulk_data_status(&execution.transfer_id).await?;
+        let status = match transfer_status.state {
+            BulkDataState::Downloading | BulkDataState::Verifying => ExecutionStatus::Running,
+            BulkDataState::Failed => ExecutionStatus::Failed,
+            BulkDataState::Idle | BulkDataState::Committed | BulkDataState::Rolledback => {
+                ExecutionStatus::Completed
+            }
+        };
+
+        Ok(ExecutionStatusResponse {
+            status: Some(status),
+            capability: Capability::Execute,
+            parameters: Some(serde_json::json!({
+                "action": match execution.action {
+                    FlashExecutionAction::Start => FLASH_ACTION_START,
+                    FlashExecutionAction::Rollback => FLASH_ACTION_ROLLBACK,
+                },
+                "transfer_id": transfer_status.transfer_id,
+                "transfer_state": transfer_status.state,
+                "bytes_received": transfer_status.bytes_received,
+                "total_bytes": transfer_status.total_bytes,
+                "target_slot": transfer_status.target_slot,
+                "reason": transfer_status.reason,
+            })),
+            schema: None,
+            error: None,
+        })
     }
 
     async fn send_generic_service(
@@ -1405,20 +1573,34 @@ impl CdaBackend {
         }
     }
 
+    async fn store_execution_record_with_id(
+        &self,
+        execution_id: String,
+        operation_id: &str,
+        kind: CdaExecutionKind,
+    ) -> String {
+        self.executions.lock().await.insert(
+            execution_id.clone(),
+            CdaExecutionRecord {
+                operation_id: operation_id.to_owned(),
+                kind,
+            },
+        );
+        execution_id
+    }
+
+    async fn store_execution_record(&self, operation_id: &str, kind: CdaExecutionKind) -> String {
+        self.store_execution_record_with_id(Uuid::new_v4().to_string(), operation_id, kind)
+            .await
+    }
+
     async fn store_execution_status(
         &self,
         operation_id: &str,
         status: ExecutionStatusResponse,
     ) -> String {
-        let execution_id = Uuid::new_v4().to_string();
-        self.executions.lock().await.insert(
-            execution_id.clone(),
-            CdaExecutionRecord {
-                operation_id: operation_id.to_owned(),
-                status,
-            },
-        );
-        execution_id
+        self.store_execution_record(operation_id, CdaExecutionKind::Standard(status))
+            .await
     }
 
     fn duplicate_chunk_matches(record: &BulkTransferRecord, chunk: &BulkDataChunk) -> bool {
@@ -1709,6 +1891,38 @@ impl SovdBackend for CdaBackend {
         Ok(())
     }
 
+    async fn list_operations(&self) -> Result<OperationsList> {
+        let url = self.component_url("operations")?;
+        let response =
+            self.send_with_auth_retry_response("list_operations", "GET", &url, |token| {
+                self.request_builder(self.http.get(url.clone()), token)
+            })
+            .await?;
+        let status = response.status();
+        let mut list = if status == StatusCode::NOT_FOUND {
+            OperationsList {
+                items: Vec::new(),
+                schema: None,
+            }
+        } else {
+            response
+                .error_for_status()
+                .map_err(|error| map_reqwest_err(&self.component_id, &error))?
+                .json::<OperationsList>()
+                .await
+                .map_err(|error| map_reqwest_err(&self.component_id, &error))?
+        };
+        if self.bulk_data_enabled()
+            && !list
+                .items
+                .iter()
+                .any(|item| item.id.eq_ignore_ascii_case(FLASH_OPERATION_ID))
+        {
+            list.items.push(Self::flash_operation_description());
+        }
+        Ok(list)
+    }
+
     async fn list_data(&self) -> Result<Datas> {
         let url = self.component_url("data")?;
         let response = self
@@ -1740,6 +1954,9 @@ impl SovdBackend for CdaBackend {
         operation_id: &str,
         request: StartExecutionRequest,
     ) -> Result<StartExecutionAsyncResponse> {
+        if self.is_flash_operation(operation_id) {
+            return self.start_flash_execution(request).await;
+        }
         let url = self.component_url(&format!("operations/{operation_id}/executions"))?;
         let resp = self
             .send_with_auth_retry_response("start_execution", "POST", &url, |token| {
@@ -1836,8 +2053,11 @@ impl SovdBackend for CdaBackend {
         operation_id: &str,
         execution_id: &str,
     ) -> Result<ExecutionStatusResponse> {
-        let guard = self.executions.lock().await;
-        let Some(record) = guard.get(execution_id) else {
+        let record = {
+            let guard = self.executions.lock().await;
+            guard.get(execution_id).cloned()
+        };
+        let Some(record) = record else {
             return Err(SovdError::NotFound {
                 entity: format!("execution \"{execution_id}\""),
             });
@@ -1847,7 +2067,10 @@ impl SovdBackend for CdaBackend {
                 entity: format!("execution \"{execution_id}\" of operation \"{operation_id}\""),
             });
         }
-        Ok(record.status.clone())
+        match record.kind {
+            CdaExecutionKind::Standard(status) => Ok(status),
+            CdaExecutionKind::Flash(execution) => self.flash_execution_status(&execution).await,
+        }
     }
 
     async fn entity_capabilities(&self) -> Result<EntityCapabilities> {
@@ -1887,6 +2110,9 @@ impl SovdBackend for CdaBackend {
         }
         if self.bulk_data_enabled() {
             capabilities.bulk_data = Some(self.bulk_data_path());
+            if capabilities.operations.is_none() {
+                capabilities.operations = Some(self.operations_path());
+            }
         }
         Ok(capabilities)
     }
@@ -2439,6 +2665,210 @@ mod tests {
             *state.request_download_payload.lock().await,
             vec![0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04]
         );
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn flash_operation_wraps_bulk_data_start_status_and_rollback() {
+        use std::sync::{
+            Arc as StdArc,
+            atomic::{AtomicBool, Ordering},
+        };
+
+        use axum::{
+            Router,
+            body::Bytes,
+            extract::State,
+            response::{IntoResponse, Response},
+            routing::put,
+        };
+        use tokio::{net::TcpListener, sync::Mutex as TokioMutex};
+
+        #[derive(Clone)]
+        struct FlashMockState {
+            rollback_called: StdArc<AtomicBool>,
+            upload_complete: StdArc<AtomicBool>,
+            manifest_payload: StdArc<TokioMutex<Vec<u8>>>,
+        }
+
+        async fn genericservice(State(state): State<FlashMockState>, body: Bytes) -> Response {
+            let request = body.to_vec();
+            match request.as_slice() {
+                [0x10, BULK_DATA_PROGRAMMING_SESSION] => vec![0x50, BULK_DATA_PROGRAMMING_SESSION],
+                [0x2E, 0xF1, 0xA0, rest @ ..] => {
+                    *state.manifest_payload.lock().await = rest.to_vec();
+                    vec![0x6E, 0xF1, 0xA0]
+                }
+                [0x34, 0x00, 0x44, ..] => vec![0x74, 0x20, 0x00, 0x82],
+                [0x36, 0x01, ..] => {
+                    state.upload_complete.store(true, Ordering::SeqCst);
+                    vec![0x76, 0x01]
+                }
+                [0x37] => vec![0x77],
+                [0x22, 0xF1, 0xA1] => {
+                    if state.rollback_called.load(Ordering::SeqCst) {
+                        vec![0x62, 0xF1, 0xA1, 0x05, 0x00, 0x02, 0x01, 0x00]
+                    } else if state.upload_complete.load(Ordering::SeqCst) {
+                        vec![0x62, 0xF1, 0xA1, 0x03, 0x00, 0x02, 0x01, 0x00]
+                    } else {
+                        vec![0x62, 0xF1, 0xA1, 0x01, 0x00, 0x00, 0x00, 0x00]
+                    }
+                }
+                [0x22, 0xF1, 0xA2] => vec![0x62, 0xF1, 0xA2, 0x12, 0x34, 0x56, 0x78],
+                [0x31, 0x01, 0x02, 0x02] => {
+                    state.rollback_called.store(true, Ordering::SeqCst);
+                    vec![0x71, 0x01, 0x02, 0x02, 0x05]
+                }
+                other => panic!("unexpected genericservice payload: {other:02X?}"),
+            }
+            .into_response()
+        }
+
+        let state = FlashMockState {
+            rollback_called: StdArc::new(AtomicBool::new(false)),
+            upload_complete: StdArc::new(AtomicBool::new(false)),
+            manifest_payload: StdArc::new(TokioMutex::new(Vec::new())),
+        };
+        let app = Router::new()
+            .route(
+                "/vehicle/v15/components/cvc/genericservice",
+                put(genericservice),
+            )
+            .with_state(state.clone());
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve mock CDA");
+        });
+
+        let image = [0x0A, 0x0B, 0x0C, 0x0D];
+        let digest = Sha256::digest(image);
+        let backend = CdaBackend::new(
+            ComponentId::new("cvc"),
+            Url::parse(&format!("http://{addr}/")).expect("parse mock CDA URL"),
+        )
+        .expect("construct backend");
+
+        let operations = backend.list_operations().await.expect("list operations");
+        assert!(
+            operations
+                .items
+                .iter()
+                .any(|item| item.id == FLASH_OPERATION_ID),
+            "flash operation must be advertised for the CVC OTA path"
+        );
+
+        let started = backend
+            .start_execution(
+                FLASH_OPERATION_ID,
+                StartExecutionRequest {
+                    timeout: Some(30),
+                    parameters: Some(serde_json::json!({
+                        "action": "start",
+                        "transfer": {
+                            "manifest": {
+                                "sha256": hex::encode(digest),
+                                "witnessId": 0x12345678u32,
+                            },
+                            "image-size": image.len(),
+                            "target-slot": "slot-b",
+                        },
+                    })),
+                    proximity_response: None,
+                },
+            )
+            .await
+            .expect("start flash execution");
+        assert_eq!(started.status, Some(ExecutionStatus::Running));
+
+        let running = backend
+            .execution_status(FLASH_OPERATION_ID, &started.id)
+            .await
+            .expect("flash execution status");
+        assert_eq!(running.status, Some(ExecutionStatus::Running));
+        assert_eq!(
+            running.parameters,
+            Some(serde_json::json!({
+                "action": "start",
+                "transfer_id": started.id,
+                "transfer_state": "Downloading",
+                "bytes_received": 0,
+                "total_bytes": image.len() as u64,
+                "target_slot": "slot-b",
+                "reason": serde_json::Value::Null,
+            }))
+        );
+
+        backend
+            .upload_bulk_data_chunk(
+                &started.id,
+                BulkDataChunk {
+                    range: sovd_interfaces::types::bulk_data::ContentRange {
+                        start: 0,
+                        end: (image.len() - 1) as u64,
+                        total: image.len() as u64,
+                    },
+                    bytes: image.to_vec(),
+                },
+            )
+            .await
+            .expect("upload flash payload");
+
+        let committed = backend
+            .execution_status(FLASH_OPERATION_ID, &started.id)
+            .await
+            .expect("flash committed status");
+        assert_eq!(committed.status, Some(ExecutionStatus::Completed));
+        assert_eq!(
+            committed.parameters,
+            Some(serde_json::json!({
+                "action": "start",
+                "transfer_id": started.id,
+                "transfer_state": "Committed",
+                "bytes_received": image.len() as u64,
+                "total_bytes": image.len() as u64,
+                "target_slot": "slot-b",
+                "reason": serde_json::Value::Null,
+            }))
+        );
+
+        let rollback = backend
+            .start_execution(
+                FLASH_OPERATION_ID,
+                StartExecutionRequest {
+                    timeout: Some(30),
+                    parameters: Some(serde_json::json!({
+                        "action": "rollback",
+                        "transfer-id": started.id,
+                    })),
+                    proximity_response: None,
+                },
+            )
+            .await
+            .expect("start flash rollback execution");
+        let rolled_back = backend
+            .execution_status(FLASH_OPERATION_ID, &rollback.id)
+            .await
+            .expect("flash rollback status");
+        assert_eq!(rolled_back.status, Some(ExecutionStatus::Completed));
+        assert_eq!(
+            rolled_back.parameters,
+            Some(serde_json::json!({
+                "action": "rollback",
+                "transfer_id": started.id,
+                "transfer_state": "Rolledback",
+                "bytes_received": image.len() as u64,
+                "total_bytes": image.len() as u64,
+                "target_slot": "slot-b",
+                "reason": serde_json::Value::Null,
+            }))
+        );
+        assert!(
+            state.rollback_called.load(Ordering::SeqCst),
+            "flash rollback must delegate to the OTA rollback routine"
+        );
+        assert_eq!(state.manifest_payload.lock().await.len(), BULK_DATA_OTA_MANIFEST_BYTES);
 
         handle.abort();
     }

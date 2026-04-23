@@ -19,6 +19,7 @@ repository = "https://github.com/eclipse-opensovd/opensovd-core"
 [workspace]
 resolver = "3"
 members = [
+  "backend-adapter",
   "sovd-interfaces",
   "sovd-covesa",
   "sovd-extended-vehicle",

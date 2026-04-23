@@ -821,8 +821,9 @@ it is not a compatibility commitment to any external runtime.
 - [ADR-0016](docs/adr/0016-pluggable-score-backends.md) defines the
   pluggable-backend shape (S-CORE or other backends plug in behind the
   Taktflow defaults).
-- Planned **ADR-0038** — backend compatibility interface — will
-  formalize the exact trait, lifecycle, and data model mapping.
+- [ADR-0038](docs/adr/ADR-0038-pluggable-backend-compatibility-interface.md)
+  formalizes the exact compatibility trait, adapter lifecycle, and data model
+  mapping for the ecosystem-facing seam.
 
 **Constraint.** Direction is inward only: external backends (e.g. the
 S-CORE persistency / fault-lib backends) can be loaded behind the
@@ -921,8 +922,10 @@ keeps these inline in `sovd-server` and relies on the trait-seam model
    peers a bounded refactor if OEM policy later changes. The decision
    is not load-bearing on any milestone.
 
-This decision is recorded as execution step §7.11.1 `P10-SCA-D1` (a
-design memo) rather than as an implementation commitment.
+This decision is recorded in
+[`docs/architecture/score-alignment-decisions.md`](docs/architecture/score-alignment-decisions.md)
+through execution step §7.11.1 `P10-SCA-D1`, and remains a design memo
+rather than an implementation commitment.
 
 **Closed alignments (Track A).** §7.11.1 `P10-SCA-A1` and `P10-SCA-A2`
 close the two box-level gaps OEM policy accepts as valuable to T1
@@ -1454,11 +1457,11 @@ documented.
 
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
-| P10-ECO-01 | pending | decision_doc | Author ADR-0038 pluggable backend compatibility interface | Trait + lifecycle + data-model mapping defined |
-| P10-ECO-02 | pending | repo_only | Implement `backend-adapter` crate | Crate lands; wraps `sovd-gateway` behind the compatibility trait |
-| P10-ECO-03 | pending | repo_only | Compatibility test (synthetic external caller → SOVD backend) | Synthetic caller round-trips through the adapter |
-| P10-ECO-04 | pending | decision_doc | COVESA VSS spec-drift review | `docs/ecosystem/covesa-vss-drift-1.md` lands |
-| P10-ECO-05 | pending | decision_doc | ML artifact delivery boundary verification doc | Boundary matches ADR-0028 |
+| P10-ECO-01 | done | decision_doc | Author ADR-0038 pluggable backend compatibility interface | Trait + lifecycle + data-model mapping defined |
+| P10-ECO-02 | done | repo_only | Implement `backend-adapter` crate | Crate lands; wraps `sovd-gateway` behind the compatibility trait |
+| P10-ECO-03 | done | repo_only | Compatibility test (synthetic external caller → SOVD backend) | Synthetic caller round-trips through the adapter |
+| P10-ECO-04 | done | decision_doc | COVESA VSS spec-drift review | `docs/ecosystem/covesa-vss-drift-1.md` lands |
+| P10-ECO-05 | done | decision_doc | ML artifact delivery boundary verification doc | Boundary matches ADR-0028 |
 
 #### 7.11.1 P10 — S-CORE Diagnostic Concept Alignment (ECO-5)
 
@@ -1472,8 +1475,8 @@ changes.
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
 | P10-SCA-A1 | **superseded by Part II PROD-20** (2026-04-21) | repo_only | ~~Wire `uds2sovd-proxy/` into `sovd-gateway`~~ — audit 2026-04-21 found the vendored [`uds2sovd-proxy/`](uds2sovd-proxy/) is empty scaffold (zero `.rs` files, byte-identical to upstream which is also just a Cargo.toml + README). The "crate exists, not wired" framing is stale. There is no code to wire; the work is design + implementation + wiring, reframed as a Part-II capability — see **PROD-20 UDS→SOVD ingress proxy** in `MASTER-PLAN-PART-2-PRODUCTION-GRADE.md` §II.6.20. | (moved — acceptance now lives in PROD-20 Verification) |
-| P10-SCA-A2 | pending | repo_only | Expose CVC OTA as SOVD `flash` routine | `/components/{id}/operations/flash` round-trips against the P6-05 CVC OTA handler; start / status / rollback all reachable via SOVD routine envelope; no regression on P6-05 OTA witness |
-| P10-SCA-D1 | pending | decision_doc | Record monolith-over-IPC-peers decision for Config / Auth / Crypto | Design memo lands at `docs/architecture/score-alignment-decisions.md`; memo captures the four OEM rationales in §5.4.4 (T1 onboarding cost, conformance surface, trait-seam fault isolation, reversibility) and names the future trait-seam extract as the reversibility path |
+| P10-SCA-A2 | done | repo_only | Expose CVC OTA as SOVD `flash` routine | `/components/{id}/operations/flash` round-trips against the P6-05 CVC OTA handler; start / status / rollback all reachable via SOVD routine envelope; no regression on P6-05 OTA witness |
+| P10-SCA-D1 | done | decision_doc | Record monolith-over-IPC-peers decision for Config / Auth / Crypto | Design memo lands at `docs/architecture/score-alignment-decisions.md`; memo captures the four OEM rationales in §5.4.4 (T1 onboarding cost, conformance surface, trait-seam fault isolation, reversibility) and names the future trait-seam extract as the reversibility path |
 
 ### 7.12 P11 — Conformance & Documentation Maturity
 
@@ -1717,7 +1720,7 @@ pulled in.
 | doip-codec Cargo pin — vendor vs git-rev | Rust lead | G-OTA-SCOPE | Default git-rev; confirmed during P5-HIL-08 |
 | OTA scope-down — drop boot-OK witness? defer N=5 rollback? | Architect + Embedded lead | G-OTA-SCOPE | Open |
 | ISO 21434 CAL levels — per-surface table | Security lead | P9-CS-03 | Open |
-| S-CORE backend trait surface | Architect | P10-ECO-01 | Open |
+| S-CORE backend trait surface | Architect | P10-ECO-01 | Decided - ADR-0038 accepted |
 | ISO 17978 conformance subset declaration | Architect | P11-CONF-01 | Open |
 
 ---

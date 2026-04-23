@@ -26,11 +26,13 @@ All paths are relative to the repository root
 | `docs/REQUIREMENTS.md` | Formal numbered requirements (FR / NFR / SR / SEC / COMP), traceable, ASPICE-compatible | You need to verify what the system must do, or design a test that traces back to a stable ID |
 | `docs/ARCHITECTURE.md` | arc42-format project-level architecture description | You need the component topology, runtime views, deployment views, or a cross-cutting concept |
 | `docs/adr/` | Architecture Decision Records (in the upstream-ready shape) | You need the rationale for a specific decision |
+| `docs/architecture/score-alignment-decisions.md` | Phase 10 memo for the monolith-over-IPC-peers S-CORE alignment decision | You need the OEM rationale for keeping Config/Auth/Crypto inline |
+| `docs/ecosystem/` | Phase 10 ecosystem-alignment reviews (VSS drift, ML boundary) | You need the internal compatibility and standards-drift notes behind P10 |
 | `work/TASKS.md` *(gitignored)* | Task breakdown (tactical, week-level) | You need the week's work list |
 | `work/WORKING-LINES.md` *(gitignored)* | Parallel working lines | You need to know which parallel effort you are on |
 | `README.md` | Workspace top-level readme | Orientation |
 
-## ADR index (live as of Rev 1.2)
+## ADR index (live as of Rev 1.4)
 
 | ID | Title | Status | File |
 |----|-------|--------|------|
@@ -59,6 +61,7 @@ All paths are relative to the repository root
 | ADR-0023 | Reduce HIL/SIL test bench from 7 ECUs to 3 ECUs (CVC + SC + BCM) | Accepted | `adr/0023-reduce-bench-to-3-ecus.md` |
 | ADR-0024 | Reuse embedded-production cloud connector + SvelteKit capability-showcase dashboard | Accepted | `adr/0024-reuse-embedded-production-cloud-connector.md` |
 | ADR-0025 | Pull OTA firmware update into scope (STM32/CVC first, reuse signing) | Accepted | `adr/0025-ota-firmware-update-scope.md` |
+| ADR-0038 | Pluggable backend compatibility interface | Accepted | `adr/ADR-0038-pluggable-backend-compatibility-interface.md` |
 
 Upstream ADRs referenced by this project:
 
@@ -96,8 +99,5 @@ Upstream ADRs referenced by this project:
 This index is maintained alongside the other docs. When you add a new doc
 under `docs/` or a new ADR, update this file in the same commit.
 
-Rev 1.2 - 2026-04-17 — Added ADR-0025 (OTA firmware update scope;
-all three ADR-0025 open questions resolved in the same round: CMS
-over X.509 for signing, N = 5 for auto-rollback, commit witness
-enabled). OTA safety SRs use SR-6.x (append-only); SR-5.1 remains
-the DoIP transport-isolation requirement.
+Rev 1.4 - 2026-04-23 - Added the Phase 10 ecosystem and S-CORE alignment
+docs (`docs/ecosystem/` plus `docs/architecture/score-alignment-decisions.md`).

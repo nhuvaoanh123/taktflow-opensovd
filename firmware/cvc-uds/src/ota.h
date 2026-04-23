@@ -44,6 +44,8 @@
 #define OTA_ERR_BAD_DID           0x0AU  /* DID not owned by OTA */
 #define OTA_ERR_HASH_MISMATCH     0x0BU  /* verify step: sha256 != expected */
 #define OTA_ERR_INCOMPLETE        0x0CU  /* transfer exit before all bytes received */
+#define OTA_ERR_DOWNGRADE         0x0DU  /* manifest v2 min_counter <= current witness counter */
+#define OTA_ERR_UNKNOWN_VERSION   0x0EU  /* manifest version byte not 0x01 or 0x02 */
 
 void ota_init(void);
 void ota_poll(void);

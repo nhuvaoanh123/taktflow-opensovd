@@ -55,6 +55,8 @@ static uint8 ota_err_to_nrc(uint8 ota_err, uint8 fallback_nrc)
     case OTA_ERR_BAD_DID:          return NRC_REQUEST_OUT_OF_RANGE;
     case OTA_ERR_HASH_MISMATCH:    return NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED;
     case OTA_ERR_INCOMPLETE:       return NRC_REQUEST_SEQUENCE_ERROR;
+    case OTA_ERR_DOWNGRADE:        return NRC_CONDITIONS_NOT_CORRECT;
+    case OTA_ERR_UNKNOWN_VERSION:  return NRC_REQUEST_OUT_OF_RANGE;
     default:                       return fallback_nrc;
     }
 }

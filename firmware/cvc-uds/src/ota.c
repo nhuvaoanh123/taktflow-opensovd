@@ -13,8 +13,11 @@
 #define OTA_ACTIVE_METADATA_ADDRESS    (OTA_ACTIVE_BANK_BASE + OTA_IMAGE_MAX_BYTES)
 #define OTA_INACTIVE_METADATA_ADDRESS  (OTA_INACTIVE_BANK_BASE + OTA_IMAGE_MAX_BYTES)
 #define OTA_PENDING_RESET_DELAY_MS     20U
-#define OTA_MANIFEST_VERSION           0x01U
-#define OTA_MANIFEST_BYTES             38U
+#define OTA_MANIFEST_VERSION_V1        0x01U
+#define OTA_MANIFEST_VERSION_V2        0x02U
+#define OTA_MANIFEST_BYTES_V1          38U  /* [ver|slot|wid(4)|sha(32)] */
+#define OTA_MANIFEST_BYTES_V2          42U  /* v1 + min_witness_counter(4) */
+#define OTA_MANIFEST_BYTES             OTA_MANIFEST_BYTES_V1  /* kept for callers expecting minimum */
 #define OTA_STATUS_BYTES               5U
 #define OTA_WITNESS_BYTES              4U
 #define OTA_MAX_BLOCK_LENGTH           130U
@@ -41,6 +44,7 @@ typedef struct
 typedef struct
 {
     uint8 manifest_ready;
+    uint8 manifest_version;
     uint8 expected_block_sequence_counter;
     uint8 expected_sha256[SHA256_DIGEST_BYTES];
     uint8 pending_doubleword[8];
@@ -49,6 +53,7 @@ typedef struct
     uint32 total_size;
     uint32 bytes_received;
     uint32 witness_id;
+    uint32 min_witness_counter;  /* v2 only; 0 for v1 */
     uint32 last_activity_tick;
 } ota_download_state_t;
 
@@ -247,6 +252,17 @@ static uint32 ota_program_bytes(uint32 address, const uint8 *bytes, uint32 len)
 static uint32 ota_write_metadata_to_inactive_bank(uint8 state, uint8 reason)
 {
     ota_metadata_t metadata;
+    uint32 next_counter = (uint32)g_witness_counter + 1U;
+
+    /* On a v2-manifest commit, honor the manifest's min_witness_counter
+     * as the new counter value. This encodes the monotonic-downgrade
+     * protection on persistent metadata. For v1 manifests, rollback,
+     * and failure states, min_witness_counter is 0 and we fall back
+     * to the plain `current + 1` increment. */
+    if (state == OTA_STATE_COMMITTED
+        && g_download.min_witness_counter > next_counter) {
+        next_counter = g_download.min_witness_counter;
+    }
 
     if (ota_erase_pages(ota_inactive_bank_constant(), 127U, 1U) == 0U) {
         return 0U;
@@ -259,7 +275,7 @@ static uint32 ota_write_metadata_to_inactive_bank(uint8 state, uint8 reason)
         (g_active_slot == OTA_SLOT_A) ? OTA_SLOT_B : OTA_SLOT_A,
         g_download.total_size,
         g_witness_id,
-        (uint8)(g_witness_counter + 1U),
+        (uint8)(next_counter & 0xFFU),
         g_download.expected_sha256
     );
 
@@ -279,12 +295,14 @@ static void ota_set_runtime_status(uint8 state, uint8 reason)
 static void ota_clear_manifest(void)
 {
     g_download.manifest_ready = 0U;
+    g_download.manifest_version = 0U;
     g_download.pending_doubleword_len = 0U;
     g_download.programmed_bytes = 0U;
     g_download.total_size = 0U;
     g_download.bytes_received = 0U;
     g_download.expected_block_sequence_counter = 1U;
     g_download.witness_id = 0UL;
+    g_download.min_witness_counter = 0UL;
     g_download.last_activity_tick = 0UL;
     for (uint32 i = 0U; i < 8U; i++) {
         g_download.pending_doubleword[i] = 0U;
@@ -436,15 +454,31 @@ uint32 ota_read_did(uint16 did, uint8 *bytes, uint32 *len)
 uint32 ota_write_did(uint16 did, const uint8 *bytes, uint32 len)
 {
     uint32 proposed_witness;
+    uint32 proposed_min_counter = 0UL;
+    uint8 version;
+    uint32 required_len;
 
     g_last_error = OTA_ERR_NONE;
 
     if (did != OTA_DID_MANIFEST) {
         return ota_fail(OTA_ERR_BAD_DID);
     }
-    if (len < OTA_MANIFEST_BYTES) {
+    if (len < 1U) {
         return ota_fail(OTA_ERR_BAD_LENGTH);
     }
+
+    version = bytes[0];
+    if (version == OTA_MANIFEST_VERSION_V1) {
+        required_len = OTA_MANIFEST_BYTES_V1;
+    } else if (version == OTA_MANIFEST_VERSION_V2) {
+        required_len = OTA_MANIFEST_BYTES_V2;
+    } else {
+        return ota_fail(OTA_ERR_UNKNOWN_VERSION);
+    }
+    if (len < required_len) {
+        return ota_fail(OTA_ERR_BAD_LENGTH);
+    }
+
     /* Lock the manifest once a transfer is in flight. Accepting a second
      * manifest mid-transfer would let an attacker swap the expected hash
      * after some image bytes have already landed on the inactive bank. */
@@ -458,10 +492,7 @@ uint32 ota_write_did(uint16 did, const uint8 *bytes, uint32 len)
                      | (uint32)bytes[5];
 
     /* Reject the sentinel "no witness" value and any attempt to install
-     * an image whose witness matches the currently-active bank. The
-     * first guard stops lazy testers submitting witness_id=0; the second
-     * prevents a trivial re-install attack where a manifest collides
-     * with the installed image's witness to mask the provenance. */
+     * an image whose witness matches the currently-active bank. */
     if (proposed_witness == 0UL) {
         return ota_fail(OTA_ERR_BAD_LENGTH);
     }
@@ -469,8 +500,23 @@ uint32 ota_write_did(uint16 did, const uint8 *bytes, uint32 len)
         return ota_fail(OTA_ERR_MANIFEST_LOCKED);
     }
 
+    if (version == OTA_MANIFEST_VERSION_V2) {
+        proposed_min_counter = ((uint32)bytes[38] << 24U)
+                             | ((uint32)bytes[39] << 16U)
+                             | ((uint32)bytes[40] << 8U)
+                             | (uint32)bytes[41];
+        /* v2 carries a monotonic counter to block downgrade. The
+         * manifest's min_counter must strictly exceed the currently-
+         * installed counter for the install to be accepted. */
+        if (proposed_min_counter <= (uint32)g_witness_counter) {
+            return ota_fail(OTA_ERR_DOWNGRADE);
+        }
+    }
+
     g_download.manifest_ready = 1U;
+    g_download.manifest_version = version;
     g_download.witness_id = proposed_witness;
+    g_download.min_witness_counter = proposed_min_counter;
     for (uint32 i = 0U; i < SHA256_DIGEST_BYTES; i++) {
         g_download.expected_sha256[i] = bytes[6U + i];
     }

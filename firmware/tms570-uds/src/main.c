@@ -14,6 +14,7 @@
 
 #include "can_drv.h"
 #include "uds.h"
+#include "ota.h"
 
 #define LED_PORT      gioPORTB
 #define LED_BLINK     6U
@@ -41,6 +42,7 @@ int main(void)
     gioSetBit(LED_PORT, LED_ALIVE, 1U);
 
     can_drv_init();
+    ota_init();
 
     uint32 phase = 1U;
     uint32 ms    = 0U;
@@ -51,6 +53,7 @@ int main(void)
         ms++;
 
         (void)uds_poll();
+        ota_poll(1U);
 
         if (ms >= BLINK_PERIOD_MS) {
             ms = 0U;

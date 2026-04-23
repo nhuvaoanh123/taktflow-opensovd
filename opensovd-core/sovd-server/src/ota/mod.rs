@@ -16,8 +16,14 @@
 //! threat this module closes.
 
 pub mod signing;
+pub mod witness;
 
 pub use signing::{
     AllowUnsignedVerifier, RequireSignedVerifier, SignatureOutcome, SignatureVerifier,
     SignedManifest, VerifierError,
+};
+pub use witness::{
+    build_manifest_v1, build_manifest_v2, compute_witness_from_image, manifest_sha256,
+    manifest_witness_id, verify_reported_witness, MANIFEST_BYTES_V1, MANIFEST_BYTES_V2,
+    MANIFEST_VERSION_V1, MANIFEST_VERSION_V2, WitnessError,
 };

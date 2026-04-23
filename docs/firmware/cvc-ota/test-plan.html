@@ -582,6 +582,105 @@ model checker (not yet automated):</p>
   <code>bytes_received</code>, <code>total_size</code>, <code>pending_doubleword</code>, and resets
   <code>expected_block_sequence_counter</code> to 1.</li>
 </ul>
+<h2 id="4bis-tms570-on-target-smoke">4bis. TMS570 on-target smoke</h2>
+<p>Executed on the TMS570LC4357 LaunchPad using <code>isotpsend</code> / <code>isotprecv</code>
+(can-utils) on the bench Pi with <code>can0 @ 500 kbps</code>. TX CAN-ID <code>0x7E3</code>,
+RX CAN-ID <code>0x7EB</code>. The firmware image is flashed via XDS110 + DSLite
+(<code>make -C firmware/tms570-uds flash</code>).</p>
+<p><strong>Purpose.</strong> Verify that the TMS570 OTA state machine — which shares
+every wire-format decision with CVC but uses a RAM staging buffer
+instead of dual-bank flash — accepts the same manifest, runs the same
+<code>0x34/0x36/0x37</code> sequence, and reports the same status DIDs.</p>
+<p><strong>Script.</strong> <code>test/firmware/tms570-uds-ota/hil_smoke.py</code> (harness-local;
+Python stdlib only; wraps <code>isotpsend</code> / <code>isotprecv</code> via <code>subprocess</code>).</p>
+<p><strong>Steps and acceptance.</strong></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Request</th>
+<th>Expected response</th>
+<th>Asserts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>0x22 0xF1 0x90</code></td>
+<td><code>0x62 F1 90 …</code> (VIN)</td>
+<td>UDS baseline service reachable</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>0x10 0x02</code></td>
+<td><code>0x50 02 …</code></td>
+<td>Programming session granted</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>0x22 0xF1 0xA1</code></td>
+<td><code>0x62 F1 A1 00 00 01 00 00</code></td>
+<td>Pre-transfer status: <code>IDLE</code>, <code>counter=0</code>, <code>manifest_ready=0</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>0x2E 0xF1 0xA0 ‹38 B v1 manifest›</code></td>
+<td><code>0x6E F1 A0</code></td>
+<td>Manifest v1 parse + witness-id accept</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>0x34 0x00 0x44 ‹addr=0x00020000› ‹size=256›</code></td>
+<td><code>0x74 0x20 0x00 0x82</code></td>
+<td><code>max_block_length = 130</code> (=0x0082)</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>0x36 0x01 ‹128 B›</code></td>
+<td><code>0x76 0x01</code></td>
+<td>BSC=1 accepted and echoed</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>0x36 0x02 ‹128 B›</code></td>
+<td><code>0x76 0x02</code></td>
+<td>BSC=2 accepted; all 256 bytes staged</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>0x37</code></td>
+<td><code>0x77</code></td>
+<td>Exit accepted; SHA-256 compare on RAM staging equals manifest digest (constant-time)</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>0x22 0xF1 0xA1</code></td>
+<td><code>0x62 F1 A1 03 00 01 01 00</code></td>
+<td>Post-transfer status: <code>COMMITTED</code>, <code>counter=1</code>, <code>manifest_ready=0</code></td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>0x22 0xF1 0xA2</code></td>
+<td><code>0x62 F1 A2 DE AD BE EF</code></td>
+<td>Witness-id read-back matches manifest</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Status.</strong> First live-hardware pass on 2026-04-23. Captured in
+<code>H:\handoff\taktflow-opensovd\cvc-ota-hardening\2026-04-22-five-item-hardening-handoff.yaml</code>.
+Known firmware fix needed to enable multi-frame RX: <code>send_flow_control</code>
+now returns STmin=5 ms — the DCAN RX path has a single mailbox and the
+1 ms polling loop in <code>wait_for_consecutive_frame</code> cannot keep up with
+STmin=0 CF streaming from <code>isotpsend</code> (~0.25 ms cadence). The fix is
+in <code>firmware/tms570-uds/src/uds.c</code> at the first-frame handler.</p>
+<p><strong>Not yet covered on TMS570.</strong></p>
+<ul>
+<li>No equivalent of §3.2 rollback test (flash stubs accept rollback
+  routine but there is no second image to roll back to).</li>
+<li>No equivalent of §3.3 negative cases; the code paths are identical
+  to CVC by construction, but they have not been exercised on metal.</li>
+<li>No persistence across power-cycle (the staging buffer is in RAM).</li>
+</ul>
 <h2 id="5-regression-coverage-before-release">5. Regression coverage before release</h2>
 <p>Minimum acceptance before a firmware tag:</p>
 <ol>
@@ -598,14 +697,17 @@ model checker (not yet automated):</p>
 </ol>
 <h2 id="6-known-gaps-in-test-infrastructure">6. Known gaps in test infrastructure</h2>
 <ul>
-<li><strong>No firmware unit-test harness.</strong> <code>ota.c</code> and <code>uds.c</code> are linked
-  only against HAL; there is no POSIX-host build that would allow
-  GoogleTest / Unity tests of the state machine logic. The §3 tests
-  therefore require physical hardware.</li>
-<li><strong>No automated HIL regression.</strong> The §3 tests are executed manually
-  today. A replay-based test driver that reads a recorded UDS trace
-  and asserts the expected response sequence would remove operator
-  variance.</li>
+<li><strong>POSIX unit-test harness for <code>ota.c</code> is in place</strong> at
+  <a href="../../../test/firmware/cvc-uds-ota/"><code>test/firmware/cvc-uds-ota/</code></a>.
+  Compiles the real <code>ota.c</code> against an HAL / flash stub layer with
+  <code>-DPOSIX_OTA_TEST</code> and runs 19 cases covering manifest parsing,
+  witness replay guard, timeout handling, hash mismatch, wrong-state
+  rejection, and manifest-lock-during-download. TMS570&rsquo;s <code>ota.c</code>
+  does not yet have the equivalent harness — tracked as follow-on.</li>
+<li><strong>No automated HIL regression.</strong> The §3 / §4bis tests are executed
+  manually today. A replay-based test driver that reads a recorded
+  UDS trace and asserts the expected response sequence would remove
+  operator variance.</li>
 <li><strong>No fuzz coverage on the UDS parser.</strong> An AFL / libFuzzer-style
   harness against <code>recv_request</code> + <code>dispatch</code> would shake out any
   remaining edge cases in the ISO-TP reassembler.</li>

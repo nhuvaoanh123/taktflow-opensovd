@@ -150,6 +150,52 @@ model checker (not yet automated):
   `bytes_received`, `total_size`, `pending_doubleword`, and resets
   `expected_block_sequence_counter` to 1.
 
+## 4bis. TMS570 on-target smoke
+
+Executed on the TMS570LC4357 LaunchPad using `isotpsend` / `isotprecv`
+(can-utils) on the bench Pi with `can0 @ 500 kbps`. TX CAN-ID `0x7E3`,
+RX CAN-ID `0x7EB`. The firmware image is flashed via XDS110 + DSLite
+(`make -C firmware/tms570-uds flash`).
+
+**Purpose.** Verify that the TMS570 OTA state machine — which shares
+every wire-format decision with CVC but uses a RAM staging buffer
+instead of dual-bank flash — accepts the same manifest, runs the same
+`0x34/0x36/0x37` sequence, and reports the same status DIDs.
+
+**Script.** `test/firmware/tms570-uds-ota/hil_smoke.py` (harness-local;
+Python stdlib only; wraps `isotpsend` / `isotprecv` via `subprocess`).
+
+**Steps and acceptance.**
+
+| # | Request | Expected response | Asserts |
+|---|---|---|---|
+| 1 | `0x22 0xF1 0x90` | `0x62 F1 90 …` (VIN) | UDS baseline service reachable |
+| 2 | `0x10 0x02` | `0x50 02 …` | Programming session granted |
+| 3 | `0x22 0xF1 0xA1` | `0x62 F1 A1 00 00 01 00 00` | Pre-transfer status: `IDLE`, `counter=0`, `manifest_ready=0` |
+| 4 | `0x2E 0xF1 0xA0 ‹38 B v1 manifest›` | `0x6E F1 A0` | Manifest v1 parse + witness-id accept |
+| 5 | `0x34 0x00 0x44 ‹addr=0x00020000› ‹size=256›` | `0x74 0x20 0x00 0x82` | `max_block_length = 130` (=0x0082) |
+| 6 | `0x36 0x01 ‹128 B›` | `0x76 0x01` | BSC=1 accepted and echoed |
+| 7 | `0x36 0x02 ‹128 B›` | `0x76 0x02` | BSC=2 accepted; all 256 bytes staged |
+| 8 | `0x37` | `0x77` | Exit accepted; SHA-256 compare on RAM staging equals manifest digest (constant-time) |
+| 9 | `0x22 0xF1 0xA1` | `0x62 F1 A1 03 00 01 01 00` | Post-transfer status: `COMMITTED`, `counter=1`, `manifest_ready=0` |
+| 10 | `0x22 0xF1 0xA2` | `0x62 F1 A2 DE AD BE EF` | Witness-id read-back matches manifest |
+
+**Status.** First live-hardware pass on 2026-04-23. Captured in
+`H:\handoff\taktflow-opensovd\cvc-ota-hardening\2026-04-22-five-item-hardening-handoff.yaml`.
+Known firmware fix needed to enable multi-frame RX: `send_flow_control`
+now returns STmin=5 ms — the DCAN RX path has a single mailbox and the
+1 ms polling loop in `wait_for_consecutive_frame` cannot keep up with
+STmin=0 CF streaming from `isotpsend` (~0.25 ms cadence). The fix is
+in `firmware/tms570-uds/src/uds.c` at the first-frame handler.
+
+**Not yet covered on TMS570.**
+
+- No equivalent of §3.2 rollback test (flash stubs accept rollback
+  routine but there is no second image to roll back to).
+- No equivalent of §3.3 negative cases; the code paths are identical
+  to CVC by construction, but they have not been exercised on metal.
+- No persistence across power-cycle (the staging buffer is in RAM).
+
 ## 5. Regression coverage before release
 
 Minimum acceptance before a firmware tag:
@@ -167,14 +213,17 @@ Minimum acceptance before a firmware tag:
 
 ## 6. Known gaps in test infrastructure
 
-- **No firmware unit-test harness.** `ota.c` and `uds.c` are linked
-  only against HAL; there is no POSIX-host build that would allow
-  GoogleTest / Unity tests of the state machine logic. The §3 tests
-  therefore require physical hardware.
-- **No automated HIL regression.** The §3 tests are executed manually
-  today. A replay-based test driver that reads a recorded UDS trace
-  and asserts the expected response sequence would remove operator
-  variance.
+- **POSIX unit-test harness for `ota.c` is in place** at
+  [`test/firmware/cvc-uds-ota/`](../../../test/firmware/cvc-uds-ota/).
+  Compiles the real `ota.c` against an HAL / flash stub layer with
+  `-DPOSIX_OTA_TEST` and runs 19 cases covering manifest parsing,
+  witness replay guard, timeout handling, hash mismatch, wrong-state
+  rejection, and manifest-lock-during-download. TMS570's `ota.c`
+  does not yet have the equivalent harness — tracked as follow-on.
+- **No automated HIL regression.** The §3 / §4bis tests are executed
+  manually today. A replay-based test driver that reads a recorded
+  UDS trace and asserts the expected response sequence would remove
+  operator variance.
 - **No fuzz coverage on the UDS parser.** An AFL / libFuzzer-style
   harness against `recv_request` + `dispatch` would shake out any
   remaining edge cases in the ISO-TP reassembler.

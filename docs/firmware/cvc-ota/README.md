@@ -1,9 +1,9 @@
 # CVC OTA — Firmware Over-The-Air Update
 
-Feature documentation for the Central Vehicle Controller (CVC) over-the-air
-firmware update path, implemented on the STM32G474 reference hardware and
-driven from the host-side Rust SOVD server over UDS-on-CAN / DoIP via the
-upstream Eclipse OpenSOVD Classic Diagnostic Adapter.
+Feature documentation for the over-the-air firmware update path used by
+both the Central Vehicle Controller (CVC, STM32G474) and the TMS570 UDS
+ECU, driven from the host-side Rust SOVD server over UDS-on-CAN / DoIP
+via the upstream Eclipse OpenSOVD Classic Diagnostic Adapter.
 
 The feature provides end-to-end firmware replacement: a host orchestrator
 authors a manifest, writes it to the ECU, streams image bytes over UDS
@@ -11,19 +11,29 @@ authors a manifest, writes it to the ECU, streams image bytes over UDS
 switch + reset on the next power cycle. Rollback is a first-class
 operation that reverses the bank-switch and restores the previous image.
 
+The wire protocol, manifest layout, DID set, and error-code taxonomy are
+identical on CVC and TMS570 — a host driver does not know which target
+it is talking to. Only the flash-programming backing diverges (CVC does
+real dual-bank flash today; TMS570 stages in RAM with stubbed flash
+pending F021 Flash API wiring).
+
 ## Status
 
 | Aspect | State |
 |---|---|
-| Bench maturity | End-to-end on live hardware (STM32G474RE Nucleo) |
-| Firmware target | `firmware/cvc-uds/` — `taktflow-cvc-uds.elf`, 16 KB text, 204 B bss |
-| Toolchain | `arm-none-eabi-gcc` 13.3.0 |
+| Bench maturity (CVC) | End-to-end on live hardware (STM32G474RE Nucleo) |
+| Bench maturity (TMS570) | Protocol-parity smoke passed on live TMS570LC4357 LaunchPad — manifest v1, `0x34/0x36/0x37` bulk-data, SHA-256 verify, witness round-trip, counter increment. Flash write / bank-switch stubbed pending F021 Flash API. |
+| Firmware target (CVC) | `firmware/cvc-uds/` — `taktflow-cvc-uds.elf`, 16 KB text, 204 B bss |
+| Firmware target (TMS570) | `firmware/tms570-uds/` — `taktflow-tms570-uds.out`, 114 KB ELF / 44 KB TI-TXT, big-endian Cortex-R5F |
+| Toolchain (CVC) | `arm-none-eabi-gcc` 13.3.0 |
+| Toolchain (TMS570) | `tiarmclang` 4.0.4 LTS (TI ARM Clang / LLVM), `-Wl,--be32` |
 | Host driver | [`opensovd-core/sovd-server/src/backends/cda.rs`](../../../opensovd-core/sovd-server/src/backends/cda.rs) |
-| Wire protocol | ISO 14229 UDS over CAN + ISO 15765-2 ISO-TP |
+| Wire protocol | ISO 14229 UDS over CAN + ISO 15765-2 ISO-TP — identical contract on both targets |
+| Manifest | v1 (38 B) + v2 (42 B, monotonic `min_witness_counter` downgrade guard) |
 | Integrity | On-MCU SHA-256 verify (constant-time compare) |
 | Authentication | Design only — CMS / X.509 chain validation scaffold; not wired |
-| Rollback | Explicit routine `0x31 01 0202`, dual-bank A/B |
-| Anti-replay | Witness-id uniqueness guard + inactivity timeout |
+| Rollback | Explicit routine `0x31 01 0202`, dual-bank A/B (CVC); RAM-staged with stubbed bank-switch (TMS570) |
+| Anti-replay | Witness-id uniqueness guard + inactivity timeout (both targets) |
 
 ## Document map
 

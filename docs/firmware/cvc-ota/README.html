@@ -305,15 +305,20 @@ mermaid.initialize({
 <article>
 <div class="breadcrumb"><a href="README.html">CVC OTA</a> / Overview</div>
 <h1 id="cvc-ota-firmware-over-the-air-update">CVC OTA — Firmware Over-The-Air Update</h1>
-<p>Feature documentation for the Central Vehicle Controller (CVC) over-the-air
-firmware update path, implemented on the STM32G474 reference hardware and
-driven from the host-side Rust SOVD server over UDS-on-CAN / DoIP via the
-upstream Eclipse OpenSOVD Classic Diagnostic Adapter.</p>
+<p>Feature documentation for the over-the-air firmware update path used by
+both the Central Vehicle Controller (CVC, STM32G474) and the TMS570 UDS
+ECU, driven from the host-side Rust SOVD server over UDS-on-CAN / DoIP
+via the upstream Eclipse OpenSOVD Classic Diagnostic Adapter.</p>
 <p>The feature provides end-to-end firmware replacement: a host orchestrator
 authors a manifest, writes it to the ECU, streams image bytes over UDS
 <code>0x36 TransferData</code>, waits for on-MCU verification, and observes a bank-
 switch + reset on the next power cycle. Rollback is a first-class
 operation that reverses the bank-switch and restores the previous image.</p>
+<p>The wire protocol, manifest layout, DID set, and error-code taxonomy are
+identical on CVC and TMS570 — a host driver does not know which target
+it is talking to. Only the flash-programming backing diverges (CVC does
+real dual-bank flash today; TMS570 stages in RAM with stubbed flash
+pending F021 Flash API wiring).</p>
 <h2 id="status">Status</h2>
 <table>
 <thead>
@@ -324,16 +329,28 @@ operation that reverses the bank-switch and restores the previous image.</p>
 </thead>
 <tbody>
 <tr>
-<td>Bench maturity</td>
+<td>Bench maturity (CVC)</td>
 <td>End-to-end on live hardware (STM32G474RE Nucleo)</td>
 </tr>
 <tr>
-<td>Firmware target</td>
+<td>Bench maturity (TMS570)</td>
+<td>Protocol-parity smoke passed on live TMS570LC4357 LaunchPad — manifest v1, <code>0x34/0x36/0x37</code> bulk-data, SHA-256 verify, witness round-trip, counter increment. Flash write / bank-switch stubbed pending F021 Flash API.</td>
+</tr>
+<tr>
+<td>Firmware target (CVC)</td>
 <td><code>firmware/cvc-uds/</code> — <code>taktflow-cvc-uds.elf</code>, 16 KB text, 204 B bss</td>
 </tr>
 <tr>
-<td>Toolchain</td>
+<td>Firmware target (TMS570)</td>
+<td><code>firmware/tms570-uds/</code> — <code>taktflow-tms570-uds.out</code>, 114 KB ELF / 44 KB TI-TXT, big-endian Cortex-R5F</td>
+</tr>
+<tr>
+<td>Toolchain (CVC)</td>
 <td><code>arm-none-eabi-gcc</code> 13.3.0</td>
+</tr>
+<tr>
+<td>Toolchain (TMS570)</td>
+<td><code>tiarmclang</code> 4.0.4 LTS (TI ARM Clang / LLVM), <code>-Wl,--be32</code></td>
 </tr>
 <tr>
 <td>Host driver</td>
@@ -341,7 +358,11 @@ operation that reverses the bank-switch and restores the previous image.</p>
 </tr>
 <tr>
 <td>Wire protocol</td>
-<td>ISO 14229 UDS over CAN + ISO 15765-2 ISO-TP</td>
+<td>ISO 14229 UDS over CAN + ISO 15765-2 ISO-TP — identical contract on both targets</td>
+</tr>
+<tr>
+<td>Manifest</td>
+<td>v1 (38 B) + v2 (42 B, monotonic <code>min_witness_counter</code> downgrade guard)</td>
 </tr>
 <tr>
 <td>Integrity</td>
@@ -353,11 +374,11 @@ operation that reverses the bank-switch and restores the previous image.</p>
 </tr>
 <tr>
 <td>Rollback</td>
-<td>Explicit routine <code>0x31 01 0202</code>, dual-bank A/B</td>
+<td>Explicit routine <code>0x31 01 0202</code>, dual-bank A/B (CVC); RAM-staged with stubbed bank-switch (TMS570)</td>
 </tr>
 <tr>
 <td>Anti-replay</td>
-<td>Witness-id uniqueness guard + inactivity timeout</td>
+<td>Witness-id uniqueness guard + inactivity timeout (both targets)</td>
 </tr>
 </tbody>
 </table>

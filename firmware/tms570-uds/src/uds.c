@@ -194,7 +194,11 @@ static uint32 recv_request(uint8 payload[ISO_TP_RX_BUFFER_BYTES], uint32 *payloa
         payload[i] = frame[2U + i];
     }
 
-    if (send_flow_control(ISO_TP_FC_CTS, 0U, 0U) == 0U) {
+    /* STmin=5ms — the DCAN RX path has only one MB and the polling
+     * loop waits 1ms between checks. With STmin=0 isotpsend sends CFs
+     * ~0.25ms apart and frames get overwritten in the mailbox before
+     * the MCU can read them. 5ms gives comfortable headroom. */
+    if (send_flow_control(ISO_TP_FC_CTS, 0U, 5U) == 0U) {
         return 1U;
     }
 

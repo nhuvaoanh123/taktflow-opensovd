@@ -45,3 +45,7 @@ taktflow-embedded-production/
 # Local bench flash readbacks named by ST-Link serial. PC-local probe
 # artifacts, never for the public mirror.
 tmp-*-readback.bin
+
+# Firmware and POSIX-test build outputs
+firmware/**/build/
+test/firmware/**/build/

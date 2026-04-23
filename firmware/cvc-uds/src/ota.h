@@ -65,4 +65,13 @@ uint32 ota_request_transfer_exit(void);
  * made since ota_init. */
 uint8 ota_last_error(void);
 
+#ifdef POSIX_OTA_TEST
+/* Test-only helper: forces all module state back to post-boot defaults
+ * so a POSIX test harness can run multiple test cases in sequence
+ * without re-invoking ota_init() (which touches hardware option bytes
+ * and hangs on the stub implementation). Not compiled in firmware
+ * builds. */
+void ota_force_reset_for_test(void);
+#endif
+
 #endif

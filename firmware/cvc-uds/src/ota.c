@@ -732,3 +732,18 @@ uint8 ota_last_error(void)
 {
     return g_last_error;
 }
+
+#ifdef POSIX_OTA_TEST
+void ota_force_reset_for_test(void)
+{
+    g_state = OTA_STATE_IDLE;
+    g_reason = OTA_REASON_NONE;
+    g_active_slot = OTA_SLOT_A;
+    g_witness_counter = 0U;
+    g_witness_id = 0UL;
+    g_pending_action = OTA_PENDING_NONE;
+    g_pending_action_delay_ms = 0U;
+    g_last_error = OTA_ERR_NONE;
+    ota_clear_manifest();
+}
+#endif

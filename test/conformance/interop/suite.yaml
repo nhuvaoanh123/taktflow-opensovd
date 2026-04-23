@@ -1,0 +1,18 @@
+name: interop_conformance
+phase: P11-CONF-04
+cargo_tests:
+  - phase9_auth_profiles
+  - phase11_conformance_interop
+cases:
+  - unsupported_standard_families_fail_closed
+  - normalized_generic_error_on_unknown_sovd_path
+  - correlation_header_compatibility
+  - additive_extra_surfaces_do_not_mutate_standard_component_routes
+  - hybrid_auth_profile_failure_and_success_shapes
+unsupported_standard_paths:
+  - /sovd/v1/components/cvc/modes
+  - /sovd/v1/components/cvc/locks
+  - /sovd/v1/components/cvc/software-updates
+compatible_headers:
+  - X-Request-Id
+  - traceparent

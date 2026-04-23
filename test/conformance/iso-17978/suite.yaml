@@ -1,0 +1,56 @@
+name: iso_17978_conformance
+adr: ADR-0039
+phase: P11-CONF-02
+cargo_tests:
+  - in_memory_mvp_flow
+  - openapi_roundtrip
+  - phase5_faults_pagination_contract
+  - phase11_conformance_iso_17978
+included_routes:
+  - path: /sovd/v1/components
+    methods: [GET]
+  - path: /sovd/v1/components/{component_id}
+    methods: [GET]
+  - path: /sovd/v1/components/{component_id}/faults
+    methods: [GET, DELETE]
+  - path: /sovd/v1/components/{component_id}/faults/{fault_code}
+    methods: [GET, DELETE]
+  - path: /sovd/v1/components/{component_id}/data
+    methods: [GET]
+  - path: /sovd/v1/components/{component_id}/data/{data_id}
+    methods: [GET]
+  - path: /sovd/v1/components/{component_id}/bulk-data
+    methods: [POST]
+  - path: /sovd/v1/components/{component_id}/bulk-data/{transfer_id}
+    methods: [PUT, DELETE]
+  - path: /sovd/v1/components/{component_id}/bulk-data/{transfer_id}/status
+    methods: [GET]
+  - path: /sovd/v1/components/{component_id}/operations
+    methods: [GET]
+  - path: /sovd/v1/components/{component_id}/operations/{operation_id}/executions
+    methods: [POST]
+  - path: /sovd/v1/components/{component_id}/operations/{operation_id}/executions/{execution_id}
+    methods: [GET]
+excluded_standard_families:
+  - modes
+  - locks
+  - configurations
+  - clear-data
+  - restarting
+  - software-updates
+  - capability-description
+  - authentication
+  - logs
+  - communication-logs
+  - cyclic-subscriptions
+  - triggers
+  - scripts
+taktflow_extras:
+  - /sovd/v1/health
+  - /sovd/v1/session
+  - /sovd/v1/audit
+  - /sovd/v1/gateway/backends
+  - /sovd/covesa/vss/{vss_path}
+  - /sovd/v1/extended/vehicle/
+  - /sovd/v1/openapi.json
+  - /__bench/components/{component_id}/faults

@@ -1,0 +1,78 @@
+name: Phase 11 Conformance
+
+on:
+  push:
+    paths:
+      - 'MASTER-PLAN.md'
+      - 'test/conformance/**'
+      - 'opensovd-core/integration-tests/tests/in_memory_mvp_flow.rs'
+      - 'opensovd-core/integration-tests/tests/openapi_roundtrip.rs'
+      - 'opensovd-core/integration-tests/tests/phase5_faults_pagination_contract.rs'
+      - 'opensovd-core/integration-tests/tests/extended_vehicle_rest_surface.rs'
+      - 'opensovd-core/integration-tests/tests/extended_vehicle_mqtt_publish.rs'
+      - 'opensovd-core/integration-tests/tests/extended_vehicle_mqtt_subscribe.rs'
+      - 'opensovd-core/integration-tests/tests/extended_vehicle_fault_log_sil_scenario.rs'
+      - 'opensovd-core/integration-tests/tests/extended_vehicle_state_sil_scenario.rs'
+      - 'opensovd-core/integration-tests/tests/phase9_auth_profiles.rs'
+      - 'opensovd-core/integration-tests/tests/phase11_conformance_iso_17978.rs'
+      - 'opensovd-core/integration-tests/tests/phase11_conformance_iso_20078.rs'
+      - 'opensovd-core/integration-tests/tests/phase11_conformance_interop.rs'
+      - '.github/workflows/phase11-conformance.yml'
+  pull_request:
+    paths:
+      - 'MASTER-PLAN.md'
+      - 'test/conformance/**'
+      - 'opensovd-core/integration-tests/tests/in_memory_mvp_flow.rs'
+      - 'opensovd-core/integration-tests/tests/openapi_roundtrip.rs'
+      - 'opensovd-core/integration-tests/tests/phase5_faults_pagination_contract.rs'
+      - 'opensovd-core/integration-tests/tests/extended_vehicle_rest_surface.rs'
+      - 'opensovd-core/integration-tests/tests/extended_vehicle_mqtt_publish.rs'
+      - 'opensovd-core/integration-tests/tests/extended_vehicle_mqtt_subscribe.rs'
+      - 'opensovd-core/integration-tests/tests/extended_vehicle_fault_log_sil_scenario.rs'
+      - 'opensovd-core/integration-tests/tests/extended_vehicle_state_sil_scenario.rs'
+      - 'opensovd-core/integration-tests/tests/phase9_auth_profiles.rs'
+      - 'opensovd-core/integration-tests/tests/phase11_conformance_iso_17978.rs'
+      - 'opensovd-core/integration-tests/tests/phase11_conformance_iso_20078.rs'
+      - 'opensovd-core/integration-tests/tests/phase11_conformance_interop.rs'
+      - '.github/workflows/phase11-conformance.yml'
+  workflow_dispatch: {}
+
+jobs:
+  phase11-conformance:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: opensovd-core
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify conformance suite descriptors exist
+        run: |
+          test -f ../test/conformance/iso-17978/suite.yaml
+          test -f ../test/conformance/iso-20078/suite.yaml
+          test -f ../test/conformance/interop/suite.yaml
+
+      - name: Run ISO 17978 conformance suite
+        run: |
+          cargo test --locked -p integration-tests --test in_memory_mvp_flow
+          cargo test --locked -p integration-tests --test openapi_roundtrip
+          cargo test --locked -p integration-tests --test phase5_faults_pagination_contract
+          cargo test --locked -p integration-tests --test phase11_conformance_iso_17978
+
+      - name: Run ISO 20078 conformance suite
+        run: |
+          cargo test --locked -p integration-tests --test extended_vehicle_rest_surface
+          cargo test --locked -p integration-tests --test extended_vehicle_mqtt_publish
+          cargo test --locked -p integration-tests --test extended_vehicle_mqtt_subscribe
+          cargo test --locked -p integration-tests --test extended_vehicle_fault_log_sil_scenario
+          cargo test --locked -p integration-tests --test extended_vehicle_state_sil_scenario
+          cargo test --locked -p integration-tests --test phase11_conformance_iso_20078
+
+      - name: Run interop suite
+        run: |
+          cargo test --locked -p integration-tests --test phase9_auth_profiles
+          cargo test --locked -p integration-tests --test phase11_conformance_interop

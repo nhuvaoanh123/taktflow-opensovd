@@ -1,7 +1,7 @@
 # Integrator Guide
 
-Date: 2026-04-22
-Status: Integrator-ready baseline
+Date: 2026-04-23
+Status: Finalized for repo-side Phase 11 exit
 Owner: Taktflow SOVD workstream
 
 ## Purpose
@@ -19,6 +19,19 @@ Canonical companion docs:
 - `docs/adr/0009-auth-both-oauth2-and-cert.md`
 - `docs/adr/0030-phase-6-auth-profile-hybrid-default.md`
 - `opensovd-core/deploy/pi/README-phase5.md`
+
+## Cold Reader Exit
+
+Use this section as the "did I miss any tribal knowledge?" check before you
+leave the guide.
+
+| Area | You are done when | Repo-backed proof |
+|------|-------------------|-------------------|
+| Install | the authority host can build and test the workspace without local edits | `cd opensovd-core && cargo build --locked && cargo test --locked -- --show-output` |
+| Config | you selected one checked-in TOML as the starting point and recorded any deployment-local overrides outside git | the config table in `## Config` points to the exact file you started from |
+| Auth | you chose one profile intentionally and documented the CA, issuer, JWKS, and scope ownership for that environment | the profile table in `## Auth` matches the probes you can actually run |
+| Deploy | one environment-specific first proof is green | the `First proof` column in `## Start Here` and the commands in `## Deployment Modes` both succeed |
+| Troubleshooting | you can reduce a failure to one smallest proving check instead of guessing across layers | the `## Troubleshooting` table has a probe for the symptom you are debugging |
 
 ## Start Here
 

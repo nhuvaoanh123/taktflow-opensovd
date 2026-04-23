@@ -1,6 +1,6 @@
 # Pilot OEM Deployment Playbook
 
-Status: skeleton (Upstream Phase 2, window 2027-05-01 .. 2027-10-31)
+Status: template-finalized, awaiting first OEM value population
 Author: Taktflow SOVD workstream
 Scope: bring-up of a Taktflow OpenSOVD pilot on an OEM-provided
 vehicle or pilot bench, covering the diagnostic stack plus the
@@ -16,16 +16,31 @@ the Phase 2 exit criteria on OEM hardware.
 
 The playbook is split into six ordered sections: prerequisites,
 install, config, verify, evidence, and teardown. Every section lists
-concrete artifacts — paths, command shapes, evidence file slots. The
-skeleton pins the shape; Phase 2 implementation fills in the command
-strings and tested defaults.
+concrete artifacts - paths, command shapes, evidence file slots. The
+repo now fixes the document shape and the Taktflow-owned defaults; the
+remaining blanks are OEM-owned identifiers, hosts, and security values.
 
-Where a step's exact command depends on content that does not yet
-exist (release tarball names, pinned container image tags, pilot-OEM
-vehicle identifiers), the skeleton records the decision point as an
-"OEM-supplied value" rather than guessing a string. Skeleton rows are
-never A1 placeholders; they are explicit empty slots with a stated
-basis.
+Where a step's exact command depends on engagement-specific content
+(release tarball names, pinned container image tags, pilot-OEM
+vehicle identifiers), the playbook records the decision point as an
+"OEM-supplied value" rather than guessing a string. Empty slots are
+intentional and bounded; they are the reason `P11-DOC-02` remains
+pending until the first real OEM engagement.
+
+## Readiness state
+
+This document is repo-final for Phase 11. The remaining work is not
+writing more structure; it is inserting the values that only the first
+OEM engagement can supply.
+
+| Value set | Owner | First section that uses it |
+|-----------|-------|----------------------------|
+| Release bundle URL and image digests | Taktflow release owner + OEM deployment lead | 2.1, 2.3 |
+| VIN, pilot bench id, OEM pilot id | OEM program lead | 1.2, 3.1, 5.3 |
+| ECU transport inventory and target addresses | OEM diagnostics lead | 1.1, 3.3, 4.1 |
+| mTLS material, issuer URL, JWKS URL, audience | OEM security lead | 1.2, 3.2, 4.4 |
+| VSS map deltas and Extended Vehicle publish limits | OEM platform lead | 3.4, 3.5, 4.2, 4.3 |
+| Observer URL and cloud-uplink opt-in | OEM cloud / operations lead | 3.6, 4.5 |
 
 ## 1. Prerequisites
 

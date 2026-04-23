@@ -25,6 +25,11 @@ All paths are relative to the repository root
 | `docs/DEVELOPMENT-STORY.md` | Narrative bridge from use case -> requirement -> architecture -> ADR -> implementation -> verification -> phase gate | You want the professional engineering story in one read |
 | `docs/REQUIREMENTS.md` | Formal numbered requirements (FR / NFR / SR / SEC / COMP), traceable, ASPICE-compatible | You need to verify what the system must do, or design a test that traces back to a stable ID |
 | `docs/ARCHITECTURE.md` | arc42-format project-level architecture description | You need the component topology, runtime views, deployment views, or a cross-cutting concept |
+| `docs/integration/README.md` | Final integrator guide: authority hosts, checked-in configs, auth profile selection, deployment proofs | You need to stand up the stack without tribal knowledge |
+| `docs/deploy/pilot-oem/README.md` | Pilot OEM deployment playbook with evidence slots and OEM-owned value register | You are preparing a first OEM pilot deployment |
+| `docs/integration/repair-shop.md` | Workshop / repair-shop operational guide aligned to UC1..UC5 | You need the mechanic-facing flow for faults, data, and routines |
+| `docs/examples/` | Happy-path walkthroughs for OTA, predictive maintenance, and repair-shop sessions | You want one realistic scenario end to end |
+| `docs/traceability/matrix.md` | Requirement -> design -> implementation -> verification matrix for the current repo | You need the Phase 11 manual traceability view |
 | `docs/adr/` | Architecture Decision Records (in the upstream-ready shape) | You need the rationale for a specific decision |
 | `docs/architecture/score-alignment-decisions.md` | Phase 10 memo for the monolith-over-IPC-peers S-CORE alignment decision | You need the OEM rationale for keeping Config/Auth/Crypto inline |
 | `docs/ecosystem/` | Phase 10 ecosystem-alignment reviews (VSS drift, ML boundary) | You need the internal compatibility and standards-drift notes behind P10 |
@@ -62,6 +67,7 @@ All paths are relative to the repository root
 | ADR-0024 | Reuse embedded-production cloud connector + SvelteKit capability-showcase dashboard | Accepted | `adr/0024-reuse-embedded-production-cloud-connector.md` |
 | ADR-0025 | Pull OTA firmware update into scope (STM32/CVC first, reuse signing) | Accepted | `adr/0025-ota-firmware-update-scope.md` |
 | ADR-0038 | Pluggable backend compatibility interface | Accepted | `adr/ADR-0038-pluggable-backend-compatibility-interface.md` |
+| ADR-0039 | ISO 17978 conformance subset for Phase 11 | Accepted | `adr/ADR-0039-iso-17978-conformance-subset.md` |
 
 Upstream ADRs referenced by this project:
 
@@ -99,5 +105,5 @@ Upstream ADRs referenced by this project:
 This index is maintained alongside the other docs. When you add a new doc
 under `docs/` or a new ADR, update this file in the same commit.
 
-Rev 1.4 - 2026-04-23 - Added the Phase 10 ecosystem and S-CORE alignment
-docs (`docs/ecosystem/` plus `docs/architecture/score-alignment-decisions.md`).
+Rev 1.6 - 2026-04-23 - Indexed the Phase 11 integrator, repair-shop, example,
+and traceability documents alongside ADR-0039.

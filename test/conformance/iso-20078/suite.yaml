@@ -1,0 +1,41 @@
+name: iso_20078_conformance
+adr: ADR-0027
+phase: P11-CONF-03
+cargo_tests:
+  - extended_vehicle_rest_surface
+  - extended_vehicle_mqtt_publish
+  - extended_vehicle_mqtt_subscribe
+  - extended_vehicle_fault_log_sil_scenario
+  - extended_vehicle_state_sil_scenario
+  - phase11_conformance_iso_20078
+rest_routes:
+  - path: /sovd/v1/extended/vehicle/
+    methods: [GET]
+  - path: /sovd/v1/extended/vehicle/vehicle-info
+    methods: [GET]
+  - path: /sovd/v1/extended/vehicle/state
+    methods: [GET]
+  - path: /sovd/v1/extended/vehicle/fault-log
+    methods: [GET]
+  - path: /sovd/v1/extended/vehicle/fault-log/{log_id}
+    methods: [GET]
+  - path: /sovd/v1/extended/vehicle/energy
+    methods: [GET]
+  - path: /sovd/v1/extended/vehicle/subscriptions
+    methods: [GET, POST]
+  - path: /sovd/v1/extended/vehicle/subscriptions/{id}
+    methods: [DELETE]
+mqtt_topics:
+  - sovd/extended-vehicle/state
+  - sovd/extended-vehicle/fault-log/new
+  - sovd/extended-vehicle/energy
+  - sovd/extended-vehicle/subscriptions/{id}/status
+  - sovd/extended-vehicle/control/ack
+  - sovd/extended-vehicle/control/subscribe
+scope_exclusions:
+  - raw_uds_frames
+  - freeze_frame_records
+  - ecu_specific_calibration
+  - multimedia_and_infotainment
+  - actuation_writes
+  - fleet_level_aggregation

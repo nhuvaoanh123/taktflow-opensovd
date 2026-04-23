@@ -10,7 +10,7 @@ graph TB
     subgraph PYRAMID ["Test Pyramid"]
         direction TB
         HIL["<b>Level 5: HIL</b><br/>8 scenarios on physical bench<br/><i>Pi + STM32 + CAN bus</i>"]
-        INT["<b>Level 4: Integration</b><br/>25 test files<br/><i>end-to-end with real backends</i>"]
+        INT["<b>Level 4: Integration</b><br/>30+ test files<br/><i>end-to-end with real backends</i>"]
         OA["<b>Level 3: OpenAPI Contract</b><br/>cargo xtask openapi-dump --check<br/><i>schema locked to ASAM SOVD v1.1</i>"]
         SNAP["<b>Level 2: Snapshot</b><br/>36 golden JSON files<br/><i>wire format stability</i>"]
         UNIT["<b>Level 1: Unit + Async</b><br/>5,680 tests<br/><i>#[test] + #[tokio::test]</i>"]
@@ -108,7 +108,7 @@ cargo xtask openapi-dump
 
 **Scope:** End-to-end flows through real trait implementations.
 
-**Location:** `opensovd-core/integration-tests/tests/` (25 test files).
+**Location:** `opensovd-core/integration-tests/tests/` (30+ test files).
 
 **Phases:**
 | Test file pattern | What it validates |
@@ -120,6 +120,9 @@ cargo xtask openapi-dump
 | `phase4_sovd_real_backends` | Live CDA + SQLite DFM backend |
 | `phase4_sovd_gateway_*` | Gateway routing with real backends |
 | `phase5_hil_sovd_*` | HIL tests against physical bench |
+| `phase11_conformance_iso_17978` | ADR-0039 subset gate for standard SOVD routes, including bulk-data |
+| `phase11_conformance_iso_20078` | ADR-0027 partial Extended Vehicle conformance boundary |
+| `phase11_conformance_interop` | Standard-vs-extra boundary, header compatibility, fail-closed behavior |
 
 **Execution:**
 ```bash
@@ -182,6 +185,7 @@ TAKTFLOW_BENCH=1 cargo test --locked --features integration-tests -- --show-outp
 | Unit tests | `cargo test --locked -- --show-output` | Hard fail |
 | Integration tests | `cargo test --locked --features integration-tests -- --show-output` | Hard fail |
 | OpenAPI gate | `cargo xtask openapi-dump --check` | Hard fail |
+| Phase 11 conformance | `.github/workflows/phase11-conformance.yml` | Hard fail |
 
 ### Feature matrix
 

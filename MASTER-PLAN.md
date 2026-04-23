@@ -100,7 +100,7 @@ Taktflow OpenSOVD is an **OEM-owned reference stack**. Its purpose is to
 be the normative diagnostic implementation that Tier-1 (T1) suppliers
 are required to adopt and conform to when delivering ECUs into the OEM's
 zonal architecture. Conformance is verified against this codebase and
-the ISO-17978 subset declared in ADR-0021 / ADR-0035; public efforts
+the ISO-17978 subset declared in ADR-0021 / ADR-0039; public efforts
 (Eclipse OpenSOVD, S-CORE, COVESA VSS, ISO 20078) are used as capability
 references, never as authority. Design decisions favor T1 onboarding
 cost and OEM-run conformance testability over alignment with any
@@ -478,10 +478,14 @@ gitignored working notes.
 | 0029 | ML model signing and rollback | Accepted |
 | 0030 | Phase 6 auth profile — hybrid default | Accepted |
 | 0031 | Phase 6 safety-delta inventory | Accepted |
-| 0032 | **Planned** — ISO 21434 cybersecurity profile | — |
-| 0033 | **Planned** — Cert lifecycle management | — |
-| 0034 | **Planned** — S-CORE backend compatibility interface | — |
-| 0035 | **Planned** — ISO 17978 conformance subset | — |
+| 0032 | Rust codestyle | Accepted |
+| 0033 | Composable transport layers | Accepted |
+| 0034 | Async-first diagnostic runtime | Accepted |
+| 0035 | Fault enabling conditions registry | Accepted |
+| 0036 | ISO 21434 cybersecurity profile | Accepted |
+| 0037 | Certificate lifecycle management | Accepted |
+| 0038 | Pluggable backend compatibility interface | Accepted |
+| 0039 | ISO 17978 conformance subset | Accepted |
 
 ---
 
@@ -762,11 +766,9 @@ checklist (internal).
 
 **Path.** [`docs/integration/README.md`](docs/integration/README.md).
 
-**Status.** Skeleton landed in P6-PREP-02. Sections: install, config,
-auth, deployment modes (local SIL, bench HIL, public SIL),
-troubleshooting. No tribal knowledge.
-
-**Planned completion.** P6 (integrator guide finalization unit).
+**Status.** Finalized repo-side in P11-DOC-01. The guide now gives a
+cold-reader completion checklist, checked-in config entry points, auth
+defaults, deploy proofs, and troubleshooting probes.
 
 #### 5.3.3 DOC-3 OEM Deployment Playbook
 
@@ -775,12 +777,12 @@ troubleshooting. No tribal knowledge.
 **Sections.** Prerequisites → install → config → verify → evidence →
 teardown. SBOM output at `docs/deploy/pilot-oem/sbom.spdx.json`.
 
-**Status.** Skeleton present; OEM-supplied value placeholders pending
-first real OEM engagement.
+**Status.** Template finalized repo-side; OEM-supplied value placeholders
+still wait on the first real OEM engagement.
 
 #### 5.3.4 DOC-4 Repair-Shop Workflow (*new*)
 
-**Path.** `docs/integration/repair-shop.md` *(planned)*.
+**Path.** [`docs/integration/repair-shop.md`](docs/integration/repair-shop.md).
 
 **Content.** Tester setup, session open, read DTC list, read freeze
 frames, clear DTCs, run diagnostic routines, close session. Aligned with
@@ -1488,17 +1490,23 @@ published.
 
 | Step ID | Status | Mode | Goal | Acceptance |
 |---|---|---|---|---|
-| P11-CONF-01 | pending | decision_doc | Author ADR-0039 ISO 17978 conformance subset | Subset declared; mapping to endpoints |
-| P11-CONF-02 | pending | repo_only | Implement ISO 17978 conformance suite | `test/conformance/iso-17978/` green in CI |
-| P11-CONF-03 | pending | repo_only | Implement ISO 20078 Extended Vehicle conformance | `test/conformance/iso-20078/` green in CI |
-| P11-CONF-04 | pending | repo_only | Implement edge-case / interop suite | `test/conformance/interop/` green in CI |
-| P11-DOC-01 | pending | decision_doc | Finalize integrator guide (DOC-2) | Every section executable by cold reader |
+| P11-CONF-01 | done | decision_doc | Author ADR-0039 ISO 17978 conformance subset | Subset declared; mapping to endpoints |
+| P11-CONF-02 | done | repo_only | Implement ISO 17978 conformance suite | `test/conformance/iso-17978/` green in CI |
+| P11-CONF-03 | done | repo_only | Implement ISO 20078 Extended Vehicle conformance | `test/conformance/iso-20078/` green in CI |
+| P11-CONF-04 | done | repo_only | Implement edge-case / interop suite | `test/conformance/interop/` green in CI |
+| P11-DOC-01 | done | decision_doc | Finalize integrator guide (DOC-2) | Every section executable by cold reader |
 | P11-DOC-02 | pending | decision_doc | Finalize OEM playbook (DOC-3) | First OEM engagement populates real values |
-| P11-DOC-03 | pending | decision_doc | Author repair-shop workflow guide (DOC-4) | `docs/integration/repair-shop.md` lands; covers UC1..UC5 |
-| P11-DOC-04 | pending | decision_doc | Example walkthrough — OTA update | `docs/examples/ota-walkthrough.md` lands |
-| P11-DOC-05 | pending | decision_doc | Example walkthrough — predictive maintenance | `docs/examples/predictive-maintenance.md` lands |
-| P11-DOC-06 | pending | decision_doc | Example walkthrough — repair-shop session | `docs/examples/repair-shop-session.md` lands |
-| P11-DOC-07 | pending | decision_doc | Traceability matrix | `docs/traceability/matrix.md` maps REQ → design → test |
+| P11-DOC-03 | done | decision_doc | Author repair-shop workflow guide (DOC-4) | `docs/integration/repair-shop.md` lands; covers UC1..UC5 |
+| P11-DOC-04 | done | decision_doc | Example walkthrough — OTA update | `docs/examples/ota-walkthrough.md` lands |
+| P11-DOC-05 | done | decision_doc | Example walkthrough — predictive maintenance | `docs/examples/predictive-maintenance.md` lands |
+| P11-DOC-06 | done | decision_doc | Example walkthrough — repair-shop session | `docs/examples/repair-shop-session.md` lands |
+| P11-DOC-07 | done | decision_doc | Traceability matrix | `docs/traceability/matrix.md` maps REQ → design → test |
+
+Execution note (2026-04-23): the repo-side conformance suites, repair-shop
+guide, example walkthroughs, traceability matrix, and integrator-guide
+finalization all landed. `P11-DOC-02` remains pending because its acceptance
+explicitly requires the first OEM engagement to populate real deployment
+values in `docs/deploy/pilot-oem/README.md`.
 
 ---
 
@@ -1582,7 +1590,7 @@ rate-limit / integrator-guide work stability. G-CS blocks P11.
 `hil_sovd_01..08` plus `hil_sovd_cda_via_proxy.yaml`. Each HIL scenario
 YAML carries a one-paragraph intent comment (governance rule).
 
-### 9.4 Conformance Suites (Planned In P11)
+### 9.4 Conformance Suites
 
 | Suite | ISO | Location |
 |---|---|---|
@@ -1594,9 +1602,9 @@ YAML carries a one-paragraph intent comment (governance rule).
 
 | Example | Path |
 |---|---|
-| OTA update | `docs/examples/ota-walkthrough.md` *(planned, P11-DOC-04)* |
-| Predictive maintenance | `docs/examples/predictive-maintenance.md` *(planned, P11-DOC-05)* |
-| Repair-shop session | `docs/examples/repair-shop-session.md` *(planned, P11-DOC-06)* |
+| OTA update | `docs/examples/ota-walkthrough.md` |
+| Predictive maintenance | `docs/examples/predictive-maintenance.md` |
+| Repair-shop session | `docs/examples/repair-shop-session.md` |
 
 ---
 
@@ -1721,7 +1729,7 @@ pulled in.
 | OTA scope-down — drop boot-OK witness? defer N=5 rollback? | Architect + Embedded lead | G-OTA-SCOPE | Open |
 | ISO 21434 CAL levels — per-surface table | Security lead | P9-CS-03 | Open |
 | S-CORE backend trait surface | Architect | P10-ECO-01 | Decided - ADR-0038 accepted |
-| ISO 17978 conformance subset declaration | Architect | P11-CONF-01 | Open |
+| ISO 17978 conformance subset declaration | Architect | P11-CONF-01 | Decided - ADR-0039 accepted |
 
 ---
 
@@ -1996,9 +2004,17 @@ See §4.6 for the authoritative inline index.
 - [`docs/deploy/bench-topology.md`](docs/deploy/bench-topology.md) —
   authoritative bench address map.
 - [`docs/integration/README.md`](docs/integration/README.md) —
-  integrator guide skeleton (DOC-2).
+  finalized integrator guide (DOC-2).
 - [`docs/deploy/pilot-oem/README.md`](docs/deploy/pilot-oem/README.md)
-  — OEM deployment playbook (DOC-3).
+  — OEM deployment playbook template (DOC-3), pending first OEM values.
+- [`docs/integration/repair-shop.md`](docs/integration/repair-shop.md) —
+  repair-shop workflow guide (DOC-4).
+- [`docs/examples/ota-walkthrough.md`](docs/examples/ota-walkthrough.md),
+  [`docs/examples/predictive-maintenance.md`](docs/examples/predictive-maintenance.md),
+  [`docs/examples/repair-shop-session.md`](docs/examples/repair-shop-session.md)
+  — example walkthroughs.
+- [`docs/traceability/matrix.md`](docs/traceability/matrix.md) —
+  manual Phase 11 traceability matrix.
 - Archived: [`docs/contribution/archive/`](docs/contribution/archive/),
   [`docs/upstream/archive/`](docs/upstream/archive/),
   [`docs/adr/archive/`](docs/adr/archive/).

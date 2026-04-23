@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Revision | Part II, Draft 1.10 |
+| Revision | Part II, Draft 1.11 |
 | Status | **DRAFT** — pending OEM answers to open questions in §II.9 |
 | Audience | AI worker or human engineer landing cold; assumes familiarity with [MASTER-PLAN.md](MASTER-PLAN.md) Parts 0–13. |
 | Relation | Extends [MASTER-PLAN.md](MASTER-PLAN.md). Part I gets Taktflow to a bench-validated, conformance-tested, documented reference stack (M10). Part II gets it into a customer vehicle at production. |
@@ -529,7 +529,7 @@ Cadence returns to monthly automatically on the next observed upstream activity 
 
 **Outputs.**
 
-- **PROD-20.1 Design ADR (prerequisite).** New `docs/adr/ADR-00XX-uds2sovd-proxy-design.md` covering: MDD dialect pinned (ISO/SAE ODX 2.2 vs PDX vs Taktflow internal MDD); initial UDS service coverage matrix (at minimum `0x22` ReadDataByIdentifier, `0x2E` WriteDataByIdentifier, `0x31` RoutineControl; stance on `0x19` ReadDTC, `0x14` ClearDTC, `0x10` Session, `0x27` SecurityAccess, `0x29` Authentication); NRC ↔ SOVD error envelope mapping table; session / security model (support vs. deny); ISO-TP + DoIP flow-control behaviour; performance targets (startup ≤ bound, per-request latency ≤ bound — numbers to be set, not adjectives); logging / observability per ADR-0013. No implementation starts until this ADR lands.
+- **PROD-20.1 Design ADR (prerequisite).** New [`docs/adr/ADR-0040-uds2sovd-proxy-design.md`](docs/adr/ADR-0040-uds2sovd-proxy-design.md) covering: MDD dialect pinned (runtime `.mdd`, not raw ODX / PDX); initial UDS service coverage matrix (support `0x22`, partial `0x31`, selected `0x19`, all-DTC `0x14`; deny `0x2E`, `0x10`, `0x27`, `0x29`, and `0x31 0x02` in the first cut); NRC ↔ SOVD error-envelope mapping table; session / security posture; DoIP pending-response behaviour; numeric performance targets; logging / observability per ADR-0013. No implementation starts until this ADR lands.
 - **PROD-20.2 Proxy crate.** [`uds2sovd-proxy/src/`](uds2sovd-proxy/) populated with the crate implementation: DoIP server (accept UDS-over-DoIP from testers); UDS request parser + ISO-TP reassembly; MDD loader + service resolver; SOVD client invocations; SOVD reply → UDS reply encoder; configuration via TOML; tracing spans per request. Follows ADR-0033 transport layering and ADR-0034 async runtime conventions.
 - **PROD-20.3 Gateway wiring.** New route leg in [`opensovd-core/sovd-gateway/`](opensovd-core/sovd-gateway/) that brings the proxy online under the same process or as a sidecar (decision lives in PROD-20.1). Configuration: enable/disable flag; DoIP listen address; MDD source path.
 - **PROD-20.4 Integration test.** `opensovd-core/integration-tests/tests/prod20_uds_ingress_*` — end-to-end tests driven by a synthetic UDS-over-DoIP tester script: one happy-path per supported UDS service showing correct SOVD call + correct UDS reply; one NRC path per service showing correct error-mapping; one session/security path (behaviour per ADR decision); one observability check (tracing spans emitted).
@@ -557,6 +557,13 @@ Cadence returns to monthly automatically on the next observed upstream activity 
 **Estimate.** 5–8 engineer-weeks end-to-end (2–3 weeks design ADR, 3–5 weeks implementation + test + bench fixture). Calendar 3–5 months at solo + interrupted cadence. Audit 2026-04-21 is the basis; prior Part-I estimate under P10-SCA-A1 assumed the crate was wired-able in ~1 week and was wrong.
 
 **Reference.** Upstream README at `uds2sovd-proxy/README.md` (north-star sentence only); upstream PR #63 on [eclipse-opensovd/opensovd](https://github.com/eclipse-opensovd/opensovd/pull/63) (PlantUML-only, no body, open since 2025-11-28 — design-in-flight, watch don't absorb); approach (b) shipping sibling [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/); approach (c) in-design sibling [PROD-17](#ii-6-17-prod-17-diagnostic-library-framework-agnostic-app-registration); supersedes Part I `P10-SCA-A1`. Upstream review cadence for this workstream is set to quarterly in PROD-15 based on observed meeting activity (no published outcome on the UDS2SOVD↔ServiceApps finalisation item from the 2026-03-24 and 2026-03-31 meetings; upstream repository has had no source commits since the 2025-10-14 initial scaffold).
+
+Completion note (2026-04-23): `PROD-20.1` is closed by
+[`docs/adr/ADR-0040-uds2sovd-proxy-design.md`](docs/adr/ADR-0040-uds2sovd-proxy-design.md).
+That ADR freezes the first-cut proxy around runtime `.mdd` inputs, a
+sidecar DoIP listener, explicit UDS service coverage, fixed SOVD→NRC reverse
+mapping, a "deny generic session/security" posture, numeric performance
+targets, and ADR-0013 observability.
 
 ### II.6.21 PROD-21 OEM pilot playbook finalization
 
@@ -673,9 +680,9 @@ Resolved 2026-04-23:
 | P12-HPC-01 | done | decision_doc | Freeze the R-Car S4 Linux target profile | [`docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md`](docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md) records the board, OS path, `systemd` bring-up posture, QM/T1 partition boundary, carried-forward surrogate findings, and explicit non-goals |
 | P12-HPC-02 | done | repo_only | Create the checked-in R-Car S4 Linux deploy skeleton | `opensovd-core/deploy/rcar-s4/` lands with config templates, `systemd` units, env example, and a repo-owned deploy README free of Pi-only assumptions |
 | P12-HPC-03 | done | repo_only | Add the target build and release recipe for the R-Car S4 Linux path | Checked-in build / release instructions and artifact naming for the target board exist; no bench-only deploy assets leak into the release path |
-| P12-HPC-04 | pending | decision_doc | Author the QM/T1 production partition contract | `docs/safety/prod-partition-contract.md` freezes the QM boundary, supervision expectations, failure modes, and T1-owned ASIL-B+ wrap assumptions |
-| P12-HPC-05 | pending | repo_only | Capture the first target-board boot witness | Evidence under `docs/evidence/p12-hpc/` proves the R-Car S4 target boots the Taktflow artifact family and answers `GET /sovd/v1/components` |
-| P12-HPC-06 | pending | repo_only | Capture target-network diagnostic round-trip proof | Evidence under `docs/evidence/p12-hpc/` proves CDA-backed legacy ECU access and target-network round-trip on the chosen production-host path |
+| P12-HPC-04 | deferred | decision_doc | Author the QM/T1 production partition contract | `docs/safety/prod-partition-contract.md` freezes the QM boundary, supervision expectations, failure modes, and T1-owned ASIL-B+ wrap assumptions |
+| P12-HPC-05 | deferred | repo_only | Capture the first target-board boot witness | Evidence under `docs/evidence/p12-hpc/` proves the R-Car S4 target boots the Taktflow artifact family and answers `GET /sovd/v1/components` |
+| P12-HPC-06 | deferred | repo_only | Capture target-network diagnostic round-trip proof | Evidence under `docs/evidence/p12-hpc/` proves CDA-backed legacy ECU access and target-network round-trip on the chosen production-host path |
 
 Execution note (2026-04-23): `P12-HPC-01` closed by creating
 [`docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md`](docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md).
@@ -701,6 +708,16 @@ stages the Rust `aarch64-unknown-linux-gnu` artifacts for `sovd-main`
 and `ws-bridge`, ships the repo-local Python proxy entrypoint from
 `gateway/can_to_doip_proxy/taktflow-can-doip-proxy`, and explicitly
 excludes Pi bench assets from the production-host release path.
+
+Deferral note (2026-04-23): `P12-HPC-04` through `P12-HPC-06` are
+intentionally parked until a real target-board bring-up slice exists.
+This keeps the plan honest: no target-board witness, target-network
+round-trip, or QM/T1 partition freeze is claimed without the hardware and
+integration window in hand. The deferral does not close `P12`, does not
+claim M11, and does not turn P13 green. While those target-HPC rows are
+deferred, only non-HPC capability work that explicitly says it does not
+block M11 may continue in parallel; the active continuation step after
+this deferral is `PROD-20.1`.
 
 Supersession note (2026-04-23): the legacy reserved-ID sentence that
 still appears below is stale. The populated `P12-HPC-*` table above is
@@ -943,6 +960,7 @@ Carried forward from research §II.10, prioritized as **M (mandatory for product
 
 ## II.13 Revision Log
 
+- **2026-04-23, Draft 1.11** - deferred the remaining target-HPC-specific `P12-HPC-04` through `P12-HPC-06` rows so Part II stops pretending target-board work can close without the real bring-up slice. The deferral explicitly keeps `P12` and M11 open. In the same draft, execution continued on the next non-HPC production deliverable that already existed in the plan: `PROD-20.1`, now closed by [`docs/adr/ADR-0040-uds2sovd-proxy-design.md`](docs/adr/ADR-0040-uds2sovd-proxy-design.md). ADR-0040 freezes the first UDS-to-SOVD proxy baseline: runtime `.mdd` inputs, sidecar deployment, explicit UDS service coverage, reverse SOVD→NRC mapping, "deny generic session/security" posture, DoIP pending-response behaviour, and numeric performance targets.
 - **2026-04-23, Draft 1.10** - closed `P12-HPC-03` by freezing the first R-Car S4 Linux build and release recipe under `opensovd-core/deploy/rcar-s4/BUILD-RELEASE.md` plus `release-manifest.example.yaml`. The release path now has fixed bundle naming, a staged file inventory for `sovd-main`, `ws-bridge`, and the repo-local `taktflow-can-doip-proxy` entrypoint, checksum instructions, and an explicit exclusion list that keeps Pi bench assets out of the production-host bundle.
 - **2026-04-23, Draft 1.9** - closed `P12-HPC-02` by creating the checked-in Linux target skeleton under `opensovd-core/deploy/rcar-s4/`. The new directory contains target-side `sovd-main` and CAN-to-DoIP proxy config templates, deployment env examples, and `systemd` unit templates for `sovd-main`, `taktflow-can-doip-proxy`, and `ws-bridge`, plus a repo-owned deploy README that avoids Pi-only assumptions.
 - **2026-04-23, Draft 1.8** - populated the real `P12-HPC-*` step table now that `Q-PROD-1` and `Q-PROD-2` are resolved, and completed `P12-HPC-01`. The first concrete P12 deliverable is the checked-in target profile [`docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md`](docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md), which freezes the Renesas R-Car S4 Starter Kit + Linux BSP / Whitebox SDK path, `systemd`-managed native bring-up, and QM-only / T1-wrap safety posture as the authority for later P12 repo work.

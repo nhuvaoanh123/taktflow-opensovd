@@ -38,7 +38,7 @@ All paths are relative to the repository root
 | `work/WORKING-LINES.md` *(gitignored)* | Parallel working lines | You need to know which parallel effort you are on |
 | `README.md` | Workspace top-level readme | Orientation |
 
-## ADR index (live as of Rev 1.4)
+## ADR index (live as of Rev 1.7)
 
 | ID | Title | Status | File |
 |----|-------|--------|------|
@@ -69,6 +69,7 @@ All paths are relative to the repository root
 | ADR-0025 | Pull OTA firmware update into scope (STM32/CVC first, reuse signing) | Accepted | `adr/0025-ota-firmware-update-scope.md` |
 | ADR-0038 | Pluggable backend compatibility interface | Accepted | `adr/ADR-0038-pluggable-backend-compatibility-interface.md` |
 | ADR-0039 | ISO 17978 conformance subset for Phase 11 | Accepted | `adr/ADR-0039-iso-17978-conformance-subset.md` |
+| ADR-0040 | UDS-to-SOVD proxy design baseline | Accepted | `adr/ADR-0040-uds2sovd-proxy-design.md` |
 
 Upstream ADRs referenced by this project:
 
@@ -106,5 +107,5 @@ Upstream ADRs referenced by this project:
 This index is maintained alongside the other docs. When you add a new doc
 under `docs/` or a new ADR, update this file in the same commit.
 
-Rev 1.6 - 2026-04-23 - Indexed the Phase 11 integrator, repair-shop, example,
-and traceability documents alongside ADR-0039.
+Rev 1.7 - 2026-04-23 - Indexed ADR-0040 alongside the existing Phase 11 and
+Part II production documents.

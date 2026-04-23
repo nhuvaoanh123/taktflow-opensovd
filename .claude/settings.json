@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(rm -rf /h/taktflow-opensovd/opensovd-core/.git)",
-      "Bash(git -C /h/taktflow-opensovd status --short)"
-    ]
-  }
-}

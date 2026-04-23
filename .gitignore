@@ -17,6 +17,16 @@ Thumbs.db
 .vscode/
 *.swp
 
+# Claude Code workstation-specific settings. `settings.json` and
+# `settings.local.json` carry absolute paths and per-machine
+# permissions (drive letters, Windows usernames, allow-lists scoped
+# to this checkout). Claude Code loads them locally; they do not
+# belong in the public mirror. `*.lock` files under `.claude/` are
+# runtime lock artifacts.
+.claude/settings.json
+.claude/settings.local.json
+.claude/*.lock
+
 # Working notes and execution artifacts (never commit)
 # Contains: TASKS.md, WORKING-LINES.md, prompts/, progress/, logs/,
 # phase-specific runs, HIL captures, architecture snapshots, scratch notes

@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wire Protocol — CVC OTA</title>
+<style>
+:root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --fg-muted: #555;
+    --accent: #2b6cb0;
+    --accent-hover: #1c4d87;
+    --border: #e2e8f0;
+    --code-bg: #f6f8fa;
+    --code-fg: #24292e;
+    --nav-bg: #f8fafc;
+    --table-stripe: #f8fafc;
+    --callout-bg: #fffbea;
+    --callout-border: #f6e05e;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --accent: #58a6ff;
+        --accent-hover: #79b8ff;
+        --border: #30363d;
+        --code-bg: #161b22;
+        --code-fg: #c9d1d9;
+        --nav-bg: #161b22;
+        --table-stripe: #161b22;
+        --callout-bg: #1f2937;
+        --callout-border: #fbbf24;
+    }
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+.layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+}
+nav.sidebar {
+    background: var(--nav-bg);
+    border-right: 1px solid var(--border);
+    padding: 2rem 1.5rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+nav.sidebar .brand {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+nav.sidebar .tagline {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.4;
+}
+nav.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+nav.sidebar li {
+    margin: 0;
+}
+nav.sidebar a {
+    display: block;
+    padding: 0.45rem 0.75rem;
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: background 0.1s;
+}
+nav.sidebar a:hover {
+    background: var(--code-bg);
+    color: var(--accent);
+}
+nav.sidebar a.active {
+    background: var(--accent);
+    color: white;
+}
+nav.sidebar .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-muted);
+    margin: 1.5rem 0 0.5rem 0.75rem;
+}
+main {
+    padding: 3rem 4rem;
+    max-width: 900px;
+    width: 100%;
+}
+main article {
+    min-width: 0;
+}
+main h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.02em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.75rem;
+}
+main h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    letter-spacing: -0.01em;
+}
+main h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.5rem;
+}
+main h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.25rem;
+    color: var(--fg-muted);
+}
+main p {
+    margin: 0.75rem 0;
+}
+main a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.1s;
+}
+main a:hover {
+    border-bottom-color: var(--accent);
+}
+main code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                 monospace;
+    font-size: 0.9em;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+}
+main pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 1rem 0;
+}
+main pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+}
+main ul, main ol {
+    padding-left: 1.5rem;
+    margin: 0.75rem 0;
+}
+main li {
+    margin: 0.25rem 0;
+}
+main blockquote {
+    border-left: 4px solid var(--accent);
+    margin: 1rem 0;
+    padding: 0.25rem 0 0.25rem 1.25rem;
+    color: var(--fg-muted);
+    background: var(--code-bg);
+}
+main table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+}
+main th, main td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+}
+main th {
+    background: var(--code-bg);
+    font-weight: 600;
+}
+main tr:nth-child(even) td {
+    background: var(--table-stripe);
+}
+main hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.5rem 0;
+}
+main .mermaid {
+    background: white;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 1rem 0;
+    text-align: center;
+}
+main img {
+    max-width: 100%;
+    height: auto;
+}
+.doc-meta {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    margin-bottom: 2rem;
+}
+.breadcrumb {
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+    margin-bottom: 0.5rem;
+}
+.breadcrumb a { color: var(--fg-muted); }
+footer.page-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+}
+@media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.sidebar {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    main { padding: 2rem 1.5rem; }
+}
+/* Pygments tweaks for code highlighting */
+.codehilite { background: var(--code-bg); border-radius: 6px; }
+.codehilite pre { margin: 0; border: none; background: transparent; }
+.codehilite .hll { background-color: #ffc; }
+.codehilite .c, .codehilite .cm, .codehilite .c1 { color: #6a737d; font-style: italic; }
+.codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #d73a49; font-weight: 600; }
+.codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #032f62; }
+.codehilite .n, .codehilite .na, .codehilite .nb { color: #24292e; }
+.codehilite .mi, .codehilite .mf { color: #005cc5; }
+.codehilite .o { color: #d73a49; }
+.codehilite .nf { color: #6f42c1; }
+@media (prefers-color-scheme: dark) {
+    .codehilite .c, .codehilite .cm, .codehilite .c1 { color: #8b949e; }
+    .codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #ff7b72; }
+    .codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #a5d6ff; }
+    .codehilite .n, .codehilite .na, .codehilite .nb { color: #c9d1d9; }
+    .codehilite .mi, .codehilite .mf { color: #79c0ff; }
+    .codehilite .o { color: #ff7b72; }
+    .codehilite .nf { color: #d2a8ff; }
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    securityLevel: 'loose',
+    fontFamily: 'inherit',
+});
+</script>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<div class="brand">CVC OTA</div>
+<div class="tagline">Firmware over-the-air update for the STM32G474 Central Vehicle Controller.</div>
+<div class="section-label">Pages</div>
+<ul>
+<li><a class="nav-item" href="README.html">Overview</a></li>
+<li><a class="nav-item" href="design.html">Design</a></li>
+<li><a class="nav-item active" href="protocol.html">Wire Protocol</a></li>
+<li><a class="nav-item" href="sequences.html">Sequence Diagrams</a></li>
+<li><a class="nav-item" href="threat-model.html">Threat Model</a></li>
+<li><a class="nav-item" href="test-plan.html">Test Plan</a></li>
+<li><a class="nav-item" href="integration-guide.html">Integration Guide</a></li>
+<li><a class="nav-item" href="ops-runbook.html">Ops Runbook</a></li>
+</ul>
+</nav>
+<main>
+<article>
+<div class="breadcrumb"><a href="README.html">CVC OTA</a> / Wire Protocol</div>
+<h1 id="cvc-ota-wire-protocol-reference">CVC OTA — Wire Protocol Reference</h1>
+<p>Exact byte-level shapes for every message on the CVC OTA path. Use this
+when implementing a host-side driver, writing an ISO-TP trace decoder,
+or extending the ODX / MDD capability description.</p>
+<p>All multi-byte integers are <strong>big-endian</strong> on the wire unless otherwise
+noted.</p>
+<h2 id="1-uds-services-exposed-by-the-cvc">1. UDS services exposed by the CVC</h2>
+<p>Implemented in <a href="../../../firmware/cvc-uds/src/uds.c"><code>firmware/cvc-uds/src/uds.c</code></a>.</p>
+<table>
+<thead>
+<tr>
+<th>SID</th>
+<th>Name</th>
+<th>In session</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x10</code></td>
+<td>DiagnosticSessionControl</td>
+<td>any</td>
+<td>Session transitions</td>
+</tr>
+<tr>
+<td><code>0x11</code></td>
+<td>ECUReset</td>
+<td>any</td>
+<td>hard / soft reset</td>
+</tr>
+<tr>
+<td><code>0x14</code></td>
+<td>ClearDiagnosticInformation</td>
+<td>any</td>
+<td>DTC clear (stub)</td>
+</tr>
+<tr>
+<td><code>0x19</code></td>
+<td>ReadDTCInformation</td>
+<td>any</td>
+<td>subfunctions <code>0x01</code>, <code>0x02</code></td>
+</tr>
+<tr>
+<td><code>0x22</code></td>
+<td>ReadDataByIdentifier</td>
+<td>any</td>
+<td>VIN, OTA status, witness, debug</td>
+</tr>
+<tr>
+<td><code>0x2E</code></td>
+<td>WriteDataByIdentifier</td>
+<td>extended / programming</td>
+<td>VIN, OTA manifest</td>
+</tr>
+<tr>
+<td><code>0x31</code></td>
+<td>RoutineControl</td>
+<td>any</td>
+<td>motor self-test, OTA abort, OTA rollback</td>
+</tr>
+<tr>
+<td><code>0x34</code></td>
+<td>RequestDownload</td>
+<td>programming only</td>
+<td>Start OTA transfer</td>
+</tr>
+<tr>
+<td><code>0x36</code></td>
+<td>TransferData</td>
+<td>programming only</td>
+<td>Send one image chunk</td>
+</tr>
+<tr>
+<td><code>0x37</code></td>
+<td>RequestTransferExit</td>
+<td>programming only</td>
+<td>Finalize, trigger verify</td>
+</tr>
+<tr>
+<td><code>0x3E</code></td>
+<td>TesterPresent</td>
+<td>any</td>
+<td>keep-alive</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-session-control">2. Session control</h2>
+<h3 id="21-enter-programming-session">2.1 Enter programming session</h3>
+<div class="codehilite"><pre><span></span><code>Request:   10 02
+Response:  50 02 00 32 01 F4
+</code></pre></div>
+
+<ul>
+<li><code>50</code> = positive response for <code>0x10</code>.</li>
+<li><code>02</code> = programming subfunction.</li>
+<li><code>00 32</code> = P2 server max response = 50 ms.</li>
+<li><code>01 F4</code> = P2* extended = 5000 ms.</li>
+</ul>
+<p>Side effect: clears the download state via <code>ota_reset_download_state()</code>.
+Any in-flight manifest is invalidated — send a fresh <code>0x2E F1A0</code> after
+any session transition.</p>
+<h3 id="22-leave-programming-session">2.2 Leave programming session</h3>
+<div class="codehilite"><pre><span></span><code>Request:   10 01    (default) or 10 03 (extended)
+Response:  50 01 00 32 01 F4
+</code></pre></div>
+
+<p>Side effect: clears download state. Cannot leave programming during an
+in-flight transfer without losing progress.</p>
+<h2 id="3-manifest-write-did-0xf1a0">3. Manifest write (DID <code>0xF1A0</code>)</h2>
+<h3 id="31-request">3.1 Request</h3>
+<div class="codehilite"><pre><span></span><code>Request:   2E F1 A0 &lt;manifest 38 bytes&gt;
+</code></pre></div>
+
+<p>Manifest bytes (38 B total):</p>
+<table>
+<thead>
+<tr>
+<th>Offset</th>
+<th>Length</th>
+<th>Field</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>1</td>
+<td><code>version</code></td>
+<td>Must be <code>0x01</code></td>
+</tr>
+<tr>
+<td>1</td>
+<td>1</td>
+<td><code>slot_hint</code></td>
+<td>Opaque hint; ECU authoritatively picks the inactive slot</td>
+</tr>
+<tr>
+<td>2</td>
+<td>4</td>
+<td><code>witness_id</code> (BE u32)</td>
+<td>Unique identifier for this image; <code>0x00000000</code> and the currently-active image&rsquo;s witness are rejected</td>
+</tr>
+<tr>
+<td>6</td>
+<td>32</td>
+<td><code>expected_sha256</code></td>
+<td>SHA-256 of the image bytes, unsigned</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32-response">3.2 Response</h3>
+<div class="codehilite"><pre><span></span><code>Positive:  6E F1 A0
+Negative:  7F 2E &lt;NRC&gt;
+</code></pre></div>
+
+<p>Possible NRCs:</p>
+<table>
+<thead>
+<tr>
+<th>NRC</th>
+<th>Meaning</th>
+<th>Firmware condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x13</code></td>
+<td>incorrectMessageLength</td>
+<td>manifest shorter than 38 B, or <code>witness_id == 0</code></td>
+</tr>
+<tr>
+<td><code>0x22</code></td>
+<td>conditionsNotCorrect</td>
+<td>state is <code>DOWNLOADING</code> or <code>VERIFYING</code> (manifest locked) or <code>witness_id</code> collides with active image</td>
+</tr>
+<tr>
+<td><code>0x31</code></td>
+<td>requestOutOfRange</td>
+<td>DID is not <code>0xF1A0</code> (write-only DID for OTA)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-preconditions-and-effects">3.3 Preconditions and effects</h3>
+<ul>
+<li>Requires extended (<code>0x10 03</code>) or programming session (<code>0x10 02</code>).</li>
+<li>Successful write sets <code>manifest_ready = 1</code> in firmware state.</li>
+<li>Subsequent <code>0x34 RequestDownload</code> consumes the manifest; a failed or
+  aborted transfer clears <code>manifest_ready</code> — the next transfer needs a
+  fresh manifest.</li>
+</ul>
+<h2 id="4-requestdownload-0x34">4. RequestDownload (<code>0x34</code>)</h2>
+<h3 id="41-request">4.1 Request</h3>
+<div class="codehilite"><pre><span></span><code>Request:   34 00 44 &lt;memoryAddress BE u32&gt; &lt;memorySize BE u32&gt;
+</code></pre></div>
+
+<ul>
+<li><code>00</code> = dataFormatIdentifier; <code>0</code> for no compression, <code>0</code> for no
+  encryption.</li>
+<li><code>44</code> = addressAndLengthFormatIdentifier; 4-byte size, 4-byte address.</li>
+<li><code>memoryAddress</code> = must equal <code>0x0804_0000</code> (inactive bank base).</li>
+<li><code>memorySize</code> = total image bytes. Must satisfy <code>0 &lt; size ≤ 0x0003_F800</code>
+  (258 048 bytes = 252 KB; 2 KB reserved for end-of-bank metadata).</li>
+</ul>
+<h3 id="42-response">4.2 Response</h3>
+<div class="codehilite"><pre><span></span><code>Positive:  74 20 &lt;maxBlockLength BE u16&gt;
+Negative:  7F 34 &lt;NRC&gt;
+</code></pre></div>
+
+<ul>
+<li><code>74</code> = positive response for <code>0x34</code>.</li>
+<li><code>20</code> = lengthFormatIdentifier; <code>2</code> bytes for <code>maxBlockLength</code>, <code>0</code>
+  unused.</li>
+<li><code>maxBlockLength</code> = <strong>130</strong> (<code>0x0082</code>). Includes the 2 UDS header bytes
+  (<code>0x36</code> + sequence counter), so the payload portion is 128 bytes.</li>
+</ul>
+<p>NRCs:</p>
+<table>
+<thead>
+<tr>
+<th>NRC</th>
+<th>Firmware condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x22</code></td>
+<td>not in programming session, or <code>manifest_ready == 0</code></td>
+</tr>
+<tr>
+<td><code>0x24</code></td>
+<td>state is <code>DOWNLOADING</code> or <code>VERIFYING</code> (re-entry rejected)</td>
+</tr>
+<tr>
+<td><code>0x31</code></td>
+<td><code>memoryAddress != 0x08040000</code>, or <code>memorySize</code> out of bounds</td>
+</tr>
+<tr>
+<td><code>0x72</code></td>
+<td>flash unlock / erase failed</td>
+</tr>
+</tbody>
+</table>
+<h3 id="43-side-effects">4.3 Side effects</h3>
+<ul>
+<li>Erases all 128 pages of the inactive bank.</li>
+<li>Sets state to <code>DOWNLOADING</code>, reason <code>NONE</code>.</li>
+<li>Captures <code>HAL_GetTick()</code> into <code>last_activity_tick</code>.</li>
+<li>Copies <code>manifest.witness_id</code> to <code>g_witness_id</code> (surfaces via DID
+  <code>0xF1A2</code> during the transfer).</li>
+</ul>
+<h2 id="5-transferdata-0x36">5. TransferData (<code>0x36</code>)</h2>
+<h3 id="51-request">5.1 Request</h3>
+<div class="codehilite"><pre><span></span><code>Request:   36 &lt;blockSequenceCounter&gt; &lt;dataRecord up to 128 bytes&gt;
+</code></pre></div>
+
+<ul>
+<li><code>blockSequenceCounter</code> starts at <code>0x01</code>, increments by 1 per chunk,
+  wraps from <code>0xFF</code> to <code>0x00</code> per ISO 14229 §14.5.3.1.</li>
+</ul>
+<h3 id="52-response">5.2 Response</h3>
+<div class="codehilite"><pre><span></span><code>Positive:  76 &lt;blockSequenceCounter&gt;
+Negative:  7F 36 &lt;NRC&gt;
+</code></pre></div>
+
+<p>NRCs:</p>
+<table>
+<thead>
+<tr>
+<th>NRC</th>
+<th>Firmware condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x13</code></td>
+<td><code>dataRecord</code> empty or longer than 128 bytes</td>
+</tr>
+<tr>
+<td><code>0x22</code></td>
+<td>not in programming session</td>
+</tr>
+<tr>
+<td><code>0x24</code></td>
+<td>state is not <code>DOWNLOADING</code></td>
+</tr>
+<tr>
+<td><code>0x70</code></td>
+<td>would exceed declared <code>memorySize</code> (OVERFLOW)</td>
+</tr>
+<tr>
+<td><code>0x72</code></td>
+<td>flash unlock or program-doubleword failed</td>
+</tr>
+<tr>
+<td><code>0x73</code></td>
+<td><code>blockSequenceCounter</code> mismatches expected value</td>
+</tr>
+</tbody>
+</table>
+<h3 id="53-pacing">5.3 Pacing</h3>
+<p>The ECU does not advertise an <code>STmin</code> on outbound responses; the host
+can send <code>0x36</code> as fast as the ECU acks. In practice the flash-program
+latency dominates (~60 µs per doubleword), so effective throughput is
+roughly 100 KB/s on CAN at 500 kbps.</p>
+<p>On multi-frame <code>0x36</code> requests (always the case at 128 B payload), the
+ECU&rsquo;s ISO-TP flow-control advertises <code>STmin = 2 ms</code> so the Linux
+<code>isotp</code> stack does not overrun the FDCAN RX FIFO.</p>
+<h2 id="6-requesttransferexit-0x37">6. RequestTransferExit (<code>0x37</code>)</h2>
+<h3 id="61-request">6.1 Request</h3>
+<div class="codehilite"><pre><span></span><code>Request:   37
+Response:  77                (positive, no data)
+           7F 37 &lt;NRC&gt;       (negative)
+</code></pre></div>
+
+<h3 id="62-effects-on-success">6.2 Effects on success</h3>
+<ol>
+<li>Flushes any pending doubleword to flash.</li>
+<li>Runs SHA-256 over <code>bytes_received</code> bytes starting at
+   <code>0x0804_0000</code>.</li>
+<li>Constant-time-compares against <code>manifest.expected_sha256</code>.</li>
+<li>On match: writes the end-of-bank metadata with <code>state = COMMITTED</code>,
+   <code>reason = NONE</code>, and increments the witness counter; arms the bank
+   switch for <code>OTA_PENDING_RESET_DELAY_MS</code> (20 ms), then asserts
+   <code>NVIC_SystemReset</code> from <code>ota_poll</code>.</li>
+<li>On mismatch: sets runtime <code>state = FAILED</code>, <code>reason = SIGNATURE_INVALID</code>,
+   clears the manifest.</li>
+</ol>
+<h3 id="63-nrcs">6.3 NRCs</h3>
+<table>
+<thead>
+<tr>
+<th>NRC</th>
+<th>Firmware condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x13</code></td>
+<td>request length not exactly 1 byte</td>
+</tr>
+<tr>
+<td><code>0x22</code></td>
+<td>not in programming session</td>
+</tr>
+<tr>
+<td><code>0x24</code></td>
+<td>state is not <code>DOWNLOADING</code>, or <code>manifest_ready == 0</code>, or <code>bytes_received != total_size</code>, or flash-flush failed, or hash mismatch (collapsed to <code>requestSequenceError</code> for fidelity with <code>0x37</code> semantics)</td>
+</tr>
+</tbody>
+</table>
+<p>The specific <code>ota_last_error()</code> code is available at DID <code>0xF1A1</code>
+(reason byte) for finer diagnosis after a failing <code>0x37</code>.</p>
+<h2 id="7-rollback-routine-0x31-01-0202">7. Rollback routine (<code>0x31 01 0202</code>)</h2>
+<h3 id="71-request">7.1 Request</h3>
+<div class="codehilite"><pre><span></span><code>Request:   31 01 02 02
+Response:  71 01 02 02 05              (positive; payload byte = ROLLEDBACK)
+           7F 31 &lt;NRC&gt;                 (negative)
+</code></pre></div>
+
+<h3 id="72-preconditions">7.2 Preconditions</h3>
+<ul>
+<li>State must be <code>COMMITTED</code>. Issuing rollback in any other state returns
+  <code>0x31</code> NRC <code>0x24</code> requestSequenceError.</li>
+</ul>
+<h3 id="73-effects">7.3 Effects</h3>
+<ol>
+<li>Writes the previously-inactive bank&rsquo;s metadata with
+   <code>state = ROLLEDBACK</code>, <code>reason = NONE</code>.</li>
+<li>Sets runtime state to <code>ROLLEDBACK</code>.</li>
+<li>Arms the bank-switch back to the previously-active slot, delay
+   <code>OTA_PENDING_RESET_DELAY_MS</code> (20 ms).</li>
+<li><code>ota_poll</code> asserts <code>NVIC_SystemReset</code> when the delay expires.</li>
+</ol>
+<h2 id="8-ota-status-witness-dids">8. OTA status / witness DIDs</h2>
+<h3 id="81-did-0xf1a1-ota-status-read-only-5-bytes">8.1 DID <code>0xF1A1</code> — OTA status (read-only, 5 bytes)</h3>
+<div class="codehilite"><pre><span></span><code>Request:   22 F1 A1
+Response:  62 F1 A1 &lt;state&gt; &lt;reason&gt; &lt;active_slot&gt; &lt;witness_counter&gt; &lt;manifest_ready&gt;
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>Byte</th>
+<th>Field</th>
+<th>Values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3</td>
+<td><code>state</code></td>
+<td><code>0x00 IDLE</code> / <code>0x01 DOWNLOADING</code> / <code>0x02 VERIFYING</code> / <code>0x03 COMMITTED</code> / <code>0x04 FAILED</code> / <code>0x05 ROLLEDBACK</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>reason</code></td>
+<td><code>0x00 NONE</code> / <code>0x01 SIGNATURE_INVALID</code> / <code>0x02 FLASH_WRITE</code> / <code>0x03 POWER_LOSS</code> / <code>0x04 ABORT_REQUESTED</code> / <code>0x05 OTHER</code> / <code>0x06 TIMEOUT</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>active_slot</code></td>
+<td><code>0x01</code> (slot A) / <code>0x02</code> (slot B)</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>witness_counter</code></td>
+<td>monotonic install counter; increments on each <code>COMMITTED</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>manifest_ready</code></td>
+<td><code>0x00</code> if no manifest buffered, <code>0x01</code> if one is ready</td>
+</tr>
+</tbody>
+</table>
+<h3 id="82-did-0xf1a2-ota-witness-read-only-4-bytes">8.2 DID <code>0xF1A2</code> — OTA witness (read-only, 4 bytes)</h3>
+<div class="codehilite"><pre><span></span><code>Request:   22 F1 A2
+Response:  62 F1 A2 &lt;witness_id BE u32&gt;
+</code></pre></div>
+
+<p>Reflects <code>g_witness_id</code>, which is set from the most recent manifest&rsquo;s
+witness at <code>0x34 RequestDownload</code> time and persists in metadata after
+<code>COMMITTED</code>. A host polling across a reset will see the new image&rsquo;s
+witness in the response.</p>
+<h2 id="9-error-code-mapping">9. Error-code mapping</h2>
+<p>Firmware-internal <code>OTA_ERR_*</code> codes and their UDS NRC mapping (as
+implemented in <code>ota_err_to_nrc</code> in <code>uds.c</code>):</p>
+<table>
+<thead>
+<tr>
+<th><code>OTA_ERR_*</code></th>
+<th>NRC</th>
+<th>ISO 14229 name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WRONG_STATE</code></td>
+<td><code>0x24</code></td>
+<td>requestSequenceError</td>
+</tr>
+<tr>
+<td><code>WRONG_SEQ</code></td>
+<td><code>0x73</code></td>
+<td>wrongBlockSequenceCounter</td>
+</tr>
+<tr>
+<td><code>BAD_LENGTH</code></td>
+<td><code>0x13</code></td>
+<td>incorrectMessageLength</td>
+</tr>
+<tr>
+<td><code>OVERFLOW</code></td>
+<td><code>0x70</code></td>
+<td>uploadDownloadNotAccepted</td>
+</tr>
+<tr>
+<td><code>FLASH</code></td>
+<td><code>0x72</code></td>
+<td>generalProgrammingFailure</td>
+</tr>
+<tr>
+<td><code>NO_MANIFEST</code></td>
+<td><code>0x22</code></td>
+<td>conditionsNotCorrect</td>
+</tr>
+<tr>
+<td><code>MANIFEST_LOCKED</code></td>
+<td><code>0x22</code></td>
+<td>conditionsNotCorrect</td>
+</tr>
+<tr>
+<td><code>BAD_ADDRESS</code></td>
+<td><code>0x31</code></td>
+<td>requestOutOfRange</td>
+</tr>
+<tr>
+<td><code>BAD_SIZE</code></td>
+<td><code>0x31</code></td>
+<td>requestOutOfRange</td>
+</tr>
+<tr>
+<td><code>BAD_DID</code></td>
+<td><code>0x31</code></td>
+<td>requestOutOfRange</td>
+</tr>
+<tr>
+<td><code>HASH_MISMATCH</code></td>
+<td><code>0x70</code></td>
+<td>uploadDownloadNotAccepted</td>
+</tr>
+<tr>
+<td><code>INCOMPLETE</code></td>
+<td><code>0x24</code></td>
+<td>requestSequenceError</td>
+</tr>
+</tbody>
+</table>
+<h2 id="10-iso-tp-framing">10. ISO-TP framing</h2>
+<p>Frames follow ISO 15765-2 exactly. The CVC uses fixed 11-bit CAN IDs:</p>
+<ul>
+<li>Request: <code>0x7E0</code></li>
+<li>Response: <code>0x7E8</code></li>
+</ul>
+<p>A typical 128-byte <code>0x36 TransferData</code> payload arrives as:</p>
+<div class="codehilite"><pre><span></span><code>First frame:        1X XX 36 &lt;seq&gt; &lt;128 B starting here ...
+Consecutive frames: 21 ... / 22 ... / 23 ... up to sequence end
+</code></pre></div>
+
+<p>Where the upper nibble <code>1</code> of byte 0 marks a first-frame and the low
+nibble + byte 1 together carry the 12-bit total length. The CVC
+responds to each <code>0x36</code> with a single-frame <code>76 &lt;seq&gt;</code> (3 bytes).</p>
+<p>See <a href="../../../firmware/cvc-uds/src/uds.c"><code>firmware/cvc-uds/src/uds.c</code></a>
+<code>recv_request()</code> and <code>send_positive()</code> for the exact ISO-TP
+implementation.</p>
+<footer class="page-footer">
+Taktflow OpenSOVD — feature documentation. Rendered from
+<code>protocol.md</code>.
+</footer>
+</article>
+</main>
+</div>
+</body>
+</html>

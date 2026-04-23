@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ops Runbook — CVC OTA</title>
+<style>
+:root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --fg-muted: #555;
+    --accent: #2b6cb0;
+    --accent-hover: #1c4d87;
+    --border: #e2e8f0;
+    --code-bg: #f6f8fa;
+    --code-fg: #24292e;
+    --nav-bg: #f8fafc;
+    --table-stripe: #f8fafc;
+    --callout-bg: #fffbea;
+    --callout-border: #f6e05e;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --accent: #58a6ff;
+        --accent-hover: #79b8ff;
+        --border: #30363d;
+        --code-bg: #161b22;
+        --code-fg: #c9d1d9;
+        --nav-bg: #161b22;
+        --table-stripe: #161b22;
+        --callout-bg: #1f2937;
+        --callout-border: #fbbf24;
+    }
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+.layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+}
+nav.sidebar {
+    background: var(--nav-bg);
+    border-right: 1px solid var(--border);
+    padding: 2rem 1.5rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+nav.sidebar .brand {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+nav.sidebar .tagline {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.4;
+}
+nav.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+nav.sidebar li {
+    margin: 0;
+}
+nav.sidebar a {
+    display: block;
+    padding: 0.45rem 0.75rem;
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: background 0.1s;
+}
+nav.sidebar a:hover {
+    background: var(--code-bg);
+    color: var(--accent);
+}
+nav.sidebar a.active {
+    background: var(--accent);
+    color: white;
+}
+nav.sidebar .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-muted);
+    margin: 1.5rem 0 0.5rem 0.75rem;
+}
+main {
+    padding: 3rem 4rem;
+    max-width: 900px;
+    width: 100%;
+}
+main article {
+    min-width: 0;
+}
+main h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.02em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.75rem;
+}
+main h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    letter-spacing: -0.01em;
+}
+main h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.5rem;
+}
+main h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.25rem;
+    color: var(--fg-muted);
+}
+main p {
+    margin: 0.75rem 0;
+}
+main a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.1s;
+}
+main a:hover {
+    border-bottom-color: var(--accent);
+}
+main code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                 monospace;
+    font-size: 0.9em;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+}
+main pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 1rem 0;
+}
+main pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+}
+main ul, main ol {
+    padding-left: 1.5rem;
+    margin: 0.75rem 0;
+}
+main li {
+    margin: 0.25rem 0;
+}
+main blockquote {
+    border-left: 4px solid var(--accent);
+    margin: 1rem 0;
+    padding: 0.25rem 0 0.25rem 1.25rem;
+    color: var(--fg-muted);
+    background: var(--code-bg);
+}
+main table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+}
+main th, main td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+}
+main th {
+    background: var(--code-bg);
+    font-weight: 600;
+}
+main tr:nth-child(even) td {
+    background: var(--table-stripe);
+}
+main hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.5rem 0;
+}
+main .mermaid {
+    background: white;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 1rem 0;
+    text-align: center;
+}
+main img {
+    max-width: 100%;
+    height: auto;
+}
+.doc-meta {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    margin-bottom: 2rem;
+}
+.breadcrumb {
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+    margin-bottom: 0.5rem;
+}
+.breadcrumb a { color: var(--fg-muted); }
+footer.page-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+}
+@media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.sidebar {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    main { padding: 2rem 1.5rem; }
+}
+/* Pygments tweaks for code highlighting */
+.codehilite { background: var(--code-bg); border-radius: 6px; }
+.codehilite pre { margin: 0; border: none; background: transparent; }
+.codehilite .hll { background-color: #ffc; }
+.codehilite .c, .codehilite .cm, .codehilite .c1 { color: #6a737d; font-style: italic; }
+.codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #d73a49; font-weight: 600; }
+.codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #032f62; }
+.codehilite .n, .codehilite .na, .codehilite .nb { color: #24292e; }
+.codehilite .mi, .codehilite .mf { color: #005cc5; }
+.codehilite .o { color: #d73a49; }
+.codehilite .nf { color: #6f42c1; }
+@media (prefers-color-scheme: dark) {
+    .codehilite .c, .codehilite .cm, .codehilite .c1 { color: #8b949e; }
+    .codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #ff7b72; }
+    .codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #a5d6ff; }
+    .codehilite .n, .codehilite .na, .codehilite .nb { color: #c9d1d9; }
+    .codehilite .mi, .codehilite .mf { color: #79c0ff; }
+    .codehilite .o { color: #ff7b72; }
+    .codehilite .nf { color: #d2a8ff; }
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    securityLevel: 'loose',
+    fontFamily: 'inherit',
+});
+</script>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<div class="brand">CVC OTA</div>
+<div class="tagline">Firmware over-the-air update for the STM32G474 Central Vehicle Controller.</div>
+<div class="section-label">Pages</div>
+<ul>
+<li><a class="nav-item" href="README.html">Overview</a></li>
+<li><a class="nav-item" href="design.html">Design</a></li>
+<li><a class="nav-item" href="protocol.html">Wire Protocol</a></li>
+<li><a class="nav-item" href="sequences.html">Sequence Diagrams</a></li>
+<li><a class="nav-item" href="threat-model.html">Threat Model</a></li>
+<li><a class="nav-item" href="test-plan.html">Test Plan</a></li>
+<li><a class="nav-item" href="integration-guide.html">Integration Guide</a></li>
+<li><a class="nav-item active" href="ops-runbook.html">Ops Runbook</a></li>
+</ul>
+</nav>
+<main>
+<article>
+<div class="breadcrumb"><a href="README.html">CVC OTA</a> / Ops Runbook</div>
+<h1 id="cvc-ota-operations-runbook">CVC OTA — Operations Runbook</h1>
+<p>For a bench operator with a connected STM32G474RE Nucleo CVC, an
+ST-LINK v2/v3 programmer, and a CAN interface. Covers first-boot
+flash, OTA test cycles, rollback, and recovery.</p>
+<p>Placeholders used: <code>&lt;cvc-stlink-serial&gt;</code> is the ST-LINK serial on the
+bench; <code>&lt;bench-can-iface&gt;</code> is the Linux SocketCAN interface
+(<code>vcan0</code> on the laptop, <code>can0</code> on the Pi bench).</p>
+<h2 id="1-prerequisites">1. Prerequisites</h2>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Version</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>STM32_Programmer_CLI</code></td>
+<td>2.14+</td>
+<td>Bootstrap flash via ST-LINK</td>
+</tr>
+<tr>
+<td><code>arm-none-eabi-gcc</code></td>
+<td>13.3.0</td>
+<td>Build the firmware</td>
+</tr>
+<tr>
+<td>Linux <code>can-utils</code></td>
+<td>any</td>
+<td><code>candump</code>, <code>cansend</code>, <code>isotp-*</code> on the bench</td>
+</tr>
+<tr>
+<td>Python 3.10+</td>
+<td>with <code>python-can</code>, <code>can-isotp</code></td>
+<td>Bench scripts</td>
+</tr>
+<tr>
+<td>ST-LINK v2/v3</td>
+<td>—</td>
+<td>ECU programming + bring-up</td>
+</tr>
+<tr>
+<td>openocd (optional)</td>
+<td>0.12+</td>
+<td>Alternative programmer</td>
+</tr>
+</tbody>
+</table>
+<p>Build the firmware:</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>firmware/cvc-uds
+make<span class="w"> </span>clean<span class="w"> </span>all
+ls<span class="w"> </span>-la<span class="w"> </span>build/taktflow-cvc-uds.<span class="o">{</span>elf,bin<span class="o">}</span>
+</code></pre></div>
+
+<h2 id="2-first-time-bring-up-initial-flash-via-st-link">2. First-time bring-up (initial flash via ST-LINK)</h2>
+<p>This is needed only the first time the MCU is flashed or when the OTA
+state has been corrupted. Normal operation uses OTA, not ST-LINK.</p>
+<div class="codehilite"><pre><span></span><code>STM32_Programmer_CLI<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-c<span class="w"> </span><span class="nv">port</span><span class="o">=</span>SWD<span class="w"> </span><span class="nv">sn</span><span class="o">=</span>&lt;cvc-stlink-serial&gt;<span class="w"> </span><span class="nv">mode</span><span class="o">=</span>UR<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-e<span class="w"> </span>all<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span>build/taktflow-cvc-uds.bin<span class="w"> </span>0x08000000<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-ob<span class="w"> </span><span class="nv">DBANK</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">BFB2</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-rst
+</code></pre></div>
+
+<p>The <code>-ob DBANK=1</code> sets dual-bank mode; <code>BFB2=0</code> selects slot A as the
+initial boot slot. After this command the ECU boots from slot A with
+the newly-flashed image.</p>
+<p>Verify via UART (115200 8N1 on USART2 / PA2-PA3):</p>
+<div class="codehilite"><pre><span></span><code>CVC boot: slot=A image_valid=1 witness=...
+</code></pre></div>
+
+<h2 id="3-running-a-test-ota-cycle">3. Running a test OTA cycle</h2>
+<p>Goal: flash a new image via OTA, observe commit, verify on the next
+boot.</p>
+<h3 id="31-prepare-the-target-image">3.1 Prepare the target image</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Compile whatever the new firmware should be (for a test, you can</span>
+<span class="c1"># simply rebuild the same sources with a different commit hash</span>
+<span class="c1"># embedded via a #define):</span>
+<span class="nb">cd</span><span class="w"> </span>firmware/cvc-uds
+make<span class="w"> </span><span class="nv">BUILD_TAG</span><span class="o">=</span>v2-test<span class="w"> </span>clean<span class="w"> </span>all
+cp<span class="w"> </span>build/taktflow-cvc-uds.bin<span class="w"> </span>/tmp/new-fw.bin
+ls<span class="w"> </span>-la<span class="w"> </span>/tmp/new-fw.bin
+</code></pre></div>
+
+<h3 id="32-compute-the-manifest">3.2 Compute the manifest</h3>
+<div class="codehilite"><pre><span></span><code>python3<span class="w"> </span><span class="s">&lt;&lt;&#39;PY&#39;</span>
+<span class="s">import hashlib, struct</span>
+<span class="s">image = open(&#39;/tmp/new-fw.bin&#39;, &#39;rb&#39;).read()</span>
+<span class="s">witness_id = 0xCAFEBABE  # pick a fresh unique value per install</span>
+<span class="s">manifest = struct.pack(</span>
+<span class="s">    &quot;&gt;BBI32s&quot;,</span>
+<span class="s">    1,          # version</span>
+<span class="s">    0,          # slot_hint</span>
+<span class="s">    witness_id,</span>
+<span class="s">    hashlib.sha256(image).digest(),</span>
+<span class="s">)</span>
+<span class="s">print(f&quot;size          : {len(image)}&quot;)</span>
+<span class="s">print(f&quot;manifest hex  : {manifest.hex()}&quot;)</span>
+<span class="s">print(f&quot;expected sha  : {hashlib.sha256(image).hexdigest()}&quot;)</span>
+<span class="s">PY</span>
+</code></pre></div>
+
+<h3 id="33-drive-the-ota-via-bench-scripts">3.3 Drive the OTA via bench scripts</h3>
+<p>Assuming <code>&lt;bench-can-iface&gt;</code> is configured and up, and the tester is
+at CAN ID <code>0x7E0</code> / <code>0x7E8</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. Session</span>
+cansend<span class="w"> </span>&lt;bench-can-iface&gt;<span class="w"> </span>7E0#0210020000000000
+candump<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="w"> </span>&lt;bench-can-iface&gt;,7E8:7FF
+<span class="c1"># Expect: 7E8 [8] 06 50 02 00 32 01 F4 00</span>
+
+<span class="c1"># 2. Write manifest (ISO-TP multi-frame; use isotp-send)</span>
+<span class="c1"># For simplicity, use the full UDS-over-ISO-TP path via a Python script:</span>
+python3<span class="w"> </span>test/bench/send_uds.py<span class="w"> </span>--iface<span class="w"> </span>&lt;bench-can-iface&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--req<span class="w"> </span>0x7E0<span class="w"> </span>--resp<span class="w"> </span>0x7E8<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--frame<span class="w"> </span><span class="s2">&quot;2E F1 A0 &lt;38-byte-manifest-hex&gt;&quot;</span>
+
+<span class="c1"># 3. RequestDownload</span>
+python3<span class="w"> </span>test/bench/send_uds.py<span class="w"> </span>--iface<span class="w"> </span>&lt;bench-can-iface&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--req<span class="w"> </span>0x7E0<span class="w"> </span>--resp<span class="w"> </span>0x7E8<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--frame<span class="w"> </span><span class="s2">&quot;34 00 44 08 04 00 00 &lt;size BE 4-byte&gt;&quot;</span>
+
+<span class="c1"># 4. Stream TransferData</span>
+python3<span class="w"> </span>test/bench/send_uds.py<span class="w"> </span>--iface<span class="w"> </span>&lt;bench-can-iface&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--req<span class="w"> </span>0x7E0<span class="w"> </span>--resp<span class="w"> </span>0x7E8<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--transfer-data<span class="w"> </span>/tmp/new-fw.bin<span class="w"> </span>--record-size<span class="w"> </span><span class="m">128</span>
+
+<span class="c1"># 5. RequestTransferExit</span>
+python3<span class="w"> </span>test/bench/send_uds.py<span class="w"> </span>--iface<span class="w"> </span>&lt;bench-can-iface&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--req<span class="w"> </span>0x7E0<span class="w"> </span>--resp<span class="w"> </span>0x7E8<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--frame<span class="w"> </span><span class="s2">&quot;37&quot;</span>
+
+<span class="c1"># 6. Poll status until committed or failed</span>
+watch<span class="w"> </span>-n<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span><span class="s1">&#39;python3 test/bench/send_uds.py --iface &lt;bench-can-iface&gt; \</span>
+<span class="s1">  --req 0x7E0 --resp 0x7E8 --frame &quot;22 F1 A1&quot;&#39;</span>
+</code></pre></div>
+
+<p>Expected terminal state: <code>62 F1 A1 03 00 02 &lt;counter&gt; 00</code> — state
+byte <code>0x03</code> (COMMITTED), active slot <code>0x02</code> (slot B — we moved over).</p>
+<h3 id="34-verify-the-new-boot">3.4 Verify the new boot</h3>
+<p>After the bank-switch reset (~20 ms post-commit), reconnect UART and
+look for the new image&rsquo;s boot banner:</p>
+<div class="codehilite"><pre><span></span><code>CVC boot: slot=B image_valid=1 witness=CAFEBABE
+</code></pre></div>
+
+<p>Or via UDS after reconnect:</p>
+<div class="codehilite"><pre><span></span><code>python3<span class="w"> </span>test/bench/send_uds.py<span class="w"> </span>--iface<span class="w"> </span>&lt;bench-can-iface&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--req<span class="w"> </span>0x7E0<span class="w"> </span>--resp<span class="w"> </span>0x7E8<span class="w"> </span>--frame<span class="w"> </span><span class="s2">&quot;22 F1 A2&quot;</span>
+<span class="c1"># Expect: 62 F1 A2 CA FE BA BE</span>
+</code></pre></div>
+
+<h2 id="4-rolling-back">4. Rolling back</h2>
+<p>If the new image misbehaves or verification fails at a higher layer:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. Confirm state is COMMITTED</span>
+python3<span class="w"> </span>test/bench/send_uds.py<span class="w"> </span>--iface<span class="w"> </span>&lt;bench-can-iface&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--req<span class="w"> </span>0x7E0<span class="w"> </span>--resp<span class="w"> </span>0x7E8<span class="w"> </span>--frame<span class="w"> </span><span class="s2">&quot;22 F1 A1&quot;</span>
+<span class="c1"># Expect state byte == 0x03</span>
+
+<span class="c1"># 2. Issue rollback routine</span>
+python3<span class="w"> </span>test/bench/send_uds.py<span class="w"> </span>--iface<span class="w"> </span>&lt;bench-can-iface&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--req<span class="w"> </span>0x7E0<span class="w"> </span>--resp<span class="w"> </span>0x7E8<span class="w"> </span>--frame<span class="w"> </span><span class="s2">&quot;31 01 02 02&quot;</span>
+<span class="c1"># Expect: 71 01 02 02 05</span>
+
+<span class="c1"># 3. Wait for reset (~20 ms), verify slot A is active again</span>
+python3<span class="w"> </span>test/bench/send_uds.py<span class="w"> </span>--iface<span class="w"> </span>&lt;bench-can-iface&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--req<span class="w"> </span>0x7E0<span class="w"> </span>--resp<span class="w"> </span>0x7E8<span class="w"> </span>--frame<span class="w"> </span><span class="s2">&quot;22 F1 A1&quot;</span>
+<span class="c1"># Expect state byte == 0x05 (ROLLEDBACK), active_slot == 0x01</span>
+</code></pre></div>
+
+<h2 id="5-diagnostic-quick-reference">5. Diagnostic quick-reference</h2>
+<h3 id="51-common-negative-responses">5.1 Common negative responses</h3>
+<table>
+<thead>
+<tr>
+<th>NRC</th>
+<th>Decoded</th>
+<th>Most likely cause</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x13</code></td>
+<td>incorrectMessageLength</td>
+<td>Manifest not 38 B, or <code>0x36</code> payload not 1–128 B, or <code>witness_id == 0</code></td>
+</tr>
+<tr>
+<td><code>0x22</code></td>
+<td>conditionsNotCorrect</td>
+<td>Not in programming session, or manifest locked mid-transfer, or manifest missing before <code>0x34</code>, or witness collides with active image</td>
+</tr>
+<tr>
+<td><code>0x24</code></td>
+<td>requestSequenceError</td>
+<td>Transfer in wrong state (e.g., <code>0x36</code> before <code>0x34</code>, <code>0x37</code> before all bytes received)</td>
+</tr>
+<tr>
+<td><code>0x31</code></td>
+<td>requestOutOfRange</td>
+<td>Wrong memory address, wrong size, unknown DID</td>
+</tr>
+<tr>
+<td><code>0x70</code></td>
+<td>uploadDownloadNotAccepted</td>
+<td>Hash mismatch on <code>0x37</code>, or <code>0x36</code> would exceed declared total size</td>
+</tr>
+<tr>
+<td><code>0x72</code></td>
+<td>generalProgrammingFailure</td>
+<td>Flash unlock / erase / program failed</td>
+</tr>
+<tr>
+<td><code>0x73</code></td>
+<td>wrongBlockSequenceCounter</td>
+<td><code>0x36</code> sequence counter out of order</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52-stuck-in-failed">5.2 Stuck in <code>FAILED</code></h3>
+<p>Clear the failure state by either:</p>
+<ol>
+<li>Enter default session (<code>10 01</code>) — this calls
+   <code>ota_reset_download_state()</code> which clears the manifest but leaves
+   <code>g_state</code> at its failed value until the next successful <code>0x34</code>.</li>
+<li>Hard reset (<code>11 01</code>) — this reinitializes everything.</li>
+<li>Start a fresh transfer with a new manifest; <code>0x34</code> will succeed if
+   preconditions are met, transitioning the state machine to
+   <code>DOWNLOADING</code>.</li>
+</ol>
+<h3 id="53-ecu-appears-bricked">5.3 ECU appears bricked</h3>
+<p>If the ECU does not respond on CAN after an OTA cycle:</p>
+<ol>
+<li>Check UART — is it booting at all? If no banner appears, the
+   active bank&rsquo;s image is corrupt.</li>
+<li>If corrupt, recover via ST-LINK (§2, &ldquo;First-time bring-up&rdquo;). This
+   re-flashes slot A directly and overrides the OTA state.</li>
+<li>If ST-LINK also fails to connect, try a hard SWD reset
+   (<code>STM32_Programmer_CLI -c port=SWD sn=&lt;serial&gt; mode=HOTPLUG</code>).</li>
+<li>If still no response, the MCU may be in a dual-bank-boot lockout
+   from a failed option-byte flip. Use <code>STM32_Programmer_CLI -ob
+   DBANK=1 BFB2=0</code> to restore the option bytes and reset.</li>
+</ol>
+<h2 id="6-post-ota-evidence-collection">6. Post-OTA evidence collection</h2>
+<p>For each successful OTA on the bench, capture:</p>
+<ol>
+<li><strong>Pre-OTA state snapshot</strong></li>
+</ol>
+<p><code>22 F1 A1  → store the status response
+   22 F1 A2  → store the witness</code></p>
+<ol start="2">
+<li><strong>Transfer trace</strong></li>
+</ol>
+<p><code>bash
+   candump -L &lt;bench-can-iface&gt;,7E0:7FF,7E8:7FF \
+     &gt; /tmp/ota-$(date +%Y%m%dT%H%M%SZ).log &amp;
+   CANDUMP_PID=$!
+   # ... run the OTA ...
+   kill $CANDUMP_PID</code></p>
+<ol start="3">
+<li><strong>Post-OTA state snapshot</strong></li>
+</ol>
+<p><code>22 F1 A1  → verify Committed + correct active_slot + counter++
+   22 F1 A2  → verify witness matches the manifest</code></p>
+<ol start="4">
+<li><strong>Post-reset boot banner</strong> from the UART log.</li>
+</ol>
+<p>Store all four artifacts in <code>evidence/ota/&lt;YYYYMMDDTHHMMSSZ&gt;/</code> with a
+short <code>notes.md</code> identifying the image SHA-256, the witness, and the
+operator.</p>
+<h2 id="7-recovering-from-a-bricked-post-ota-boot">7. Recovering from a bricked post-OTA boot</h2>
+<p>If the new image commits but then fails to boot (watchdog reset loop,
+no UART banner):</p>
+<ol>
+<li><strong>If you can still reach UDS briefly between reset loops</strong> (the
+   image might be running long enough to service one or two UDS
+   frames before asserting the watchdog):</li>
+</ol>
+<p><code>31 01 02 02   (rollback)</code></p>
+<p>If this succeeds, the ECU reverts to the previous image on next
+   reset.</p>
+<ol start="2">
+<li><strong>If the image cannot service UDS at all</strong>, you must recover via
+   ST-LINK (§2). OTA rollback cannot be triggered if the MCU is in a
+   reset loop before the UDS stack initializes.</li>
+</ol>
+<p><strong>Lesson.</strong> Always keep a known-good image flashable via ST-LINK
+nearby, and treat a new OTA as provisional until at least one full UDS
+round-trip has been seen after commit.</p>
+<footer class="page-footer">
+Taktflow OpenSOVD — feature documentation. Rendered from
+<code>ops-runbook.md</code>.
+</footer>
+</article>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sequence Diagrams — CVC OTA</title>
+<style>
+:root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --fg-muted: #555;
+    --accent: #2b6cb0;
+    --accent-hover: #1c4d87;
+    --border: #e2e8f0;
+    --code-bg: #f6f8fa;
+    --code-fg: #24292e;
+    --nav-bg: #f8fafc;
+    --table-stripe: #f8fafc;
+    --callout-bg: #fffbea;
+    --callout-border: #f6e05e;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --accent: #58a6ff;
+        --accent-hover: #79b8ff;
+        --border: #30363d;
+        --code-bg: #161b22;
+        --code-fg: #c9d1d9;
+        --nav-bg: #161b22;
+        --table-stripe: #161b22;
+        --callout-bg: #1f2937;
+        --callout-border: #fbbf24;
+    }
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+.layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+}
+nav.sidebar {
+    background: var(--nav-bg);
+    border-right: 1px solid var(--border);
+    padding: 2rem 1.5rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+nav.sidebar .brand {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+nav.sidebar .tagline {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.4;
+}
+nav.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+nav.sidebar li {
+    margin: 0;
+}
+nav.sidebar a {
+    display: block;
+    padding: 0.45rem 0.75rem;
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: background 0.1s;
+}
+nav.sidebar a:hover {
+    background: var(--code-bg);
+    color: var(--accent);
+}
+nav.sidebar a.active {
+    background: var(--accent);
+    color: white;
+}
+nav.sidebar .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-muted);
+    margin: 1.5rem 0 0.5rem 0.75rem;
+}
+main {
+    padding: 3rem 4rem;
+    max-width: 900px;
+    width: 100%;
+}
+main article {
+    min-width: 0;
+}
+main h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.02em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.75rem;
+}
+main h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    letter-spacing: -0.01em;
+}
+main h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.5rem;
+}
+main h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.25rem;
+    color: var(--fg-muted);
+}
+main p {
+    margin: 0.75rem 0;
+}
+main a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.1s;
+}
+main a:hover {
+    border-bottom-color: var(--accent);
+}
+main code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                 monospace;
+    font-size: 0.9em;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+}
+main pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 1rem 0;
+}
+main pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+}
+main ul, main ol {
+    padding-left: 1.5rem;
+    margin: 0.75rem 0;
+}
+main li {
+    margin: 0.25rem 0;
+}
+main blockquote {
+    border-left: 4px solid var(--accent);
+    margin: 1rem 0;
+    padding: 0.25rem 0 0.25rem 1.25rem;
+    color: var(--fg-muted);
+    background: var(--code-bg);
+}
+main table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+}
+main th, main td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+}
+main th {
+    background: var(--code-bg);
+    font-weight: 600;
+}
+main tr:nth-child(even) td {
+    background: var(--table-stripe);
+}
+main hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.5rem 0;
+}
+main .mermaid {
+    background: white;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 1rem 0;
+    text-align: center;
+}
+main img {
+    max-width: 100%;
+    height: auto;
+}
+.doc-meta {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    margin-bottom: 2rem;
+}
+.breadcrumb {
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+    margin-bottom: 0.5rem;
+}
+.breadcrumb a { color: var(--fg-muted); }
+footer.page-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+}
+@media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.sidebar {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    main { padding: 2rem 1.5rem; }
+}
+/* Pygments tweaks for code highlighting */
+.codehilite { background: var(--code-bg); border-radius: 6px; }
+.codehilite pre { margin: 0; border: none; background: transparent; }
+.codehilite .hll { background-color: #ffc; }
+.codehilite .c, .codehilite .cm, .codehilite .c1 { color: #6a737d; font-style: italic; }
+.codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #d73a49; font-weight: 600; }
+.codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #032f62; }
+.codehilite .n, .codehilite .na, .codehilite .nb { color: #24292e; }
+.codehilite .mi, .codehilite .mf { color: #005cc5; }
+.codehilite .o { color: #d73a49; }
+.codehilite .nf { color: #6f42c1; }
+@media (prefers-color-scheme: dark) {
+    .codehilite .c, .codehilite .cm, .codehilite .c1 { color: #8b949e; }
+    .codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #ff7b72; }
+    .codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #a5d6ff; }
+    .codehilite .n, .codehilite .na, .codehilite .nb { color: #c9d1d9; }
+    .codehilite .mi, .codehilite .mf { color: #79c0ff; }
+    .codehilite .o { color: #ff7b72; }
+    .codehilite .nf { color: #d2a8ff; }
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    securityLevel: 'loose',
+    fontFamily: 'inherit',
+});
+</script>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<div class="brand">CVC OTA</div>
+<div class="tagline">Firmware over-the-air update for the STM32G474 Central Vehicle Controller.</div>
+<div class="section-label">Pages</div>
+<ul>
+<li><a class="nav-item" href="README.html">Overview</a></li>
+<li><a class="nav-item" href="design.html">Design</a></li>
+<li><a class="nav-item" href="protocol.html">Wire Protocol</a></li>
+<li><a class="nav-item active" href="sequences.html">Sequence Diagrams</a></li>
+<li><a class="nav-item" href="threat-model.html">Threat Model</a></li>
+<li><a class="nav-item" href="test-plan.html">Test Plan</a></li>
+<li><a class="nav-item" href="integration-guide.html">Integration Guide</a></li>
+<li><a class="nav-item" href="ops-runbook.html">Ops Runbook</a></li>
+</ul>
+</nav>
+<main>
+<article>
+<div class="breadcrumb"><a href="README.html">CVC OTA</a> / Sequence Diagrams</div>
+<h1 id="cvc-ota-sequence-diagrams">CVC OTA — Sequence Diagrams</h1>
+<p>Mermaid diagrams for each supported flow. GitHub renders these inline;
+for other viewers, a plain-text description follows each diagram.</p>
+<h2 id="1-happy-path-full-flash-commit">1. Happy path — full flash + commit</h2>
+<div class="mermaid">
+sequenceDiagram
+    participant H as Host (SOVD server)
+    participant C as CDA
+    participant E as CVC firmware
+
+    H->>C: POST /operations/flash/executions
+    C->>E: 10 02 (programming)
+    E-->>C: 50 02 00 32 01 F4
+    C->>E: 2E F1 A0 <manifest 38 B>
+    E-->>C: 6E F1 A0
+    C->>E: 34 00 44 <addr> <size>
+    E-->>C: 74 20 00 82
+    loop N = ceil(size / 128)
+        C->>E: 36 <seq> <128 B payload>
+        E-->>C: 76 <seq>
+    end
+    C->>E: 37
+    Note right of E: compute SHA-256, constant-time compare
+    E-->>C: 77
+    E->>E: write metadata COMMITTED, arm bank switch
+    Note right of E: ~20 ms later: NVIC_SystemReset
+    H->>C: GET /operations/flash/executions/<id>
+    C->>E: 22 F1 A1
+    E-->>C: 62 F1 A1 03 00 02 01 00
+    C-->>H: 200 OK { state: "Committed", witness: ... }
+</div>
+
+<p><strong>Narrative.</strong> The host opens a programming session, writes the
+manifest, starts download, loops TransferData chunks, finalizes with
+RequestTransferExit, and polls the status DID until state reports
+<code>Committed</code>. The ECU bank-switches ~20 ms after committing; the next
+boot lands on the new image.</p>
+<h2 id="2-happy-path-rollback-after-commit">2. Happy path — rollback after commit</h2>
+<div class="mermaid">
+sequenceDiagram
+    participant H as Host
+    participant E as CVC firmware
+
+    Note over H,E: Previous flow committed COMMITTED; host decides to roll back
+    H->>E: 22 F1 A2
+    E-->>H: 62 F1 A2 <witness_id>
+    H->>E: 31 01 02 02
+    Note right of E: write metadata ROLLEDBACK, arm reverse bank switch
+    E-->>H: 71 01 02 02 05
+    Note right of E: ~20 ms later: NVIC_SystemReset
+    H->>E: 22 F1 A1
+    E-->>H: 62 F1 A1 05 00 01 01 00
+</div>
+
+<p><strong>Narrative.</strong> After a commit, the host captures the new witness, then
+issues the rollback routine. The ECU writes the &ldquo;other&rdquo; bank&rsquo;s metadata
+(the previously-active bank, which will become active again after
+reset) with state <code>ROLLEDBACK</code>, arms the bank-switch reversal, and
+resets. On next boot the previously-active image runs again.</p>
+<h2 id="3-failure-hash-mismatch">3. Failure — hash mismatch</h2>
+<div class="mermaid">
+sequenceDiagram
+    participant H as Host
+    participant E as CVC firmware
+
+    H->>E: 10 02
+    E-->>H: 50 02 00 32 01 F4
+    H->>E: 2E F1 A0 <manifest with WRONG hash>
+    E-->>H: 6E F1 A0
+    H->>E: 34 00 44 <addr> <size>
+    E-->>H: 74 20 00 82
+    loop N chunks
+        H->>E: 36 <seq> <payload>
+        E-->>H: 76 <seq>
+    end
+    H->>E: 37
+    Note right of E: SHA-256 compare fails
+    E-->>H: 7F 37 24    (requestSequenceError)
+    E->>E: state := FAILED, reason := SIGNATURE_INVALID, manifest cleared
+    H->>E: 22 F1 A1
+    E-->>H: 62 F1 A1 04 01 01 00 00
+</div>
+
+<p><strong>Narrative.</strong> Host delivers the full image but the manifest&rsquo;s
+<code>expected_sha256</code> does not match what the ECU hashes on the inactive
+bank. The <code>0x37</code> response is negative with NRC <code>0x24</code> and the status
+DID reports <code>FAILED / SIGNATURE_INVALID</code>. The manifest is cleared; the
+host must re-author + re-write to retry.</p>
+<h2 id="4-failure-inactivity-timeout">4. Failure — inactivity timeout</h2>
+<div class="mermaid">
+sequenceDiagram
+    participant H as Host
+    participant E as CVC firmware
+
+    H->>E: 10 02
+    E-->>H: 50 02 ...
+    H->>E: 2E F1 A0 <manifest>
+    E-->>H: 6E F1 A0
+    H->>E: 34 00 44 <addr> <size>
+    E-->>H: 74 20 00 82
+    H->>E: 36 01 <payload>
+    E-->>H: 76 01
+    Note right of E: host disappears; no further 0x36
+    Note right of E: 10 s elapses
+    Note right of E: ota_poll transitions state := FAILED, reason := TIMEOUT, manifest cleared
+    H->>E: 36 02 <payload>
+    E-->>H: 7F 36 24   (requestSequenceError, state is no longer DOWNLOADING)
+    H->>E: 22 F1 A1
+    E-->>H: 62 F1 A1 04 06 01 00 00
+</div>
+
+<p><strong>Narrative.</strong> The host sends the first chunk then pauses. After 10 s
+without a fresh <code>0x36</code>, the firmware transitions to <code>FAILED / TIMEOUT</code>
+in <code>ota_poll</code>. The next <code>0x36</code> is rejected because state is no longer
+<code>DOWNLOADING</code>. The host observes this either through the negative
+response or by polling <code>F1A1</code>.</p>
+<h2 id="5-failure-mid-transfer-manifest-swap-attempt">5. Failure — mid-transfer manifest swap attempt</h2>
+<div class="mermaid">
+sequenceDiagram
+    participant A as Attacker
+    participant E as CVC firmware
+
+    A->>E: 10 02
+    E-->>A: 50 02 ...
+    A->>E: 2E F1 A0 <manifest M1, hash H1>
+    E-->>A: 6E F1 A0
+    A->>E: 34 00 44 <addr> <size>
+    E-->>A: 74 20 00 82
+    A->>E: 36 01 <partial image bytes>
+    E-->>A: 76 01
+    Note over A,E: Attacker tries to swap the manifest mid-transfer to mask substituted payload
+    A->>E: 2E F1 A0 <manifest M2, hash H2>
+    E-->>A: 7F 2E 22    (conditionsNotCorrect — manifest locked)
+    Note right of E: state is DOWNLOADING; manifest is locked until IDLE / FAILED / COMMITTED
+</div>
+
+<p><strong>Narrative.</strong> The manifest-lock check in <code>ota_write_did</code> rejects the
+swap attempt with NRC <code>0x22</code> (conditionsNotCorrect). The attacker
+cannot change the expected hash while bytes are in flight.</p>
+<h2 id="6-failure-no-manifest-before-transfer">6. Failure — no manifest before transfer</h2>
+<div class="mermaid">
+sequenceDiagram
+    participant A as Attacker
+    participant E as CVC firmware
+
+    A->>E: 10 02
+    E-->>A: 50 02 ...
+    A->>E: 34 00 44 <addr> <size>
+    E-->>A: 7F 34 22   (conditionsNotCorrect — NO_MANIFEST)
+    Note over A,E: Attacker cannot skip the manifest step; RequestDownload is gated on manifest_ready
+</div>
+
+<p><strong>Narrative.</strong> Without writing DID <code>0xF1A0</code> first, <code>0x34</code> is rejected.
+This closes the self-certification hole where pre-hardening firmware
+would accept any image and invent its own expected hash.</p>
+<h2 id="7-failure-witness-replay-attempt">7. Failure — witness replay attempt</h2>
+<div class="mermaid">
+sequenceDiagram
+    participant A as Attacker
+    participant E as CVC firmware
+
+    Note over A,E: Current image committed, witness_id = W_current
+    A->>E: 10 02
+    E-->>A: 50 02 ...
+    A->>E: 2E F1 A0 <manifest with witness_id == W_current>
+    E-->>A: 7F 2E 22   (conditionsNotCorrect — witness collides with active image)
+    A->>E: 2E F1 A0 <manifest with witness_id == 0>
+    E-->>A: 7F 2E 13   (incorrectMessageLength — sentinel witness rejected)
+</div>
+
+<p><strong>Narrative.</strong> The witness-replay guard rejects both the collision-
+with-active-image case and the sentinel-zero case.</p>
+<h2 id="8-host-side-async-envelope-sovd-rest-layer">8. Host-side async envelope (SOVD REST layer)</h2>
+<div class="mermaid">
+sequenceDiagram
+    participant T as Tooling / UI
+    participant S as SOVD server
+    participant E as CVC firmware
+
+    T->>S: POST /operations/flash/executions<br/>{ manifest, image_source }
+    S->>T: 202 Accepted<br/>Location: /operations/flash/executions/<id>
+    par Tooling polls
+      loop until terminal
+        T->>S: GET /operations/flash/executions/<id>
+        S->>E: 22 F1 A1
+        E-->>S: 62 F1 A1 <state> <reason> ...
+        S-->>T: 200 OK { state: Downloading / Committed / Failed / ... }
+      end
+    and SOVD drives the UDS flow
+      S->>E: 10 02
+      S->>E: 2E F1 A0 ...
+      S->>E: 34 00 44 ...
+      loop
+        S->>E: 36 <seq> ...
+      end
+      S->>E: 37
+    end
+</div>
+
+<p><strong>Narrative.</strong> Per ADR-0034 (async-first diagnostic runtime), the SOVD
+REST surface returns <code>202 Accepted</code> immediately and the tooling polls
+the status URL until a terminal state is reached. The SOVD server
+internally drives the UDS state machine in parallel with the polling
+stream. The two flows share the host-side <code>bulk_transfers</code> state
+record.</p>
+<footer class="page-footer">
+Taktflow OpenSOVD — feature documentation. Rendered from
+<code>sequences.md</code>.
+</footer>
+</article>
+</main>
+</div>
+</body>
+</html>

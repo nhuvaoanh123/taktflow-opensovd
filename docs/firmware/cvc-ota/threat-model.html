@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — CVC OTA</title>
+<style>
+:root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --fg-muted: #555;
+    --accent: #2b6cb0;
+    --accent-hover: #1c4d87;
+    --border: #e2e8f0;
+    --code-bg: #f6f8fa;
+    --code-fg: #24292e;
+    --nav-bg: #f8fafc;
+    --table-stripe: #f8fafc;
+    --callout-bg: #fffbea;
+    --callout-border: #f6e05e;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --accent: #58a6ff;
+        --accent-hover: #79b8ff;
+        --border: #30363d;
+        --code-bg: #161b22;
+        --code-fg: #c9d1d9;
+        --nav-bg: #161b22;
+        --table-stripe: #161b22;
+        --callout-bg: #1f2937;
+        --callout-border: #fbbf24;
+    }
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+.layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+}
+nav.sidebar {
+    background: var(--nav-bg);
+    border-right: 1px solid var(--border);
+    padding: 2rem 1.5rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+nav.sidebar .brand {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+nav.sidebar .tagline {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.4;
+}
+nav.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+nav.sidebar li {
+    margin: 0;
+}
+nav.sidebar a {
+    display: block;
+    padding: 0.45rem 0.75rem;
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: background 0.1s;
+}
+nav.sidebar a:hover {
+    background: var(--code-bg);
+    color: var(--accent);
+}
+nav.sidebar a.active {
+    background: var(--accent);
+    color: white;
+}
+nav.sidebar .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-muted);
+    margin: 1.5rem 0 0.5rem 0.75rem;
+}
+main {
+    padding: 3rem 4rem;
+    max-width: 900px;
+    width: 100%;
+}
+main article {
+    min-width: 0;
+}
+main h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.02em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.75rem;
+}
+main h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    letter-spacing: -0.01em;
+}
+main h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.5rem;
+}
+main h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.25rem;
+    color: var(--fg-muted);
+}
+main p {
+    margin: 0.75rem 0;
+}
+main a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.1s;
+}
+main a:hover {
+    border-bottom-color: var(--accent);
+}
+main code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                 monospace;
+    font-size: 0.9em;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+}
+main pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 1rem 0;
+}
+main pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+}
+main ul, main ol {
+    padding-left: 1.5rem;
+    margin: 0.75rem 0;
+}
+main li {
+    margin: 0.25rem 0;
+}
+main blockquote {
+    border-left: 4px solid var(--accent);
+    margin: 1rem 0;
+    padding: 0.25rem 0 0.25rem 1.25rem;
+    color: var(--fg-muted);
+    background: var(--code-bg);
+}
+main table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+}
+main th, main td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+}
+main th {
+    background: var(--code-bg);
+    font-weight: 600;
+}
+main tr:nth-child(even) td {
+    background: var(--table-stripe);
+}
+main hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.5rem 0;
+}
+main .mermaid {
+    background: white;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 1rem 0;
+    text-align: center;
+}
+main img {
+    max-width: 100%;
+    height: auto;
+}
+.doc-meta {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    margin-bottom: 2rem;
+}
+.breadcrumb {
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+    margin-bottom: 0.5rem;
+}
+.breadcrumb a { color: var(--fg-muted); }
+footer.page-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+}
+@media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.sidebar {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    main { padding: 2rem 1.5rem; }
+}
+/* Pygments tweaks for code highlighting */
+.codehilite { background: var(--code-bg); border-radius: 6px; }
+.codehilite pre { margin: 0; border: none; background: transparent; }
+.codehilite .hll { background-color: #ffc; }
+.codehilite .c, .codehilite .cm, .codehilite .c1 { color: #6a737d; font-style: italic; }
+.codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #d73a49; font-weight: 600; }
+.codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #032f62; }
+.codehilite .n, .codehilite .na, .codehilite .nb { color: #24292e; }
+.codehilite .mi, .codehilite .mf { color: #005cc5; }
+.codehilite .o { color: #d73a49; }
+.codehilite .nf { color: #6f42c1; }
+@media (prefers-color-scheme: dark) {
+    .codehilite .c, .codehilite .cm, .codehilite .c1 { color: #8b949e; }
+    .codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #ff7b72; }
+    .codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #a5d6ff; }
+    .codehilite .n, .codehilite .na, .codehilite .nb { color: #c9d1d9; }
+    .codehilite .mi, .codehilite .mf { color: #79c0ff; }
+    .codehilite .o { color: #ff7b72; }
+    .codehilite .nf { color: #d2a8ff; }
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    securityLevel: 'loose',
+    fontFamily: 'inherit',
+});
+</script>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<div class="brand">CVC OTA</div>
+<div class="tagline">Firmware over-the-air update for the STM32G474 Central Vehicle Controller.</div>
+<div class="section-label">Pages</div>
+<ul>
+<li><a class="nav-item" href="README.html">Overview</a></li>
+<li><a class="nav-item" href="design.html">Design</a></li>
+<li><a class="nav-item" href="protocol.html">Wire Protocol</a></li>
+<li><a class="nav-item" href="sequences.html">Sequence Diagrams</a></li>
+<li><a class="nav-item active" href="threat-model.html">Threat Model</a></li>
+<li><a class="nav-item" href="test-plan.html">Test Plan</a></li>
+<li><a class="nav-item" href="integration-guide.html">Integration Guide</a></li>
+<li><a class="nav-item" href="ops-runbook.html">Ops Runbook</a></li>
+</ul>
+</nav>
+<main>
+<article>
+<div class="breadcrumb"><a href="README.html">CVC OTA</a> / Threat Model</div>
+<h1 id="cvc-ota-threat-model">CVC OTA — Threat Model</h1>
+<p>Threat register for the CVC firmware-over-the-air path as of commit
+<code>ba38210</code>. Organized by attacker capability. Each row names the
+threat, the current defense (if any), and the residual gap.</p>
+<h2 id="1-attacker-model">1. Attacker model</h2>
+<p>We distinguish three capability tiers for a hypothetical attacker:</p>
+<ul>
+<li><strong>T1 (signal-only).</strong> Can observe and measure bench signals (CAN TX,
+  power rails) but has no write access to the tester side.</li>
+<li><strong>T2 (tester-level).</strong> Controls what the UDS tester sends. Has access
+  to <code>0x10 02</code> programming session. Does not control the MCU power
+  supply, JTAG, or the tester identity at a higher trust layer.</li>
+<li><strong>T3 (physical).</strong> Has JTAG / SWD access to the MCU, can erase the
+  option bytes, can write any flash location. This tier defeats every
+  firmware-level control by definition; not modeled here.</li>
+</ul>
+<p>This document covers T1 and T2.</p>
+<h2 id="2-threat-register-t2-tester-level">2. Threat register (T2 — tester-level)</h2>
+<h3 id="t21-flash-an-unauthorized-image-with-a-host-fabricated-hash">T2.1 — Flash an unauthorized image with a host-fabricated hash</h3>
+<p><strong>Attack.</strong> Tester writes a manifest whose <code>expected_sha256</code> matches an
+image it also controls, then streams that image. The on-MCU hash
+compare succeeds and the image commits.</p>
+<p><strong>Defense today.</strong> None. The manifest&rsquo;s hash is not authenticated; any
+tester in programming session can install any image.</p>
+<p><strong>Residual gap.</strong> This is the largest open gap. Closing it requires
+CMS / X.509 signature verification (ADR-0025, designed not shipped).
+The firmware would need to (a) parse a signature blob, (b) validate
+the signature over the manifest, (c) validate the certificate chain
+against a root of trust baked into the MCU.</p>
+<p><strong>Mitigations at higher layers.</strong> The tester-access policy at the
+OEM / factory level should gate programming-session entry on role-
+based authorization. This is not a firmware concern; the tester
+identity is assumed-trusted at this layer.</p>
+<h3 id="t22-self-certification-of-a-tester-supplied-image">T2.2 — Self-certification of a tester-supplied image</h3>
+<p><strong>Attack (pre-hardening).</strong> Tester sends <code>0x34</code> + <code>0x36 ...</code> + <code>0x37</code>
+without a prior manifest write. Pre-<code>a4bb92b</code> firmware would compute
+the hash of whatever arrived, declare that the expected hash, derive a
+witness from the first four bytes of the hash, and commit. Effectively
+&ldquo;the ECU accepts any image I gave it and self-authenticates&rdquo;.</p>
+<p><strong>Defense today.</strong> Closed in commit <code>a4bb92b</code>. <code>ota_begin_download</code>
+rejects if <code>manifest_ready == 0</code> with <code>OTA_ERR_NO_MANIFEST</code>;
+<code>ota_request_transfer_exit</code> does the same check. Removed the
+self-certification code path entirely (the <code>else</code> branch in
+<code>transfer_exit</code> that invented the expected hash is gone along with the
+now-unused <code>ota_witness_id_from_sha256</code> helper).</p>
+<p><strong>Residual gap.</strong> None for this specific attack. The manifest is still
+unauthenticated (T2.1), but the firmware no longer invents its own
+expected hash.</p>
+<h3 id="t23-mid-transfer-manifest-swap">T2.3 — Mid-transfer manifest swap</h3>
+<p><strong>Attack.</strong> Tester writes manifest M1 (hash H1), sends part of image
+I1, writes manifest M2 (hash H2 matching a substituted image I2),
+continues sending I2 bytes. Without a lock, the final hash compare
+would succeed against the swapped expectation.</p>
+<p><strong>Defense today.</strong> Closed in <code>a4bb92b</code>. <code>ota_write_did</code> rejects the
+second manifest if state is <code>DOWNLOADING</code> or <code>VERIFYING</code>, returning
+<code>OTA_ERR_MANIFEST_LOCKED</code> → NRC <code>0x22</code> conditionsNotCorrect.</p>
+<p><strong>Residual gap.</strong> None for this specific attack.</p>
+<h3 id="t24-requestdownload-re-entry">T2.4 — RequestDownload re-entry</h3>
+<p><strong>Attack.</strong> Tester sends <code>0x34</code> while a transfer is in flight, hoping
+to confuse the state machine into stomping the buffered hash / seq
+counter and programming mixed bytes from two images.</p>
+<p><strong>Defense today.</strong> Closed in <code>a4bb92b</code>. <code>ota_begin_download</code> rejects
+if state is <code>DOWNLOADING</code> or <code>VERIFYING</code> (<code>OTA_ERR_WRONG_STATE</code>).</p>
+<p><strong>Residual gap.</strong> None.</p>
+<h3 id="t25-inactivity-wedge-dos">T2.5 — Inactivity wedge (DoS)</h3>
+<p><strong>Attack.</strong> Tester enters <code>DOWNLOADING</code> but stops sending <code>0x36</code>
+chunks. Without a timeout, the ECU sits in <code>DOWNLOADING</code> until a hard
+reset — it cannot accept a new manifest, cannot abort, cannot boot a
+new image. The half-flashed inactive bank is invalid but the valid
+active image keeps running. Less a security issue than an
+availability-of-the-OTA-channel issue.</p>
+<p><strong>Defense today.</strong> Closed in <code>ba38210</code>. <code>ota_poll</code> transitions to
+<code>FAILED / TIMEOUT</code> after <code>OTA_DOWNLOAD_INACTIVITY_MS</code> (10 s) of no
+<code>0x36</code> activity. Manifest is cleared; a new transfer requires a fresh
+manifest + <code>0x34</code>.</p>
+<p><strong>Residual gap.</strong> The timeout is fixed at 10 s. An OEM may want it
+configurable per-site; not yet parameterized. Also, the timeout does
+not persist to metadata, so a power cycle during the timeout window
+does not leave a record of the timeout-vs-power-loss distinction.</p>
+<h3 id="t26-witness-id-replay">T2.6 — Witness-ID replay</h3>
+<p><strong>Attack.</strong> Tester submits a manifest whose <code>witness_id</code> matches the
+currently-installed image. Provenance-tracking tooling that reads DID
+<code>0xF1A2</code> before and after the install would see the same witness and
+be unable to tell that a re-install happened.</p>
+<p><strong>Defense today.</strong> Closed in <code>ba38210</code>. <code>ota_write_did</code> rejects
+<code>witness_id == g_witness_id</code> with <code>OTA_ERR_MANIFEST_LOCKED</code>. Also
+rejects <code>witness_id == 0</code> (sentinel &ldquo;unset&rdquo;).</p>
+<p><strong>Residual gap.</strong> Only the <strong>current</strong> active image&rsquo;s witness is
+compared. Full replay protection (reject any witness ever committed)
+would need a persistent witness history. The 2 KB metadata page has
+room for ~16-slot witness ring; not implemented.</p>
+<h3 id="t27-witness-counter-rollback">T2.7 — Witness-counter rollback</h3>
+<p><strong>Attack.</strong> Tester installs an old image whose <code>witness_counter</code> is
+lower than the current counter. Provenance tooling that relies on
+monotonic counters would not detect this.</p>
+<p><strong>Defense today.</strong> None. The manifest does not carry
+<code>witness_counter</code>; the firmware maintains its own monotonic counter,
+but has no input from the manifest to cross-check.</p>
+<p><strong>Residual gap.</strong> A manifest extension carrying a minimum-acceptable
+<code>witness_counter</code> would let the firmware reject downgrade attacks.
+Needs a manifest-format version bump; backwards-compatible if added
+as trailing bytes behind the current 38 B.</p>
+<h3 id="t28-seq-counter-manipulation">T2.8 — Seq-counter manipulation</h3>
+<p><strong>Attack.</strong> Tester sends <code>0x36</code> chunks with out-of-order or repeated
+sequence counters, hoping to trigger a buffer misalignment that makes
+the inactive bank content differ from what the hash covers.</p>
+<p><strong>Defense today.</strong> <code>ota_transfer_data</code> strict-checks
+<code>block_sequence_counter == g_download.expected_block_sequence_counter</code>,
+increments by 1 on success. Any mismatch returns
+<code>OTA_ERR_WRONG_SEQ</code> → NRC <code>0x73</code> wrongBlockSequenceCounter.</p>
+<p><strong>Residual gap.</strong> None. Also — overflow is caught: the
+<code>bytes_received + len &gt; total_size</code> check rejects any chunk that would
+exceed the declared image size, which together with the strict seq
+check prevents most byte-level attacks.</p>
+<h3 id="t29-overlength-chunk-buffer-overflow">T2.9 — Overlength chunk (buffer overflow)</h3>
+<p><strong>Attack.</strong> Tester sends a <code>0x36</code> with more than 128 B of payload,
+hoping to overflow the flash-programming staging.</p>
+<p><strong>Defense today.</strong> <code>ota_transfer_data</code> rejects <code>len &gt; OTA_MAX_TRANSFER_RECORD</code>
+(128 B) with <code>OTA_ERR_BAD_LENGTH</code> → NRC <code>0x13</code> incorrectMessageLength.
+The staging <code>pending_doubleword[8]</code> is only written to via increments
+bounded to <code>&lt; 8U</code> — invariant holds.</p>
+<p><strong>Residual gap.</strong> None.</p>
+<h3 id="t210-power-loss-during-commit">T2.10 — Power loss during commit</h3>
+<p><strong>Attack.</strong> Tester cuts power after sending <code>0x37</code> but before the
+metadata write completes. On next boot, the inactive bank has image
+content but no valid metadata.</p>
+<p><strong>Defense today.</strong> Partial. <code>ota_init</code> reads the <strong>active</strong> bank&rsquo;s
+metadata only, so a partial inactive-bank metadata does not affect
+boot. The bank-switch is armed via option-byte flip, which is atomic
+in the sense that BFB2 either takes effect or it doesn&rsquo;t — there&rsquo;s no
+mid-flip state.</p>
+<p><strong>Residual gap.</strong> If power cuts exactly during the end-of-bank
+metadata write (one doubleword, so ≤60 µs window), the metadata is
+corrupt. Recovery: next boot to the known-good active bank, operator
+issues a fresh transfer. Not a corruption of the running system; just
+a failed install.</p>
+<h2 id="3-threat-register-t1-signal-only">3. Threat register (T1 — signal-only)</h2>
+<h3 id="t11-hash-compare-timing-side-channel">T1.1 — Hash-compare timing side channel</h3>
+<p><strong>Attack.</strong> Observer captures response-latency traces on the CAN TX
+line for a <code>0x37</code> exchange. With a standard <code>memcmp</code> the latency
+depends on which byte of the digest first differs. An attacker could
+probe candidate hashes byte-by-byte, reducing the search from
+2^256 down to polynomially many queries.</p>
+<p><strong>Defense today.</strong> Closed in <code>ba38210</code>. Replaced <code>memcmp</code> with
+<code>ota_ct_equal</code>, an XOR-accumulator compare that always walks all 32
+bytes. Byte-differential latency is zero.</p>
+<p><strong>Residual gap.</strong> Other timing side channels (e.g., flash read-latency
+during hash compute across different image contents) may still leak
+bits. Not considered practical for T1 at CAN bit rates but would
+warrant review for a higher-trust target.</p>
+<h3 id="t12-witness-byte-inference-from-the-live-bus">T1.2 — Witness-byte inference from the live bus</h3>
+<p><strong>Attack.</strong> Observer sees DIDs <code>0xF1A2</code> go by on the CAN bus during a
+commit sequence. The 4-byte witness_id is recoverable from traffic.</p>
+<p><strong>Defense today.</strong> None; this is by design. The witness is intended
+to be observable to tooling; it is not a secret.</p>
+<p><strong>Residual gap.</strong> Not a real threat — witness is public identity, not
+secret material.</p>
+<h2 id="4-known-open-issues-not-yet-classified-as-threats">4. Known open issues (not yet classified as threats)</h2>
+<ul>
+<li><strong>No authenticated bootloader.</strong> The running image <em>is</em> the trust
+  anchor. A T3 attacker with JTAG access can bypass everything.
+  Production would need a signed bootloader in a write-protected
+  sector.</li>
+<li><strong>No host-side hash re-verification.</strong> The host trusts the MCU&rsquo;s
+  verdict. A malicious MCU could report <code>COMMITTED</code> without actually
+  committing. Defense-in-depth would have the host re-hash the bytes
+  it sent and cross-check with the witness. Blocked on host-side work
+  in <code>opensovd-core/sovd-server/src/backends/cda.rs</code>.</li>
+<li><strong>No replay of failed manifest metadata across resets.</strong> If the ECU
+  resets mid-download (power loss), the manifest is gone; next boot
+  starts in <code>IDLE</code>. A host continuing the transfer would see
+  <code>WRONG_STATE</code> on <code>0x36</code>. This is correct behavior but may surprise
+  a tool that expected to pick up where it left off.</li>
+<li><strong>ISO 21434 / UNECE R155 evidence artifacts are not produced</strong> by
+  this feature. Audit trail (who triggered which OTA, when, with what
+  cert) is a host-side concern out of scope for this firmware module.</li>
+</ul>
+<h2 id="5-priority-of-remaining-work">5. Priority of remaining work</h2>
+<ol>
+<li><strong>Implement CMS / X.509 signature validation</strong> (ADR-0025). Closes
+   T2.1, the largest open threat.</li>
+<li><strong>Add host-side hash re-verification</strong> after <code>COMMITTED</code>. Defense-
+   in-depth against malicious MCU firmware.</li>
+<li><strong>Add a signed bootloader</strong> in a write-protected flash sector.
+   Closes T3 firmware-authoring attacks at the cost of a significant
+   architecture change.</li>
+<li><strong>Extend manifest with monotonic witness_counter</strong>. Closes T2.7.</li>
+<li><strong>Persistent witness history</strong> (16-slot ring in metadata). Closes
+   the wider form of T2.6.</li>
+<li><strong>Audit-log export</strong> for ISO 21434 / UNECE R155 evidence generation.</li>
+</ol>
+<footer class="page-footer">
+Taktflow OpenSOVD — feature documentation. Rendered from
+<code>threat-model.md</code>.
+</footer>
+</article>
+</main>
+</div>
+</body>
+</html>

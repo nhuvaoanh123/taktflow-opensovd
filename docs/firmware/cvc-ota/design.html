@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Design — CVC OTA</title>
+<style>
+:root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --fg-muted: #555;
+    --accent: #2b6cb0;
+    --accent-hover: #1c4d87;
+    --border: #e2e8f0;
+    --code-bg: #f6f8fa;
+    --code-fg: #24292e;
+    --nav-bg: #f8fafc;
+    --table-stripe: #f8fafc;
+    --callout-bg: #fffbea;
+    --callout-border: #f6e05e;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --accent: #58a6ff;
+        --accent-hover: #79b8ff;
+        --border: #30363d;
+        --code-bg: #161b22;
+        --code-fg: #c9d1d9;
+        --nav-bg: #161b22;
+        --table-stripe: #161b22;
+        --callout-bg: #1f2937;
+        --callout-border: #fbbf24;
+    }
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+.layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+}
+nav.sidebar {
+    background: var(--nav-bg);
+    border-right: 1px solid var(--border);
+    padding: 2rem 1.5rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+nav.sidebar .brand {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+nav.sidebar .tagline {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.4;
+}
+nav.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+nav.sidebar li {
+    margin: 0;
+}
+nav.sidebar a {
+    display: block;
+    padding: 0.45rem 0.75rem;
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: background 0.1s;
+}
+nav.sidebar a:hover {
+    background: var(--code-bg);
+    color: var(--accent);
+}
+nav.sidebar a.active {
+    background: var(--accent);
+    color: white;
+}
+nav.sidebar .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-muted);
+    margin: 1.5rem 0 0.5rem 0.75rem;
+}
+main {
+    padding: 3rem 4rem;
+    max-width: 900px;
+    width: 100%;
+}
+main article {
+    min-width: 0;
+}
+main h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.02em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.75rem;
+}
+main h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    letter-spacing: -0.01em;
+}
+main h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.5rem;
+}
+main h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.25rem;
+    color: var(--fg-muted);
+}
+main p {
+    margin: 0.75rem 0;
+}
+main a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.1s;
+}
+main a:hover {
+    border-bottom-color: var(--accent);
+}
+main code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                 monospace;
+    font-size: 0.9em;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+}
+main pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 1rem 0;
+}
+main pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+}
+main ul, main ol {
+    padding-left: 1.5rem;
+    margin: 0.75rem 0;
+}
+main li {
+    margin: 0.25rem 0;
+}
+main blockquote {
+    border-left: 4px solid var(--accent);
+    margin: 1rem 0;
+    padding: 0.25rem 0 0.25rem 1.25rem;
+    color: var(--fg-muted);
+    background: var(--code-bg);
+}
+main table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+}
+main th, main td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+}
+main th {
+    background: var(--code-bg);
+    font-weight: 600;
+}
+main tr:nth-child(even) td {
+    background: var(--table-stripe);
+}
+main hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.5rem 0;
+}
+main .mermaid {
+    background: white;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 1rem 0;
+    text-align: center;
+}
+main img {
+    max-width: 100%;
+    height: auto;
+}
+.doc-meta {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    margin-bottom: 2rem;
+}
+.breadcrumb {
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+    margin-bottom: 0.5rem;
+}
+.breadcrumb a { color: var(--fg-muted); }
+footer.page-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+}
+@media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.sidebar {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    main { padding: 2rem 1.5rem; }
+}
+/* Pygments tweaks for code highlighting */
+.codehilite { background: var(--code-bg); border-radius: 6px; }
+.codehilite pre { margin: 0; border: none; background: transparent; }
+.codehilite .hll { background-color: #ffc; }
+.codehilite .c, .codehilite .cm, .codehilite .c1 { color: #6a737d; font-style: italic; }
+.codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #d73a49; font-weight: 600; }
+.codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #032f62; }
+.codehilite .n, .codehilite .na, .codehilite .nb { color: #24292e; }
+.codehilite .mi, .codehilite .mf { color: #005cc5; }
+.codehilite .o { color: #d73a49; }
+.codehilite .nf { color: #6f42c1; }
+@media (prefers-color-scheme: dark) {
+    .codehilite .c, .codehilite .cm, .codehilite .c1 { color: #8b949e; }
+    .codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #ff7b72; }
+    .codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #a5d6ff; }
+    .codehilite .n, .codehilite .na, .codehilite .nb { color: #c9d1d9; }
+    .codehilite .mi, .codehilite .mf { color: #79c0ff; }
+    .codehilite .o { color: #ff7b72; }
+    .codehilite .nf { color: #d2a8ff; }
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    securityLevel: 'loose',
+    fontFamily: 'inherit',
+});
+</script>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<div class="brand">CVC OTA</div>
+<div class="tagline">Firmware over-the-air update for the STM32G474 Central Vehicle Controller.</div>
+<div class="section-label">Pages</div>
+<ul>
+<li><a class="nav-item" href="README.html">Overview</a></li>
+<li><a class="nav-item active" href="design.html">Design</a></li>
+<li><a class="nav-item" href="protocol.html">Wire Protocol</a></li>
+<li><a class="nav-item" href="sequences.html">Sequence Diagrams</a></li>
+<li><a class="nav-item" href="threat-model.html">Threat Model</a></li>
+<li><a class="nav-item" href="test-plan.html">Test Plan</a></li>
+<li><a class="nav-item" href="integration-guide.html">Integration Guide</a></li>
+<li><a class="nav-item" href="ops-runbook.html">Ops Runbook</a></li>
+</ul>
+</nav>
+<main>
+<article>
+<div class="breadcrumb"><a href="README.html">CVC OTA</a> / Design</div>
+<h1 id="cvc-ota-design">CVC OTA — Design</h1>
+<h2 id="how-to-read-this">How to read this</h2>
+<p>Audience: engineer implementing the host-side driver, reviewing the
+firmware, or porting this design to another ECU family. Assumes
+familiarity with ISO 14229 UDS and ISO 15765-2 ISO-TP at least at a
+protocol-reference level.</p>
+<p>Sections: architecture overview, bank layout, state machine,
+responsibility split, design decisions with rationale, known
+limitations.</p>
+<h2 id="1-architecture-overview">1. Architecture overview</h2>
+<div class="codehilite"><pre><span></span><code>  ┌──────────────────────────────┐        ┌───────────────────┐
+  │  Host SOVD server            │        │  STM32G474 CVC    │
+  │  (Rust, hyper + tower)       │        │                   │
+  │                              │        │  Bank A 256 KB    │
+  │  SOVD REST (HTTP/JSON)       │        │  0x0800_0000      │
+  │  + 202 Accepted polling      │        │                   │
+  └──────────────┬───────────────┘        │  Bank B 256 KB    │
+                 │                        │  0x0804_0000      │
+                 ▼                        │                   │
+          Classic Diagnostic              │  Metadata 2 KB at │
+          Adapter (CDA, vanilla           │  end of each bank │
+          upstream snapshot)              │                   │
+                 │                        │  src/ota.c        │
+                 ▼                        │  src/uds.c        │
+          UDS over CAN / DoIP             │  src/sha256.c     │
+          (ISO 14229 + 15765-2)           │                   │
+                 └──────────CAN───────────▶                   │
+                                          └───────────────────┘
+</code></pre></div>
+
+<p>Three responsibility boundaries, each with its own integrity concern:</p>
+<ol>
+<li><strong>Host ↔ CDA</strong> — SOVD REST, JSON payloads, orchestration layer. The
+   host is the authority on which image to install and carries the
+   manifest. The CDA translates SOVD operations into UDS service calls.</li>
+<li><strong>CDA ↔ MCU</strong> — UDS over CAN/DoIP. Standard-conformant ISO 14229
+   services (<code>0x10</code>, <code>0x22</code>, <code>0x2E</code>, <code>0x31</code>, <code>0x34</code>, <code>0x36</code>, <code>0x37</code>).
+   The MCU treats the CDA as a trusted-enough channel — anything that
+   arrives here has been shaped by the SOVD layer and ACL-gated.</li>
+<li><strong>MCU internal</strong> — flash programming, hash verification, bank-switch
+   arming. Everything in <code>firmware/cvc-uds/src/ota.c</code> is invariant-
+   enforced: the on-MCU state machine is the final authority on whether
+   a bank-switch occurs.</li>
+</ol>
+<h2 id="2-bank-layout-and-boot-authority">2. Bank layout and boot authority</h2>
+<p>The STM32G474RE has 512 KB of flash, configured as two 256 KB banks
+(dual-bank mode, option byte <code>OPTR.DBANK = 1</code>). Boot bank selection is
+driven by the <code>OPTR.BFB2</code> option byte through the SYSCFG <code>MEMRMP.FB_MODE</code>
+alias, so the currently-executing bank is always remapped to
+<code>0x0800_0000</code> — code is compiled against a single fixed link address.</p>
+<div class="codehilite"><pre><span></span><code>Bank A (FLASH_BANK_1)          Bank B (FLASH_BANK_2)
+0x0800_0000 ──────────┐        0x0804_0000 ──────────┐
+                      │                              │
+  Image (up to        │          Image (up to        │
+  OTA_IMAGE_MAX       │          OTA_IMAGE_MAX       │
+  = 254 KB)           │          = 254 KB)           │
+                      │                              │
+0x0803_F800 ──────────┤        0x0807_F800 ──────────┤
+  Metadata (1 page,   │          Metadata (1 page,   │
+  2 KB)               │          2 KB)               │
+0x0803_FFFF ──────────┘        0x0807_FFFF ──────────┘
+</code></pre></div>
+
+<p>The metadata block at the end of each bank is a packed 52-byte struct
+(with padding to fill a doubleword boundary):</p>
+<div class="codehilite"><pre><span></span><code><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">uint32</span><span class="w"> </span><span class="n">magic</span><span class="p">;</span><span class="w">             </span><span class="c1">// 0x54464F54 &quot;TOFT&quot; — bank-validity tag</span>
+<span class="w">    </span><span class="n">uint32</span><span class="w"> </span><span class="n">version</span><span class="p">;</span><span class="w">           </span><span class="c1">// metadata schema version (currently 1)</span>
+<span class="w">    </span><span class="n">uint32</span><span class="w"> </span><span class="n">state</span><span class="p">;</span><span class="w">             </span><span class="c1">// last recorded OTA state for this bank</span>
+<span class="w">    </span><span class="n">uint32</span><span class="w"> </span><span class="n">reason</span><span class="p">;</span><span class="w">            </span><span class="c1">// failure reason if state == FAILED</span>
+<span class="w">    </span><span class="n">uint32</span><span class="w"> </span><span class="n">image_size</span><span class="p">;</span><span class="w">        </span><span class="c1">// byte count of the image in this bank</span>
+<span class="w">    </span><span class="n">uint32</span><span class="w"> </span><span class="n">witness_id</span><span class="p">;</span><span class="w">        </span><span class="c1">// host-supplied witness identifier</span>
+<span class="w">    </span><span class="n">uint32</span><span class="w"> </span><span class="n">witness_counter</span><span class="p">;</span><span class="w">   </span><span class="c1">// monotonic install-sequence counter</span>
+<span class="w">    </span><span class="n">uint32</span><span class="w"> </span><span class="n">active_slot</span><span class="p">;</span><span class="w">       </span><span class="c1">// slot this metadata block describes</span>
+<span class="w">    </span><span class="n">uint8</span><span class="w">  </span><span class="n">expected_sha256</span><span class="p">[</span><span class="mi">32</span><span class="p">];</span>
+<span class="w">    </span><span class="n">uint32</span><span class="w"> </span><span class="n">checksum</span><span class="p">;</span><span class="w">          </span><span class="c1">// FNV-1a over the above fields</span>
+<span class="p">}</span><span class="w"> </span><span class="n">ota_metadata_t</span><span class="p">;</span>
+</code></pre></div>
+
+<p>At boot, <code>ota_init()</code> reads the <strong>active</strong> bank&rsquo;s metadata and repopulates
+the runtime state variables. Boot authority is the option byte — once
+BFB2 is flipped and a reset takes effect, the new bank is the active
+bank. Metadata is descriptive of what <em>happened</em>, not authoritative for
+what boots.</p>
+<h2 id="3-state-machine">3. State machine</h2>
+<div class="codehilite"><pre><span></span><code>                  ┌─────────────────────────────────┐
+                  │                                 │
+                  │   ┌─── (0x2E F1A0) ──────┐     │
+                  ▼   │                       │    │
+               ┌──────┴──┐                    │    │
+      ┌──────▶ │  IDLE   │                    │    │
+      │        └─────────┘                    │    │
+      │             │ (0x34 RequestDownload)  │    │
+      │             ▼                         │    │
+      │        ┌──────────┐                   │    │
+      │        │DOWNLOADING│ ◀── (0x36 TransferData, looped)
+      │        └──────────┘                   │    │
+      │             │ (0x37 RequestTransferExit)   │
+      │             ▼                              │
+      │        ┌──────────┐                        │
+      │        │VERIFYING │ — (sha256 compare) ────┤
+      │        └──────────┘                        │
+      │             │ pass                         │ fail
+      │             ▼                              ▼
+      │        ┌──────────┐                   ┌────────┐
+      │        │COMMITTED │                   │ FAILED │
+      │        └──────────┘                   └────────┘
+      │             │ (0x31 01 0202)               │
+      │             ▼                              │
+      │        ┌────────────┐                      │
+      │        │ROLLEDBACK  │                      │
+      │        └────────────┘                      │
+      │             │                              │
+      └─────────────┴──────────────────────────────┘
+</code></pre></div>
+
+<p>States are defined in <a href="../../../firmware/cvc-uds/src/ota.h"><code>ota.h</code></a>:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IDLE</code></td>
+<td><code>0x00</code></td>
+<td>No transfer in progress; ready to accept a new manifest</td>
+</tr>
+<tr>
+<td><code>DOWNLOADING</code></td>
+<td><code>0x01</code></td>
+<td><code>0x34</code> accepted; <code>0x36</code> chunks being received</td>
+</tr>
+<tr>
+<td><code>VERIFYING</code></td>
+<td><code>0x02</code></td>
+<td><code>0x37</code> received; computing SHA-256 over inactive bank</td>
+</tr>
+<tr>
+<td><code>COMMITTED</code></td>
+<td><code>0x03</code></td>
+<td>Hash verified; metadata written; bank switch armed</td>
+</tr>
+<tr>
+<td><code>FAILED</code></td>
+<td><code>0x04</code></td>
+<td>Transfer failed; reason code exposed via status DID</td>
+</tr>
+<tr>
+<td><code>ROLLEDBACK</code></td>
+<td><code>0x05</code></td>
+<td>Explicit rollback routine executed</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Invariants</strong> (enforced in firmware):</p>
+<ul>
+<li><code>DOWNLOADING</code> can only be entered via <code>0x34 RequestDownload</code> from
+  <code>IDLE</code>, <code>COMMITTED</code>, <code>FAILED</code>, or <code>ROLLEDBACK</code>.</li>
+<li><code>0x34</code> requires <code>manifest_ready == 1</code> (set by prior <code>0x2E F1A0</code> write).</li>
+<li><code>0x36 TransferData</code> is only accepted in <code>DOWNLOADING</code>.</li>
+<li><code>0x37 RequestTransferExit</code> requires <code>DOWNLOADING</code> + <code>manifest_ready</code></li>
+<li><code>bytes_received == total_size</code>.</li>
+<li>A second <code>0x2E F1A0</code> mid-transfer (state <code>DOWNLOADING</code> or <code>VERIFYING</code>)
+  is rejected with <code>OTA_ERR_MANIFEST_LOCKED</code>.</li>
+<li>Rollback (<code>0x31 01 0202</code>) requires state <code>COMMITTED</code>.</li>
+<li>If no <code>0x36</code> arrives for <code>OTA_DOWNLOAD_INACTIVITY_MS</code> (10 s),
+  <code>ota_poll</code> transitions to <code>FAILED / TIMEOUT</code> and clears the manifest.</li>
+</ul>
+<h2 id="4-responsibility-split-who-does-what">4. Responsibility split (who does what)</h2>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>Host (CDA + SOVD server)</th>
+<th>Firmware (MCU)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Manifest authorship</td>
+<td>✅ Computes SHA-256 of image</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Witness-ID policy</td>
+<td>✅ Assigns and tracks</td>
+<td>Rejects collision with active image</td>
+</tr>
+<tr>
+<td>Image transport</td>
+<td>✅ Segments into 128 B chunks</td>
+<td>Acks per-chunk</td>
+</tr>
+<tr>
+<td>Flash erase / program</td>
+<td>—</td>
+<td>✅ HAL-driven doubleword program</td>
+</tr>
+<tr>
+<td>Hash verification</td>
+<td>—</td>
+<td>✅ On-MCU SHA-256 compare (constant-time)</td>
+</tr>
+<tr>
+<td>Metadata persistence</td>
+<td>—</td>
+<td>✅ End-of-bank page write</td>
+</tr>
+<tr>
+<td>Bank-switch arming</td>
+<td>—</td>
+<td>✅ Option-byte BFB2 flip + reset</td>
+</tr>
+<tr>
+<td>Rollback trigger</td>
+<td>✅ Issues routine</td>
+<td>✅ Performs bank-switch reversal</td>
+</tr>
+<tr>
+<td>Signature verification (CMS/X.509)</td>
+<td>🔶 Designed in ADR-0025 — not implemented</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Fleet-scale orchestration</td>
+<td>🔶 Not in scope for this repo</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Audit log</td>
+<td>🔶 Not implemented</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-design-decisions-with-rationale">5. Design decisions with rationale</h2>
+<h3 id="51-manifest-separate-from-requestdownload">5.1 Manifest separate from RequestDownload</h3>
+<p>The manifest (expected hash + witness) is written via DID <code>0xF1A0</code>
+(WriteDataByIdentifier), <strong>not</strong> bundled into the <code>0x34 RequestDownload</code>
+request.</p>
+<p><strong>Rationale.</strong> Two properties matter:
+1. The manifest shape is standard-DID-conformant, so any SOVD /
+   diagnostic tool can author it without needing OTA-specific transport
+   awareness.
+2. Separating authorship from transfer initiation means the ODX /
+   capability description surfaces the manifest as a normal writable
+   DID. A reviewer can inspect what the ECU accepts without parsing a
+   non-standard <code>0x34</code> extension.</p>
+<p><strong>Cost.</strong> Two round-trips instead of one. At CAN bit-rates this is
+~10 ms, negligible against the tens-of-seconds transfer time.</p>
+<h3 id="52-host-trusts-firmware-hash-verdict">5.2 Host trusts firmware hash verdict</h3>
+<p>The MCU computes SHA-256 over the inactive bank after all bytes land,
+compares with the manifest&rsquo;s expected hash, and decides <code>COMMITTED</code> or
+<code>FAILED</code>. The host does not independently re-hash.</p>
+<p><strong>Rationale.</strong> The authority relationship is &ldquo;the MCU is the final
+judge of its own flash content&rdquo;. A host-side re-hash would be useful
+for <em>tooling feedback</em> (fail faster on mismatch) but adds no safety
+property — a malicious host could lie about the hash, and a malicious
+MCU could already lie about its <code>COMMITTED</code> report.</p>
+<p><strong>Caveat.</strong> The current manifest carries <em>only</em> the expected hash; the
+hash itself is unsigned. Integrity is protected; authenticity is not
+(see ADR-0025 for the designed-but-unshipped signing path).</p>
+<h3 id="53-constant-time-hash-compare">5.3 Constant-time hash compare</h3>
+<p>The commit-time check uses an XOR-accumulator compare over all 32
+bytes of the digest rather than <code>memcmp</code>.</p>
+<p><strong>Rationale.</strong> <code>memcmp</code> short-circuits on the first differing byte.
+An attacker with precise response-latency measurement (e.g., scope on
+the CAN TX line) could probe candidate hashes byte-by-byte, narrowing
+the expected hash one position at a time. On a 64 MHz Cortex-M4 the
+byte-level latency differential is small but measurable with averaging.</p>
+<p><strong>Cost.</strong> 32 extra ALU cycles per hash compare. Compare happens once
+per transfer. Negligible.</p>
+<h3 id="54-inactivity-timeout-in-ota_poll-not-the-isr-path">5.4 Inactivity timeout in <code>ota_poll</code>, not the ISR path</h3>
+<p>The 10-second inactivity timeout is checked in <code>ota_poll()</code>, which runs
+from the main loop, not from the CAN RX interrupt.</p>
+<p><strong>Rationale.</strong> Timing precision doesn&rsquo;t matter (the timeout is coarse-
+grained), and doing the check on the interrupt path would grow the ISR
+footprint. Running it in the main loop keeps the RX-critical path
+minimal.</p>
+<p><strong>Consequence.</strong> If the main loop is blocked (busy-wait, HAL-timeout-
+wait, etc.), the inactivity check also stalls. This is acceptable
+because those are already faults — the transfer is already broken.</p>
+<h3 id="55-witness-id-replay-guard-is-narrow">5.5 Witness-ID replay guard is narrow</h3>
+<p><code>ota_write_did</code> rejects two witness values: <code>0x00000000</code> (sentinel &ldquo;no
+witness&rdquo;) and the currently-active bank&rsquo;s witness. It does <strong>not</strong>
+track a history of rolled-back witnesses.</p>
+<p><strong>Rationale.</strong> The narrow guard catches the two common-mistake cases:
+lazy testers that forget to set a witness, and trivial re-install
+attacks where the manifest witness collides with the running image.
+Full replay protection (reject any witness seen in the last N
+installs) would need persistent state and a bloom filter; the cost
+is not yet justified by the threat model.</p>
+<p><strong>Upgrade path.</strong> If replay becomes material, add a 16-slot ring in
+metadata of previously-committed witnesses, and intersect. No wire-
+protocol change required.</p>
+<h3 id="56-no-pause-resume">5.6 No pause / resume</h3>
+<p>If a transfer fails mid-flight, re-initiation starts from byte 0.</p>
+<p><strong>Rationale.</strong> Resume would require the firmware to persist a
+&ldquo;bytes received so far&rdquo; pointer to flash on every chunk, which either
+(a) adds a flash write per chunk (lifetime-hostile) or (b) loses state
+on power loss (defeats the purpose).</p>
+<p><strong>Alternative considered.</strong> Resume via manifest-side offset field. Not
+adopted because commercial-grade OTA typically retries the whole
+image when the channel is fast; the CAN/DoIP channel is fast enough
+that full-retry is seconds, not minutes.</p>
+<h3 id="57-single-transfer-per-ecu">5.7 Single transfer per ECU</h3>
+<p>The host-side <code>CdaBackend</code> holds <code>bulk_transfers: HashMap&lt;TransferId,
+...&gt;</code> but enforces &ldquo;one active transfer per ECU&rdquo; at the start-bulk-data
+entry point.</p>
+<p><strong>Rationale.</strong> Simpler invariant. Fleet-scale parallelism is a host-
+side concern; one ECU, one in-flight transfer matches the firmware&rsquo;s
+single state machine.</p>
+<h2 id="6-known-limitations">6. Known limitations</h2>
+<p>These are called out here and cross-referenced from <code>threat-model.md</code>
+and <code>test-plan.md</code>:</p>
+<ol>
+<li><strong>No authenticated signatures.</strong> Manifest hash is unsigned. A
+   malicious tester with programming-session access can flash any
+   image whose hash it can compute. Designed in ADR-0025; not wired.</li>
+<li><strong>Bootloader is trust-anchor.</strong> The MCU has no separate signed
+   bootloader. The running image <em>is</em> the trust anchor for the next
+   image. A production deployment likely needs a signed boot ROM.</li>
+<li><strong>Tester authentication not enforced at this layer.</strong> The <code>0x10 02</code>
+   programming-session gate is the only access control. Security-access
+   (<code>0x27</code>) is not implemented.</li>
+<li><strong>No progress events.</strong> State is polled via DID <code>0xF1A1</code>; there is
+   no server-sent or async notification channel. For a 200 KB image at
+   500 kbps CAN this is ~10 seconds of polling.</li>
+<li><strong>Record size fixed at 128 B.</strong> Negotiated max is 130 B (2 B UDS
+   header + 128 B payload). Larger records would require a bigger
+   staging buffer and ISO-TP segmentation tuning.</li>
+<li><strong>Metadata page is ~2 KB, used ~52 B.</strong> The remaining ~2000 bytes
+   could carry a signature blob, a witness ring, or a version history.</li>
+</ol>
+<footer class="page-footer">
+Taktflow OpenSOVD — feature documentation. Rendered from
+<code>design.md</code>.
+</footer>
+</article>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Test Plan — CVC OTA</title>
+<style>
+:root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --fg-muted: #555;
+    --accent: #2b6cb0;
+    --accent-hover: #1c4d87;
+    --border: #e2e8f0;
+    --code-bg: #f6f8fa;
+    --code-fg: #24292e;
+    --nav-bg: #f8fafc;
+    --table-stripe: #f8fafc;
+    --callout-bg: #fffbea;
+    --callout-border: #f6e05e;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --accent: #58a6ff;
+        --accent-hover: #79b8ff;
+        --border: #30363d;
+        --code-bg: #161b22;
+        --code-fg: #c9d1d9;
+        --nav-bg: #161b22;
+        --table-stripe: #161b22;
+        --callout-bg: #1f2937;
+        --callout-border: #fbbf24;
+    }
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+.layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+}
+nav.sidebar {
+    background: var(--nav-bg);
+    border-right: 1px solid var(--border);
+    padding: 2rem 1.5rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+nav.sidebar .brand {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+nav.sidebar .tagline {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.4;
+}
+nav.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+nav.sidebar li {
+    margin: 0;
+}
+nav.sidebar a {
+    display: block;
+    padding: 0.45rem 0.75rem;
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: background 0.1s;
+}
+nav.sidebar a:hover {
+    background: var(--code-bg);
+    color: var(--accent);
+}
+nav.sidebar a.active {
+    background: var(--accent);
+    color: white;
+}
+nav.sidebar .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-muted);
+    margin: 1.5rem 0 0.5rem 0.75rem;
+}
+main {
+    padding: 3rem 4rem;
+    max-width: 900px;
+    width: 100%;
+}
+main article {
+    min-width: 0;
+}
+main h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.02em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.75rem;
+}
+main h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    letter-spacing: -0.01em;
+}
+main h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.5rem;
+}
+main h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.25rem;
+    color: var(--fg-muted);
+}
+main p {
+    margin: 0.75rem 0;
+}
+main a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.1s;
+}
+main a:hover {
+    border-bottom-color: var(--accent);
+}
+main code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                 monospace;
+    font-size: 0.9em;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+}
+main pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 1rem 0;
+}
+main pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+}
+main ul, main ol {
+    padding-left: 1.5rem;
+    margin: 0.75rem 0;
+}
+main li {
+    margin: 0.25rem 0;
+}
+main blockquote {
+    border-left: 4px solid var(--accent);
+    margin: 1rem 0;
+    padding: 0.25rem 0 0.25rem 1.25rem;
+    color: var(--fg-muted);
+    background: var(--code-bg);
+}
+main table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+}
+main th, main td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+}
+main th {
+    background: var(--code-bg);
+    font-weight: 600;
+}
+main tr:nth-child(even) td {
+    background: var(--table-stripe);
+}
+main hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.5rem 0;
+}
+main .mermaid {
+    background: white;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 1rem 0;
+    text-align: center;
+}
+main img {
+    max-width: 100%;
+    height: auto;
+}
+.doc-meta {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    margin-bottom: 2rem;
+}
+.breadcrumb {
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+    margin-bottom: 0.5rem;
+}
+.breadcrumb a { color: var(--fg-muted); }
+footer.page-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+}
+@media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.sidebar {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    main { padding: 2rem 1.5rem; }
+}
+/* Pygments tweaks for code highlighting */
+.codehilite { background: var(--code-bg); border-radius: 6px; }
+.codehilite pre { margin: 0; border: none; background: transparent; }
+.codehilite .hll { background-color: #ffc; }
+.codehilite .c, .codehilite .cm, .codehilite .c1 { color: #6a737d; font-style: italic; }
+.codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #d73a49; font-weight: 600; }
+.codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #032f62; }
+.codehilite .n, .codehilite .na, .codehilite .nb { color: #24292e; }
+.codehilite .mi, .codehilite .mf { color: #005cc5; }
+.codehilite .o { color: #d73a49; }
+.codehilite .nf { color: #6f42c1; }
+@media (prefers-color-scheme: dark) {
+    .codehilite .c, .codehilite .cm, .codehilite .c1 { color: #8b949e; }
+    .codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #ff7b72; }
+    .codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #a5d6ff; }
+    .codehilite .n, .codehilite .na, .codehilite .nb { color: #c9d1d9; }
+    .codehilite .mi, .codehilite .mf { color: #79c0ff; }
+    .codehilite .o { color: #ff7b72; }
+    .codehilite .nf { color: #d2a8ff; }
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    securityLevel: 'loose',
+    fontFamily: 'inherit',
+});
+</script>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<div class="brand">CVC OTA</div>
+<div class="tagline">Firmware over-the-air update for the STM32G474 Central Vehicle Controller.</div>
+<div class="section-label">Pages</div>
+<ul>
+<li><a class="nav-item" href="README.html">Overview</a></li>
+<li><a class="nav-item" href="design.html">Design</a></li>
+<li><a class="nav-item" href="protocol.html">Wire Protocol</a></li>
+<li><a class="nav-item" href="sequences.html">Sequence Diagrams</a></li>
+<li><a class="nav-item" href="threat-model.html">Threat Model</a></li>
+<li><a class="nav-item active" href="test-plan.html">Test Plan</a></li>
+<li><a class="nav-item" href="integration-guide.html">Integration Guide</a></li>
+<li><a class="nav-item" href="ops-runbook.html">Ops Runbook</a></li>
+</ul>
+</nav>
+<main>
+<article>
+<div class="breadcrumb"><a href="README.html">CVC OTA</a> / Test Plan</div>
+<h1 id="cvc-ota-test-plan">CVC OTA — Test Plan</h1>
+<p>Test matrix for the CVC OTA feature with explicit indicators of what
+is covered, where, and what is not yet tested. Use this when adding a
+regression test, running release-candidate validation, or auditing
+coverage for a safety / compliance review.</p>
+<h2 id="1-test-surfaces">1. Test surfaces</h2>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Test host</th>
+<th>Harness</th>
+<th>Scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Host-side orchestration (Rust)</td>
+<td>Developer workstation</td>
+<td><code>cargo test -p sovd-server --lib</code></td>
+<td><code>cda.rs</code> backend logic; mocks the CDA wire</td>
+</tr>
+<tr>
+<td>Host-side integration</td>
+<td>Linux CI</td>
+<td><code>cargo test -p integration-tests</code></td>
+<td>End-to-end SOVD REST + mocked CDA</td>
+</tr>
+<tr>
+<td>Firmware unit logic</td>
+<td>(none today — see §6 gap)</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Firmware on target</td>
+<td>Physical STM32G474 Nucleo + bench tester</td>
+<td>Manual <code>STM32_Programmer_CLI</code> + <code>isotp-recv</code> / <code>isotp-send</code> scripts</td>
+<td>Live bench; flash + verify + rollback</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-host-side-coverage-cdars">2. Host-side coverage (<code>cda.rs</code>)</h2>
+<p>Implemented in <a href="../../../opensovd-core/sovd-server/src/backends/cda.rs"><code>opensovd-core/sovd-server/src/backends/cda.rs</code></a>.</p>
+<table>
+<thead>
+<tr>
+<th>Test name</th>
+<th>Exercises</th>
+<th>Assertion coverage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bulk_data_flow_writes_manifest_polls_committed_and_rolls_back</code></td>
+<td>Happy path: session, manifest write, RequestDownload, single <code>0x36</code>, status polling, rollback routine</td>
+<td>Manifest 38-byte wire shape, DID IDs, routine IDs, state-byte decoding</td>
+</tr>
+<tr>
+<td><code>flash_operation_wraps_bulk_data_start_status_and_rollback</code></td>
+<td>Same flow wrapped by the SOVD <code>operations/flash</code> REST namespace</td>
+<td>HTTP endpoint shape, 202 polling semantics</td>
+</tr>
+<tr>
+<td><code>parse_ota_status_payload_maps_failed_signature_invalid</code></td>
+<td>Status-byte decoder</td>
+<td><code>(state, reason)</code> tuple mapping to the typed <code>FailureReason</code> enum</td>
+</tr>
+<tr>
+<td><code>start_bulk_data_rejects_concurrent_transfer</code></td>
+<td>Second <code>0x34</code> while first in-flight</td>
+<td>Host-side <code>HashMap</code> gate</td>
+</tr>
+<tr>
+<td><code>cancel_bulk_data_requires_committed_state</code></td>
+<td>Rollback routine in wrong state</td>
+<td>Returns 409 Conflict</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Coverage summary (host-side):</strong> Happy path and the three primary
+failure negotiations (state-gate, concurrent-gate, wrong-state
+rollback) are covered. The host-side code does not yet cover the
+hardening additions on the firmware side — those are invisible to a
+mock-CDA test.</p>
+<h2 id="3-firmware-on-target-acceptance-tests">3. Firmware on-target acceptance tests</h2>
+<p>Manually executed on the STM32G474 Nucleo CVC. Run after every
+firmware change that touches <code>ota.c</code>, <code>uds.c</code>, or the metadata layout.</p>
+<h3 id="31-smoke-test-happy-path">3.1 Smoke test — happy path</h3>
+<p><strong>Precondition.</strong> Valid firmware on slot A. Host has Python + <code>can</code>
++ <code>isotp</code> packages + a script that sends UDS frames on <code>0x7E0</code>.</p>
+<p><strong>Procedure.</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. Session</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;10 02&quot;</span><span class="w">    </span><span class="p">|</span><span class="w"> </span>can-send<span class="w"> </span>0x7E0
+<span class="c1"># Expect: 50 02 00 32 01 F4</span>
+
+<span class="c1"># 2. Write manifest (38 bytes: version | slot | witness_id BE u32 | sha256 BE 32)</span>
+python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;</span>
+<span class="s2">import struct, hashlib</span>
+<span class="s2">image = open(&#39;new-firmware.bin&#39;, &#39;rb&#39;).read()</span>
+<span class="s2">manifest = struct.pack(&#39;&gt;BBI32s&#39;, 1, 0, 0xDEADBEEF, hashlib.sha256(image).digest())</span>
+<span class="s2">print(&#39;2E F1 A0 &#39; + &#39; &#39;.join(f&#39;{b:02X}&#39; for b in manifest))</span>
+<span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>can-send<span class="w"> </span>0x7E0
+<span class="c1"># Expect: 6E F1 A0</span>
+
+<span class="c1"># 3. RequestDownload</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;34 00 44 08 04 00 00 </span><span class="k">$(</span><span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;%08X&#39;</span><span class="w"> </span><span class="k">$(</span>stat<span class="w"> </span>-c<span class="w"> </span>%s<span class="w"> </span>new-firmware.bin<span class="k">)</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span><span class="s1">&#39;s/../&amp; /g&#39;</span><span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>can-send<span class="w"> </span>0x7E0
+<span class="c1"># Expect: 74 20 00 82</span>
+
+<span class="c1"># 4. Stream TransferData (128 B per chunk, seq 1..N wrapping at 256)</span>
+<span class="c1"># (see test/bench/send_transfer_data.py for the loop)</span>
+
+<span class="c1"># 5. RequestTransferExit</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;37&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>can-send<span class="w"> </span>0x7E0
+<span class="c1"># Expect: 77</span>
+
+<span class="c1"># 6. Poll status</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;22 F1 A1&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>can-send<span class="w"> </span>0x7E0
+<span class="c1"># Expect: 62 F1 A1 03 00 02 01 00</span>
+<span class="c1">#         (state=COMMITTED, reason=NONE, active_slot=B, counter=1, manifest=0)</span>
+
+<span class="c1"># 7. Reset (ECU resets itself ~20 ms after commit; verify next boot on slot B)</span>
+</code></pre></div>
+
+<p><strong>Assertion.</strong> Final status response decodes to <code>state=COMMITTED</code>
+before reset; post-reset UART log reports the new image&rsquo;s boot banner.</p>
+<h3 id="32-smoke-test-rollback">3.2 Smoke test — rollback</h3>
+<p><strong>Precondition.</strong> Post-3.1 state — new image on slot B is active.</p>
+<p><strong>Procedure.</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;31 01 02 02&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>can-send<span class="w"> </span>0x7E0
+<span class="c1"># Expect: 71 01 02 02 05</span>
+</code></pre></div>
+
+<p><strong>Assertion.</strong> State transitions to <code>ROLLEDBACK</code>; ECU resets; next
+boot lands on slot A (original image).</p>
+<h3 id="33-input-validation-tests-added-in-a4bb92b">3.3 Input-validation tests (added in <code>a4bb92b</code>)</h3>
+<p>Each row is a scripted UDS exchange that should elicit the listed
+negative response.</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Send</th>
+<th>Expected response</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3.3.a No session</td>
+<td><code>34 00 44 08 04 00 00 00 00 10 00</code> (from default session)</td>
+<td><code>7F 34 22</code> conditionsNotCorrect</td>
+</tr>
+<tr>
+<td>3.3.b No manifest</td>
+<td><code>10 02; 34 00 44 08 04 00 00 00 00 10 00</code></td>
+<td><code>7F 34 22</code> conditionsNotCorrect (NO_MANIFEST)</td>
+</tr>
+<tr>
+<td>3.3.c Wrong address</td>
+<td>manifest written; <code>34 00 44 08 08 00 00 00 00 10 00</code></td>
+<td><code>7F 34 31</code> requestOutOfRange</td>
+</tr>
+<tr>
+<td>3.3.d Wrong size</td>
+<td>manifest; <code>34 00 44 08 04 00 00 00 10 00 00</code> (too big)</td>
+<td><code>7F 34 31</code> requestOutOfRange</td>
+</tr>
+<tr>
+<td>3.3.e Mid-transfer manifest swap</td>
+<td>session; manifest; <code>34 ...</code>; <code>36 01 &lt;...&gt;</code>; <code>2E F1 A0 &lt;new&gt;</code></td>
+<td><code>7F 2E 22</code> conditionsNotCorrect (MANIFEST_LOCKED)</td>
+</tr>
+<tr>
+<td>3.3.f <code>0x36</code> out-of-sequence</td>
+<td>manifest; <code>34</code>; <code>36 03 &lt;...&gt;</code> (expected <code>0x01</code>)</td>
+<td><code>7F 36 73</code> wrongBlockSequenceCounter</td>
+</tr>
+<tr>
+<td>3.3.g <code>0x36</code> overlength</td>
+<td>manifest; <code>34</code>; <code>36 01 &lt;129-byte payload&gt;</code></td>
+<td><code>7F 36 13</code> incorrectMessageLength</td>
+</tr>
+<tr>
+<td>3.3.h <code>0x36</code> over-declared-size</td>
+<td>manifest; <code>34 ... 00 00 01 00</code>; send 300 bytes</td>
+<td><code>7F 36 70</code> uploadDownloadNotAccepted</td>
+</tr>
+<tr>
+<td>3.3.i <code>0x37</code> without all bytes</td>
+<td>manifest; <code>34 ...</code>; send half the image; <code>37</code></td>
+<td><code>7F 37 24</code> requestSequenceError</td>
+</tr>
+<tr>
+<td>3.3.j <code>0x31 01 0202</code> in wrong state</td>
+<td>(from IDLE) <code>31 01 02 02</code></td>
+<td><code>7F 31 ...</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="34-hardening-tests-added-in-ba38210">3.4 Hardening tests (added in <code>ba38210</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Send</th>
+<th>Expected response / state</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3.4.a Inactivity timeout</td>
+<td>manifest; <code>34</code>; <code>36 01 &lt;...&gt;</code>; wait 11 s; poll status</td>
+<td><code>62 F1 A1 04 06 ...</code> (FAILED / TIMEOUT)</td>
+</tr>
+<tr>
+<td>3.4.b Witness-ID collision</td>
+<td>current active witness = W; manifest with <code>witness_id = W</code></td>
+<td><code>7F 2E 22</code> conditionsNotCorrect</td>
+</tr>
+<tr>
+<td>3.4.c Witness-ID zero</td>
+<td>manifest with <code>witness_id = 0x00000000</code></td>
+<td><code>7F 2E 13</code> incorrectMessageLength</td>
+</tr>
+<tr>
+<td>3.4.d Constant-time compare</td>
+<td>(not directly observable on bus; validated by code review + oscilloscope capture on the ECU response-to-<code>0x37</code> latency)</td>
+<td>Latency does not correlate with byte-differential position</td>
+</tr>
+</tbody>
+</table>
+<h3 id="35-rollback-edge-cases">3.5 Rollback edge cases</h3>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Procedure</th>
+<th>Expected</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3.5.a Rollback from IDLE</td>
+<td>From IDLE (no commit ever), <code>31 01 02 02</code></td>
+<td><code>7F 31 ...</code></td>
+</tr>
+<tr>
+<td>3.5.b Rollback from FAILED</td>
+<td>Force FAILED via 3.3.i, then <code>31 01 02 02</code></td>
+<td><code>7F 31 ...</code></td>
+</tr>
+<tr>
+<td>3.5.c Double rollback</td>
+<td>After 3.2, immediately <code>31 01 02 02</code> again</td>
+<td><code>7F 31 ...</code> (state is now ROLLEDBACK, not COMMITTED)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-property-level-checks">4. Property-level checks</h2>
+<p>These are invariants that should be validated by inspection or by a
+model checker (not yet automated):</p>
+<ul>
+<li><strong>I1.</strong> After any successful <code>0x37</code>, the bytes in the inactive bank
+  address range <code>[0x08040000, 0x08040000 + total_size)</code> hash to
+  <code>manifest.expected_sha256</code>.</li>
+<li><strong>I2.</strong> <code>g_download.manifest_ready == 1</code> implies every successful
+  <code>0x34 RequestDownload</code> consumes the manifest; subsequent <code>0x34</code>
+  requires a fresh manifest write.</li>
+<li><strong>I3.</strong> State transitions from <code>DOWNLOADING</code> only go to <code>VERIFYING</code>
+  (on <code>0x37</code> with complete image), <code>FAILED</code> (on timeout, flash error,
+  overflow, hash mismatch), or <code>IDLE</code> (on session reset or ECU reset).</li>
+<li><strong>I4.</strong> <code>g_witness_id</code> after <code>COMMITTED</code> equals the <code>witness_id</code>
+  field of the manifest that initiated the just-finished transfer.</li>
+<li><strong>I5.</strong> <code>ota_clear_manifest()</code> zeros <code>expected_sha256</code>, <code>witness_id</code>,
+  <code>bytes_received</code>, <code>total_size</code>, <code>pending_doubleword</code>, and resets
+  <code>expected_block_sequence_counter</code> to 1.</li>
+</ul>
+<h2 id="5-regression-coverage-before-release">5. Regression coverage before release</h2>
+<p>Minimum acceptance before a firmware tag:</p>
+<ol>
+<li>§3.1 (smoke) passes.</li>
+<li>§3.2 (rollback) passes.</li>
+<li>All rows of §3.3 pass.</li>
+<li>All rows of §3.4 pass.</li>
+<li><code>cargo test -p sovd-server --lib</code> passes (at least the five tests
+   listed in §2).</li>
+<li><code>cargo clippy --workspace --no-deps -- -D warnings</code> is clean on
+   the <code>opensovd-core</code> side.</li>
+<li><code>arm-none-eabi-gcc</code> build is clean with <code>-Wall -Wextra
+   -Werror=implicit-function-declaration</code>.</li>
+</ol>
+<h2 id="6-known-gaps-in-test-infrastructure">6. Known gaps in test infrastructure</h2>
+<ul>
+<li><strong>No firmware unit-test harness.</strong> <code>ota.c</code> and <code>uds.c</code> are linked
+  only against HAL; there is no POSIX-host build that would allow
+  GoogleTest / Unity tests of the state machine logic. The §3 tests
+  therefore require physical hardware.</li>
+<li><strong>No automated HIL regression.</strong> The §3 tests are executed manually
+  today. A replay-based test driver that reads a recorded UDS trace
+  and asserts the expected response sequence would remove operator
+  variance.</li>
+<li><strong>No fuzz coverage on the UDS parser.</strong> An AFL / libFuzzer-style
+  harness against <code>recv_request</code> + <code>dispatch</code> would shake out any
+  remaining edge cases in the ISO-TP reassembler.</li>
+<li><strong>Timing side-channel validation is manual only.</strong> §3.4.d asks for
+  scope traces; there is no automated timing-invariance test.</li>
+</ul>
+<footer class="page-footer">
+Taktflow OpenSOVD — feature documentation. Rendered from
+<code>test-plan.md</code>.
+</footer>
+</article>
+</main>
+</div>
+</body>
+</html>

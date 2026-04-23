@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Integration Guide — CVC OTA</title>
+<style>
+:root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --fg-muted: #555;
+    --accent: #2b6cb0;
+    --accent-hover: #1c4d87;
+    --border: #e2e8f0;
+    --code-bg: #f6f8fa;
+    --code-fg: #24292e;
+    --nav-bg: #f8fafc;
+    --table-stripe: #f8fafc;
+    --callout-bg: #fffbea;
+    --callout-border: #f6e05e;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --accent: #58a6ff;
+        --accent-hover: #79b8ff;
+        --border: #30363d;
+        --code-bg: #161b22;
+        --code-fg: #c9d1d9;
+        --nav-bg: #161b22;
+        --table-stripe: #161b22;
+        --callout-bg: #1f2937;
+        --callout-border: #fbbf24;
+    }
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+.layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+}
+nav.sidebar {
+    background: var(--nav-bg);
+    border-right: 1px solid var(--border);
+    padding: 2rem 1.5rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+nav.sidebar .brand {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+nav.sidebar .tagline {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.4;
+}
+nav.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+nav.sidebar li {
+    margin: 0;
+}
+nav.sidebar a {
+    display: block;
+    padding: 0.45rem 0.75rem;
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: background 0.1s;
+}
+nav.sidebar a:hover {
+    background: var(--code-bg);
+    color: var(--accent);
+}
+nav.sidebar a.active {
+    background: var(--accent);
+    color: white;
+}
+nav.sidebar .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-muted);
+    margin: 1.5rem 0 0.5rem 0.75rem;
+}
+main {
+    padding: 3rem 4rem;
+    max-width: 900px;
+    width: 100%;
+}
+main article {
+    min-width: 0;
+}
+main h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.02em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.75rem;
+}
+main h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    letter-spacing: -0.01em;
+}
+main h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.5rem;
+}
+main h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.25rem;
+    color: var(--fg-muted);
+}
+main p {
+    margin: 0.75rem 0;
+}
+main a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.1s;
+}
+main a:hover {
+    border-bottom-color: var(--accent);
+}
+main code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                 monospace;
+    font-size: 0.9em;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+}
+main pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 1rem 0;
+}
+main pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+}
+main ul, main ol {
+    padding-left: 1.5rem;
+    margin: 0.75rem 0;
+}
+main li {
+    margin: 0.25rem 0;
+}
+main blockquote {
+    border-left: 4px solid var(--accent);
+    margin: 1rem 0;
+    padding: 0.25rem 0 0.25rem 1.25rem;
+    color: var(--fg-muted);
+    background: var(--code-bg);
+}
+main table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+}
+main th, main td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+}
+main th {
+    background: var(--code-bg);
+    font-weight: 600;
+}
+main tr:nth-child(even) td {
+    background: var(--table-stripe);
+}
+main hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.5rem 0;
+}
+main .mermaid {
+    background: white;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 1rem 0;
+    text-align: center;
+}
+main img {
+    max-width: 100%;
+    height: auto;
+}
+.doc-meta {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    margin-bottom: 2rem;
+}
+.breadcrumb {
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+    margin-bottom: 0.5rem;
+}
+.breadcrumb a { color: var(--fg-muted); }
+footer.page-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+}
+@media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.sidebar {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    main { padding: 2rem 1.5rem; }
+}
+/* Pygments tweaks for code highlighting */
+.codehilite { background: var(--code-bg); border-radius: 6px; }
+.codehilite pre { margin: 0; border: none; background: transparent; }
+.codehilite .hll { background-color: #ffc; }
+.codehilite .c, .codehilite .cm, .codehilite .c1 { color: #6a737d; font-style: italic; }
+.codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #d73a49; font-weight: 600; }
+.codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #032f62; }
+.codehilite .n, .codehilite .na, .codehilite .nb { color: #24292e; }
+.codehilite .mi, .codehilite .mf { color: #005cc5; }
+.codehilite .o { color: #d73a49; }
+.codehilite .nf { color: #6f42c1; }
+@media (prefers-color-scheme: dark) {
+    .codehilite .c, .codehilite .cm, .codehilite .c1 { color: #8b949e; }
+    .codehilite .k, .codehilite .kd, .codehilite .kn, .codehilite .kr { color: #ff7b72; }
+    .codehilite .s, .codehilite .s1, .codehilite .s2, .codehilite .sb { color: #a5d6ff; }
+    .codehilite .n, .codehilite .na, .codehilite .nb { color: #c9d1d9; }
+    .codehilite .mi, .codehilite .mf { color: #79c0ff; }
+    .codehilite .o { color: #ff7b72; }
+    .codehilite .nf { color: #d2a8ff; }
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    securityLevel: 'loose',
+    fontFamily: 'inherit',
+});
+</script>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<div class="brand">CVC OTA</div>
+<div class="tagline">Firmware over-the-air update for the STM32G474 Central Vehicle Controller.</div>
+<div class="section-label">Pages</div>
+<ul>
+<li><a class="nav-item" href="README.html">Overview</a></li>
+<li><a class="nav-item" href="design.html">Design</a></li>
+<li><a class="nav-item" href="protocol.html">Wire Protocol</a></li>
+<li><a class="nav-item" href="sequences.html">Sequence Diagrams</a></li>
+<li><a class="nav-item" href="threat-model.html">Threat Model</a></li>
+<li><a class="nav-item" href="test-plan.html">Test Plan</a></li>
+<li><a class="nav-item active" href="integration-guide.html">Integration Guide</a></li>
+<li><a class="nav-item" href="ops-runbook.html">Ops Runbook</a></li>
+</ul>
+</nav>
+<main>
+<article>
+<div class="breadcrumb"><a href="README.html">CVC OTA</a> / Integration Guide</div>
+<h1 id="cvc-ota-integration-guide">CVC OTA — Integration Guide</h1>
+<p>For engineers wiring a new tooling, fleet-backend, or test framework
+into the CVC OTA path. This guide assumes you already have a way to
+reach the SOVD REST endpoint or send UDS frames directly, and you
+want to trigger and observe an OTA cycle.</p>
+<h2 id="1-three-integration-options-ranked-by-preference">1. Three integration options, ranked by preference</h2>
+<h3 id="11-sovd-rest-recommended">1.1 SOVD REST (recommended)</h3>
+<p>Call the host-side SOVD server&rsquo;s bulk-data operation endpoint. This is
+the highest-level integration — the server handles the full UDS state
+machine, ISO-TP framing, and status polling internally.</p>
+<p><strong>Endpoint.</strong> <code>POST /sovd/v1/components/&lt;cvc_id&gt;/operations/flash/executions</code></p>
+<p><strong>Request body (JSON).</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;manifest&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;slot_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;witness_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3735928559</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;expected_sha256&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;hex-encoded-32-bytes&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;image_source&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;inline&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;base64-encoded-image-bytes&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Alternative <code>image_source.type = "url"</code> for large images, with a URL
+the server can pull from (subject to the server&rsquo;s allowlist).</p>
+<p><strong>Response (immediate).</strong></p>
+<div class="codehilite"><pre><span></span><code>202 Accepted
+Location: /sovd/v1/components/&lt;cvc_id&gt;/operations/flash/executions/&lt;transfer_id&gt;
+</code></pre></div>
+
+<p><strong>Polling.</strong> <code>GET /sovd/v1/components/&lt;cvc_id&gt;/operations/flash/executions/&lt;transfer_id&gt;</code></p>
+<p>Returns a JSON status object:</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;transfer_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;01J...&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Downloading&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;bytes_transferred&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">12800</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;total_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">204800</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;witness_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3735928559</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>State progresses through <code>Downloading</code> → <code>Verifying</code> → <code>Committed</code>.
+On failure: <code>Failed</code>, with an optional <code>failure_reason</code> field carrying
+the specific OTA error (<code>HashMismatch</code>, <code>Timeout</code>, <code>FlashError</code>, etc.).</p>
+<p><strong>Rollback.</strong> <code>DELETE /sovd/v1/components/&lt;cvc_id&gt;/operations/flash/executions/&lt;transfer_id&gt;</code></p>
+<p>Only valid when the transfer is in <code>Committed</code>. Issues the <code>0x31 01
+0202</code> routine on the ECU and polls for <code>Rolledback</code>.</p>
+<h3 id="12-direct-uds-via-the-cda">1.2 Direct UDS via the CDA</h3>
+<p>If you can&rsquo;t use the SOVD layer (e.g., you&rsquo;re writing a conformance
+test tool that needs to probe wire-level behavior), drive UDS
+directly via the CDA&rsquo;s UDS-frame endpoint. This is what the SOVD
+server does internally.</p>
+<p>See <a href="protocol.html"><code>protocol.md</code></a> for every frame&rsquo;s exact byte layout.
+The minimum sequence:</p>
+<div class="codehilite"><pre><span></span><code>10 02                        (enter programming session)
+2E F1 A0 &lt;38-byte manifest&gt;  (write manifest)
+34 00 44 &lt;addr&gt; &lt;size&gt;       (start download)
+36 01 &lt;128 B&gt;                (stream chunks)
+36 02 &lt;128 B&gt;
+...
+37                           (finalize)
+22 F1 A1                     (poll status)
+</code></pre></div>
+
+<h3 id="13-direct-uds-over-can-doip">1.3 Direct UDS over CAN / DoIP</h3>
+<p>Skip the CDA entirely and send UDS frames straight to CAN ID <code>0x7E0</code>
+(request) / <code>0x7E8</code> (response). Used for low-level bench scripts
+(Python <code>python-can</code> + <code>isotp</code>, or C tools).</p>
+<p>See <a href="ops-runbook.html"><code>ops-runbook.md</code></a> for a full bench walkthrough.</p>
+<h2 id="2-authoring-a-manifest">2. Authoring a manifest</h2>
+<p><strong>Inputs.</strong></p>
+<ul>
+<li>The image bytes you intend to flash.</li>
+<li>A <code>witness_id</code> that uniquely identifies the image in your
+  provenance system.</li>
+</ul>
+<p><strong>Steps.</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">struct</span>
+
+<span class="n">image</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;new-firmware.bin&quot;</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+<span class="n">expected_sha256</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">image</span><span class="p">)</span><span class="o">.</span><span class="n">digest</span><span class="p">()</span>  <span class="c1"># 32 bytes</span>
+
+<span class="n">version</span> <span class="o">=</span> <span class="mh">0x01</span>
+<span class="n">slot_hint</span> <span class="o">=</span> <span class="mh">0x00</span>  <span class="c1"># ECU picks authoritatively</span>
+<span class="n">witness_id</span> <span class="o">=</span> <span class="mh">0xCAFEBABE</span>
+
+<span class="n">manifest</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span>
+    <span class="s2">&quot;&gt;BBI32s&quot;</span><span class="p">,</span>
+    <span class="n">version</span><span class="p">,</span>
+    <span class="n">slot_hint</span><span class="p">,</span>
+    <span class="n">witness_id</span><span class="p">,</span>
+    <span class="n">expected_sha256</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">manifest</span><span class="p">)</span> <span class="o">==</span> <span class="mi">38</span>
+</code></pre></div>
+
+<p><strong>Constraints.</strong></p>
+<ul>
+<li><code>witness_id</code> must not be <code>0x00000000</code>.</li>
+<li><code>witness_id</code> must not equal the ECU&rsquo;s currently-installed witness
+  (read via DID <code>0xF1A2</code> before authoring if you want to detect this
+  client-side instead of relying on the <code>7F 2E 22</code> NRC).</li>
+<li>Image size must be <code>0 &lt; size ≤ 258048 bytes</code> (254 KB image + 2 KB
+  reserved for metadata in the 256 KB bank).</li>
+</ul>
+<h2 id="3-host-side-client-skeleton-pseudocode">3. Host-side client skeleton (pseudocode)</h2>
+<p>A minimal orchestrator that drives a full OTA cycle via the SOVD
+REST layer:</p>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">struct</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+
+<span class="n">SOVD_BASE</span> <span class="o">=</span> <span class="s2">&quot;http://cvc-gateway.local:8000/sovd/v1&quot;</span>
+<span class="n">CVC_ID</span>    <span class="o">=</span> <span class="s2">&quot;cvc-0001&quot;</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">flash_image</span><span class="p">(</span><span class="n">image_bytes</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">witness_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="c1"># 1. author manifest</span>
+    <span class="n">manifest</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span>
+        <span class="s2">&quot;&gt;BBI32s&quot;</span><span class="p">,</span>
+        <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">witness_id</span><span class="p">,</span>
+        <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">image_bytes</span><span class="p">)</span><span class="o">.</span><span class="n">digest</span><span class="p">(),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># 2. kick off the transfer</span>
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">SOVD_BASE</span><span class="si">}</span><span class="s2">/components/</span><span class="si">{</span><span class="n">CVC_ID</span><span class="si">}</span><span class="s2">/operations/flash/executions&quot;</span><span class="p">,</span>
+        <span class="n">json</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;manifest&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;version&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+                <span class="s2">&quot;slot_hint&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+                <span class="s2">&quot;witness_id&quot;</span><span class="p">:</span> <span class="n">witness_id</span><span class="p">,</span>
+                <span class="s2">&quot;expected_sha256&quot;</span><span class="p">:</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">image_bytes</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">(),</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;image_source&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;inline&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">image_bytes</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(),</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+    <span class="n">location</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">&quot;Location&quot;</span><span class="p">]</span>
+    <span class="n">transfer_id</span> <span class="o">=</span> <span class="n">location</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="c1"># 3. poll until terminal</span>
+    <span class="n">deadline</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">+</span> <span class="mi">60</span>
+    <span class="k">while</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">deadline</span><span class="p">:</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">SOVD_BASE</span><span class="si">}{</span><span class="n">location</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="n">status</span><span class="p">[</span><span class="s2">&quot;state&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">state</span> <span class="o">==</span> <span class="s2">&quot;Committed&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">transfer_id</span>
+        <span class="k">if</span> <span class="n">state</span> <span class="o">==</span> <span class="s2">&quot;Failed&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;OTA failed: </span><span class="si">{</span><span class="n">status</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;failure_reason&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+
+    <span class="k">raise</span> <span class="ne">TimeoutError</span><span class="p">(</span><span class="s2">&quot;OTA did not complete within 60 s&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">rollback</span><span class="p">(</span><span class="n">transfer_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">SOVD_BASE</span><span class="si">}</span><span class="s2">/components/</span><span class="si">{</span><span class="n">CVC_ID</span><span class="si">}</span><span class="s2">/operations/flash/executions/</span><span class="si">{</span><span class="n">transfer_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">resp</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+</code></pre></div>
+
+<h2 id="4-state-observation-without-orchestration">4. State observation without orchestration</h2>
+<p>If you only need to observe an in-progress OTA (monitoring tool,
+dashboard widget), read these DIDs periodically:</p>
+<table>
+<thead>
+<tr>
+<th>DID</th>
+<th>Field</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0xF1A1</code></td>
+<td><code>state</code></td>
+<td>one of <code>IDLE</code>, <code>DOWNLOADING</code>, <code>VERIFYING</code>, <code>COMMITTED</code>, <code>FAILED</code>, <code>ROLLEDBACK</code></td>
+</tr>
+<tr>
+<td><code>0xF1A1</code></td>
+<td><code>reason</code></td>
+<td>non-zero only when <code>state == FAILED</code></td>
+</tr>
+<tr>
+<td><code>0xF1A1</code></td>
+<td><code>active_slot</code></td>
+<td><code>0x01</code> = slot A, <code>0x02</code> = slot B</td>
+</tr>
+<tr>
+<td><code>0xF1A1</code></td>
+<td><code>witness_counter</code></td>
+<td>monotonically increases on each successful commit</td>
+</tr>
+<tr>
+<td><code>0xF1A1</code></td>
+<td><code>manifest_ready</code></td>
+<td><code>0x01</code> if a manifest is staged but transfer not yet started</td>
+</tr>
+<tr>
+<td><code>0xF1A2</code></td>
+<td><code>witness_id</code></td>
+<td>uniquely identifies the currently-installed image</td>
+</tr>
+</tbody>
+</table>
+<p>Polling interval: 500 ms is a reasonable default. Faster than that
+adds UDS traffic for marginal information gain; slower than 2 s risks
+missing a short-lived <code>VERIFYING</code> window.</p>
+<h2 id="5-error-handling">5. Error handling</h2>
+<p>Map SOVD status responses to action:</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+<th>Recommended action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Committed</code></td>
+<td>Success</td>
+<td>Record the new <code>witness_id</code>; optionally verify the ECU booted the new image by reading <code>0xF1A2</code> after the expected reset window</td>
+</tr>
+<tr>
+<td><code>Failed</code> + <code>HashMismatch</code></td>
+<td>Image arrived corrupt or manifest wrong</td>
+<td>Verify local image + hash, retry</td>
+</tr>
+<tr>
+<td><code>Failed</code> + <code>FlashError</code></td>
+<td>Flash hardware failed</td>
+<td>Do not retry; escalate — the ECU may need hardware replacement</td>
+</tr>
+<tr>
+<td><code>Failed</code> + <code>Timeout</code></td>
+<td>Transfer stalled</td>
+<td>Network / CDA issue; retry with a fresh transfer</td>
+</tr>
+<tr>
+<td><code>Failed</code> + <code>NoManifest</code></td>
+<td>State-machine error — host should not hit this</td>
+<td>Bug report; SOVD server should always write the manifest before RequestDownload</td>
+</tr>
+<tr>
+<td><code>Failed</code> + <code>ManifestLocked</code></td>
+<td>Two concurrent transfers to the same ECU</td>
+<td>Serialize; wait for first to complete before retrying</td>
+</tr>
+</tbody>
+</table>
+<h2 id="6-integration-checklist-for-a-new-tooling">6. Integration checklist for a new tooling</h2>
+<ul>
+<li>[ ] Can author a valid 38-byte manifest from an image file.</li>
+<li>[ ] Uses a witness policy that guarantees unique values and avoids
+      colliding with installed images.</li>
+<li>[ ] Polls status via the SOVD REST layer or DID <code>0xF1A1</code> at ≥ 500 ms.</li>
+<li>[ ] Handles the <code>202 Accepted</code> + polling pattern, not a synchronous
+      response.</li>
+<li>[ ] Handles the ECU reset window (bank-switch reset occurs ~20 ms
+      after <code>Committed</code> — any in-flight UDS operation fails; allow
+      2 s reconnect).</li>
+<li>[ ] Verifies the new witness after post-reset reconnect.</li>
+<li>[ ] Has a rollback path wired; do not assume <code>Committed</code> is
+      terminal.</li>
+<li>[ ] Records failure reasons as structured events, not free-form
+      strings — use the <code>OTA_ERR_*</code> / <code>OTA_REASON_*</code> naming so
+      downstream dashboards can aggregate.</li>
+</ul>
+<h2 id="7-odx-mdd-capability-description">7. ODX / MDD capability description</h2>
+<p>The CVC&rsquo;s capability description is at
+<a href="../../../opensovd-core/deploy/pi/cda-mdd/src/CVC00000.yml"><code>opensovd-core/deploy/pi/cda-mdd/src/CVC00000.yml</code></a>.
+Tooling that reads ODX (e.g., Vector CANoe.DiVa, Softing DTS.venice)
+can import this to auto-generate test cases. The ODX declares:</p>
+<ul>
+<li>Programming session <code>0x02</code>.</li>
+<li>DIDs <code>0xF1A0</code>, <code>0xF1A1</code>, <code>0xF1A2</code> with their access constraints.</li>
+<li>Services <code>0x34</code>, <code>0x36</code>, <code>0x37</code>.</li>
+<li>Routine controls <code>0x0201</code> (abort), <code>0x0202</code> (rollback).</li>
+</ul>
+<p>The MDD maps these to the CVC component identity <code>CVC00000</code> used
+throughout the SOVD server&rsquo;s component routing.</p>
+<footer class="page-footer">
+Taktflow OpenSOVD — feature documentation. Rendered from
+<code>integration-guide.md</code>.
+</footer>
+</article>
+</main>
+</div>
+</body>
+</html>

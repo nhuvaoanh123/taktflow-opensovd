@@ -13,7 +13,7 @@
 # Prerequisites on the dev host:
 #   - Rust toolchain that cross-compiles to aarch64-unknown-linux-gnu
 #     OR a cached release binary from a prior Pi build
-#   - rsync + ssh to $PI (default bench-pi@192.0.2.10)
+#   - rsync + ssh to $PI
 #   - Passwordless sudo on the Pi for systemctl
 #   - If OBSERVER_NGINX_ENABLED=1:
 #       - docker compose on the Pi
@@ -62,7 +62,36 @@
 
 set -euo pipefail
 
-PI=${PI:-bench-pi@192.0.2.10}
+log() { printf '[phase5-full-stack] %s\n' "$*"; }
+warn() { printf '[phase5-full-stack][WARN] %s\n' "$*" >&2; }
+err() { printf '[phase5-full-stack][ERR ] %s\n' "$*" >&2; }
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+PHASE5_ENV_FILE_DEFAULT=$SCRIPT_DIR/phase5-full-stack.env
+PHASE5_ENV_FILE=${PHASE5_ENV_FILE:-$PHASE5_ENV_FILE_DEFAULT}
+if [ -f "$PHASE5_ENV_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$PHASE5_ENV_FILE"
+fi
+
+PI=${PI:-}
+if [ -z "$PI" ]; then
+    err "PI is not set."
+    err "Set PI=<pi-user>@<pi-bench-ip> in the environment, or create"
+    err "$PHASE5_ENV_FILE from deploy/pi/phase5-full-stack.env.example."
+    exit 1
+fi
+case "$PI" in
+    *@*)
+        PI_LOGIN_USER=${PI%%@*}
+        ;;
+    *)
+        err "PI=$PI must be in <pi-user>@<pi-bench-ip> form so the deploy path"
+        err "can render the service account explicitly."
+        exit 1
+        ;;
+esac
+
 PI_HTTP_HOST=${PI_HTTP_HOST:-${PI##*@}}
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 DEPLOY_DIR=$REPO_ROOT/deploy/pi
@@ -109,15 +138,16 @@ WS_BRIDGE_LOG=${WS_BRIDGE_LOG:-info}
 GRAFANA_UPSTREAM=${GRAFANA_UPSTREAM:-127.0.0.1:3000}
 PROVISION_OBSERVER_CERTS=${PROVISION_OBSERVER_CERTS:-1}
 FORCE_OBSERVER_CERTS=${FORCE_OBSERVER_CERTS:-0}
-
-log() { printf '[phase5-full-stack] %s\n' "$*"; }
-warn() { printf '[phase5-full-stack][WARN] %s\n' "$*" >&2; }
-err() { printf '[phase5-full-stack][ERR ] %s\n' "$*" >&2; }
+PI_SERVICE_USER=${PI_SERVICE_USER:-$PI_LOGIN_USER}
+PI_SERVICE_GROUP=${PI_SERVICE_GROUP:-$PI_SERVICE_USER}
 
 CONFIG_RENDER=
 OBSERVER_ENV_RENDER=
 WS_BRIDGE_ENV_RENDER=
 OBSERVER_OBS_ENV_RENDER=
+SOVD_MAIN_UNIT_RENDER=
+PROXY_UNIT_RENDER=
+WS_BRIDGE_UNIT_RENDER=
 cleanup() {
     if [ -n "${CONFIG_RENDER:-}" ] && [ -f "$CONFIG_RENDER" ]; then
         rm -f "$CONFIG_RENDER"
@@ -131,8 +161,43 @@ cleanup() {
     if [ -n "${OBSERVER_OBS_ENV_RENDER:-}" ] && [ -f "$OBSERVER_OBS_ENV_RENDER" ]; then
         rm -f "$OBSERVER_OBS_ENV_RENDER"
     fi
+    if [ -n "${SOVD_MAIN_UNIT_RENDER:-}" ] && [ -f "$SOVD_MAIN_UNIT_RENDER" ]; then
+        rm -f "$SOVD_MAIN_UNIT_RENDER"
+    fi
+    if [ -n "${PROXY_UNIT_RENDER:-}" ] && [ -f "$PROXY_UNIT_RENDER" ]; then
+        rm -f "$PROXY_UNIT_RENDER"
+    fi
+    if [ -n "${WS_BRIDGE_UNIT_RENDER:-}" ] && [ -f "$WS_BRIDGE_UNIT_RENDER" ]; then
+        rm -f "$WS_BRIDGE_UNIT_RENDER"
+    fi
 }
 trap cleanup EXIT
+
+render_unit_template() {
+    local src=$1
+    local dest
+    dest=$(mktemp)
+    sed \
+        -e "s|__PI_SERVICE_USER__|$PI_SERVICE_USER|g" \
+        -e "s|__PI_SERVICE_GROUP__|$PI_SERVICE_GROUP|g" \
+        "$src" > "$dest"
+    printf '%s' "$dest"
+}
+
+if [ -z "${SSH_BIN:-}" ] && [ -x /mnt/c/Windows/System32/OpenSSH/ssh.exe ] \
+   && grep -qi microsoft /proc/version 2>/dev/null; then
+    SSH_BIN=/mnt/c/Windows/System32/OpenSSH/ssh.exe
+fi
+SSH_BIN=${SSH_BIN:-ssh}
+RSYNC_RSH=${RSYNC_RSH:-$SSH_BIN}
+
+ssh_cmd() {
+    "$SSH_BIN" "$@"
+}
+
+rsync_cmd() {
+    RSYNC_RSH="$RSYNC_RSH" rsync "$@"
+}
 
 resolve_sovd_config_source() {
     if [ ! -f "$SOVD_CONFIG_FILE" ]; then
@@ -276,33 +341,35 @@ prepare_observer_overlay
 # ---------------------------------------------------------------
 # 2. rsync sovd-main + config to the Pi
 # ---------------------------------------------------------------
+log "using PI service account: $PI_SERVICE_USER:$PI_SERVICE_GROUP"
 log "[1/6] preparing /opt/taktflow on $PI"
-ssh "$PI" "sudo mkdir -p $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_WS_BRIDGE_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_OBS_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR \
-           && sudo chown -R taktflow-pi:taktflow-pi /opt/taktflow"
+ssh_cmd "$PI" "sudo mkdir -p $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_WS_BRIDGE_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_OBS_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR \
+           && sudo chown -R $PI_SERVICE_USER:$PI_SERVICE_GROUP /opt/taktflow"
 
 log "[2/6] rsync sovd-main binary -> $PI:$REMOTE_SOVD_DIR/"
-rsync -az --chmod=F755 "$SOVD_MAIN_BIN" "$PI:$REMOTE_SOVD_DIR/sovd-main"
+rsync_cmd -az --chmod=F755 "$SOVD_MAIN_BIN" "$PI:$REMOTE_SOVD_DIR/sovd-main"
 
 log "[3/6] rsync sovd-main config -> $PI:$REMOTE_SOVD_DIR/opensovd.toml"
-rsync -az "$SOVD_CONFIG_SOURCE" "$PI:$REMOTE_SOVD_DIR/opensovd.toml"
+rsync_cmd -az "$SOVD_CONFIG_SOURCE" "$PI:$REMOTE_SOVD_DIR/opensovd.toml"
 if [ -f "$EXTENDED_VEHICLE_CONFIG_FILE" ]; then
     log "[3a/6] rsync Extended Vehicle config -> $PI:$REMOTE_SOVD_DIR/extended-vehicle.toml"
-    rsync -az "$EXTENDED_VEHICLE_CONFIG_FILE" "$PI:$REMOTE_SOVD_DIR/extended-vehicle.toml"
+    rsync_cmd -az "$EXTENDED_VEHICLE_CONFIG_FILE" "$PI:$REMOTE_SOVD_DIR/extended-vehicle.toml"
 else
     warn "Extended Vehicle config not found at $EXTENDED_VEHICLE_CONFIG_FILE - XV routes will fall back to the build-host path"
 fi
 # CRLF -> LF (matches install-ecu-sim.sh pattern)
-ssh "$PI" "sed -i 's/\r\$//' $REMOTE_SOVD_DIR/opensovd.toml"
-ssh "$PI" "test ! -f $REMOTE_SOVD_DIR/extended-vehicle.toml || sed -i 's/\r\$//' $REMOTE_SOVD_DIR/extended-vehicle.toml"
+ssh_cmd "$PI" "sed -i 's/\r\$//' $REMOTE_SOVD_DIR/opensovd.toml"
+ssh_cmd "$PI" "test ! -f $REMOTE_SOVD_DIR/extended-vehicle.toml || sed -i 's/\r\$//' $REMOTE_SOVD_DIR/extended-vehicle.toml"
 log "[3b/6] repairing ownership under /opt/taktflow"
-ssh "$PI" "sudo chown -R taktflow-pi:taktflow-pi $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_WS_BRIDGE_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_OBS_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR"
+ssh_cmd "$PI" "sudo chown -R $PI_SERVICE_USER:$PI_SERVICE_GROUP $REMOTE_SOVD_DIR $REMOTE_PROXY_DIR $REMOTE_WS_BRIDGE_DIR $REMOTE_OBSERVER_DIR $REMOTE_OBSERVER_OBS_DIR $REMOTE_OBSERVER_CERTS_DIR $REMOTE_DASHBOARD_DIR"
 
 # ---------------------------------------------------------------
 # 3. Install + start sovd-main systemd unit
 # ---------------------------------------------------------------
 log "[4/6] installing sovd-main.service"
-scp "$DEPLOY_DIR/systemd/sovd-main.service" "$PI:/tmp/sovd-main.service"
-ssh "$PI" "sudo mv /tmp/sovd-main.service /etc/systemd/system/sovd-main.service \
+SOVD_MAIN_UNIT_RENDER=$(render_unit_template "$DEPLOY_DIR/systemd/sovd-main.service")
+rsync_cmd -az "$SOVD_MAIN_UNIT_RENDER" "$PI:/tmp/sovd-main.service"
+ssh_cmd "$PI" "sudo mv /tmp/sovd-main.service /etc/systemd/system/sovd-main.service \
            && sudo sed -i 's/\r\$//' /etc/systemd/system/sovd-main.service \
            && sudo systemctl daemon-reload \
            && sudo systemctl enable --now sovd-main.service"
@@ -312,12 +379,13 @@ ssh "$PI" "sudo mv /tmp/sovd-main.service /etc/systemd/system/sovd-main.service 
 # ---------------------------------------------------------------
 if [ -x "$PROXY_BIN" ]; then
     log "[5/6] proxy binary found at $PROXY_BIN, deploying to $PI:$REMOTE_PROXY_DIR/"
-    rsync -az --chmod=F755 "$PROXY_BIN" "$PI:$REMOTE_PROXY_DIR/taktflow-can-doip-proxy"
+    rsync_cmd -az --chmod=F755 "$PROXY_BIN" "$PI:$REMOTE_PROXY_DIR/taktflow-can-doip-proxy"
     log "[5a/6] rsync proxy config -> $PI:$REMOTE_PROXY_DIR/proxy.toml"
-    rsync -az "$DEPLOY_DIR/opensovd-proxy.toml" "$PI:$REMOTE_PROXY_DIR/proxy.toml"
-    scp "$DEPLOY_DIR/systemd/taktflow-can-doip-proxy.service" \
+    rsync_cmd -az "$DEPLOY_DIR/opensovd-proxy.toml" "$PI:$REMOTE_PROXY_DIR/proxy.toml"
+    PROXY_UNIT_RENDER=$(render_unit_template "$DEPLOY_DIR/systemd/taktflow-can-doip-proxy.service")
+    rsync_cmd -az "$PROXY_UNIT_RENDER" \
         "$PI:/tmp/taktflow-can-doip-proxy.service"
-    ssh "$PI" "sudo mv /tmp/taktflow-can-doip-proxy.service \
+    ssh_cmd "$PI" "sudo mv /tmp/taktflow-can-doip-proxy.service \
                    /etc/systemd/system/taktflow-can-doip-proxy.service \
                && sed -i 's/\r\$//' $REMOTE_PROXY_DIR/proxy.toml \
                && sudo sed -i 's/\r\$//' /etc/systemd/system/taktflow-can-doip-proxy.service \
@@ -335,33 +403,34 @@ fi
 # ---------------------------------------------------------------
 if [ "$OBSERVER_NGINX_ENABLED" = "1" ]; then
     log "[5b/6] deploying ws-bridge to $PI:$REMOTE_WS_BRIDGE_DIR/"
-    rsync -az --chmod=F755 "$WS_BRIDGE_BIN" "$PI:$REMOTE_WS_BRIDGE_DIR/ws-bridge"
-    rsync -az "$WS_BRIDGE_ENV_RENDER" "$PI:$REMOTE_WS_BRIDGE_DIR/ws-bridge.env"
-    scp "$DEPLOY_DIR/systemd/ws-bridge.service" "$PI:/tmp/ws-bridge.service"
-    ssh "$PI" "sudo mv /tmp/ws-bridge.service /etc/systemd/system/ws-bridge.service \
+    rsync_cmd -az --chmod=F755 "$WS_BRIDGE_BIN" "$PI:$REMOTE_WS_BRIDGE_DIR/ws-bridge"
+    rsync_cmd -az "$WS_BRIDGE_ENV_RENDER" "$PI:$REMOTE_WS_BRIDGE_DIR/ws-bridge.env"
+    WS_BRIDGE_UNIT_RENDER=$(render_unit_template "$DEPLOY_DIR/systemd/ws-bridge.service")
+    rsync_cmd -az "$WS_BRIDGE_UNIT_RENDER" "$PI:/tmp/ws-bridge.service"
+    ssh_cmd "$PI" "sudo mv /tmp/ws-bridge.service /etc/systemd/system/ws-bridge.service \
                && sudo sed -i 's/\r\$//' /etc/systemd/system/ws-bridge.service \
                && sed -i 's/\r\$//' $REMOTE_WS_BRIDGE_DIR/ws-bridge.env \
                && sudo systemctl daemon-reload \
                && sudo systemctl enable --now ws-bridge.service"
-    ssh "$PI" "curl -fsS --max-time 5 http://127.0.0.1:8082/healthz >/dev/null"
+    ssh_cmd "$PI" "curl -fsS --max-time 5 http://127.0.0.1:8082/healthz >/dev/null"
     log "ws-bridge answered GET /healthz on 127.0.0.1:8082"
 
     if [ "$OBSERVER_OBSERVABILITY_ENABLED" = "1" ]; then
         log "[5c/6] syncing observer observability assets"
-        ssh "$PI" "sudo docker compose version >/dev/null"
-        rsync -az "$DEPLOY_DIR/docker-compose.observer-observability.yml" \
+        ssh_cmd "$PI" "sudo docker compose version >/dev/null"
+        rsync_cmd -az "$DEPLOY_DIR/docker-compose.observer-observability.yml" \
             "$PI:$REMOTE_OBSERVER_OBS_DIR/docker-compose.observer-observability.yml"
-        rsync -az "$DEPLOY_DIR/observability/" "$PI:$REMOTE_OBSERVER_OBS_DIR/observability/"
-        rsync -az "$OBSERVER_OBS_ENV_RENDER" \
+        rsync_cmd -az "$DEPLOY_DIR/observability/" "$PI:$REMOTE_OBSERVER_OBS_DIR/observability/"
+        rsync_cmd -az "$OBSERVER_OBS_ENV_RENDER" \
             "$PI:$REMOTE_OBSERVER_OBS_DIR/observer-observability.env"
 
         log "[5d/6] starting observer observability stack"
-        ssh "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_OBS_DIR/observer-observability.env \
+        ssh_cmd "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_OBS_DIR/observer-observability.env \
                    -f $REMOTE_OBSERVER_OBS_DIR/docker-compose.observer-observability.yml up -d"
-        ssh "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_OBS_DIR/observer-observability.env \
+        ssh_cmd "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_OBS_DIR/observer-observability.env \
                    -f $REMOTE_OBSERVER_OBS_DIR/docker-compose.observer-observability.yml ps"
-        ssh "$PI" "curl -fsS --max-time 5 http://127.0.0.1:9090/-/ready >/dev/null"
-        ssh "$PI" "curl -fsS --max-time 5 http://127.0.0.1:3000/api/health >/dev/null"
+        ssh_cmd "$PI" "curl -fsS --max-time 5 http://127.0.0.1:9090/-/ready >/dev/null"
+        ssh_cmd "$PI" "curl -fsS --max-time 5 http://127.0.0.1:3000/api/health >/dev/null"
         log "Prometheus and Grafana answered loopback health probes on the Pi"
     fi
 fi
@@ -370,11 +439,11 @@ fi
 # 6. Verification
 # ---------------------------------------------------------------
 log "[6/6] verification"
-ssh "$PI" 'sudo systemctl --no-pager status sovd-main.service || true'
+ssh_cmd "$PI" 'sudo systemctl --no-pager status sovd-main.service || true'
 
 # Give axum a moment to bind the socket after enable --now.
 sleep 2
-if ssh "$PI" "curl -fsS --max-time 5 http://127.0.0.1:21002/sovd/v1/components >/dev/null"; then
+if ssh_cmd "$PI" "curl -fsS --max-time 5 http://127.0.0.1:21002/sovd/v1/components >/dev/null"; then
     log "sovd-main answering GET /sovd/v1/components on 127.0.0.1:21002 via SSH - D1 green"
 else
     err "sovd-main is NOT answering on 127.0.0.1:21002 via SSH"
@@ -384,23 +453,23 @@ fi
 
 if [ "$OBSERVER_NGINX_ENABLED" = "1" ]; then
     log "[6a/6] syncing observer nginx assets"
-    ssh "$PI" "sudo docker compose version >/dev/null"
-    rsync -az "$DEPLOY_DIR/docker-compose.observer-nginx.yml" \
+    ssh_cmd "$PI" "sudo docker compose version >/dev/null"
+    rsync_cmd -az "$DEPLOY_DIR/docker-compose.observer-nginx.yml" \
         "$PI:$REMOTE_OBSERVER_DIR/docker-compose.observer-nginx.yml"
-    rsync -az "$DEPLOY_DIR/nginx/" "$PI:$REMOTE_OBSERVER_DIR/nginx/"
-    rsync -az --delete "$OBSERVER_DASHBOARD_DIR/" "$PI:$REMOTE_DASHBOARD_DIR/"
-    rsync -az "$OBSERVER_ENV_RENDER" "$PI:$REMOTE_OBSERVER_DIR/observer-nginx.env"
-    rsync -az --chmod=F755 "$DEPLOY_DIR/scripts/provision-observer-certs.sh" \
+    rsync_cmd -az "$DEPLOY_DIR/nginx/" "$PI:$REMOTE_OBSERVER_DIR/nginx/"
+    rsync_cmd -az --delete "$OBSERVER_DASHBOARD_DIR/" "$PI:$REMOTE_DASHBOARD_DIR/"
+    rsync_cmd -az "$OBSERVER_ENV_RENDER" "$PI:$REMOTE_OBSERVER_DIR/observer-nginx.env"
+    rsync_cmd -az --chmod=F755 "$DEPLOY_DIR/scripts/provision-observer-certs.sh" \
         "$PI:$REMOTE_OBSERVER_DIR/provision-observer-certs.sh"
-    ssh "$PI" "sed -i 's/\r\$//' $REMOTE_OBSERVER_DIR/provision-observer-certs.sh"
+    ssh_cmd "$PI" "sed -i 's/\r\$//' $REMOTE_OBSERVER_DIR/provision-observer-certs.sh"
 
     if [ "$PROVISION_OBSERVER_CERTS" = "1" ]; then
         log "[6b/6] provisioning observer certificates on $PI"
-        ssh "$PI" "OUT_DIR=$REMOTE_OBSERVER_CERTS_DIR FORCE=$FORCE_OBSERVER_CERTS \
+        ssh_cmd "$PI" "OUT_DIR=$REMOTE_OBSERVER_CERTS_DIR FORCE=$FORCE_OBSERVER_CERTS \
                    $REMOTE_OBSERVER_DIR/provision-observer-certs.sh"
     else
         log "[6b/6] using pre-existing observer certificates on $PI"
-        ssh "$PI" "test -f $REMOTE_OBSERVER_CERTS_DIR/server.crt \
+        ssh_cmd "$PI" "test -f $REMOTE_OBSERVER_CERTS_DIR/server.crt \
                    && test -f $REMOTE_OBSERVER_CERTS_DIR/server.key \
                    && test -f $REMOTE_OBSERVER_CERTS_DIR/client-ca.crt \
                    && test -f $REMOTE_OBSERVER_CERTS_DIR/observer-client.crt \
@@ -409,19 +478,19 @@ if [ "$OBSERVER_NGINX_ENABLED" = "1" ]; then
     fi
 
     log "[6c/6] starting observer nginx"
-    ssh "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_DIR/observer-nginx.env \
+    ssh_cmd "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_DIR/observer-nginx.env \
                -f $REMOTE_OBSERVER_DIR/docker-compose.observer-nginx.yml up -d"
-    ssh "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_DIR/observer-nginx.env \
+    ssh_cmd "$PI" "sudo docker compose --env-file $REMOTE_OBSERVER_DIR/observer-nginx.env \
                -f $REMOTE_OBSERVER_DIR/docker-compose.observer-nginx.yml ps"
 
     log "[6d/6] verifying observer mTLS path on the Pi"
     sleep 2
-    ssh "$PI" "curl -fsS --max-time 5 \
+    ssh_cmd "$PI" "curl -fsS --max-time 5 \
                --cacert $REMOTE_OBSERVER_CERTS_DIR/ca.crt \
                --cert $REMOTE_OBSERVER_CERTS_DIR/observer-client.crt \
                --key $REMOTE_OBSERVER_CERTS_DIR/observer-client.key \
                https://127.0.0.1/sovd/v1/components >/dev/null"
-    if ssh "$PI" "curl -fsS --max-time 5 \
+    if ssh_cmd "$PI" "curl -fsS --max-time 5 \
                   --cacert $REMOTE_OBSERVER_CERTS_DIR/ca.crt \
                   https://127.0.0.1/ >/dev/null"; then
         err "observer nginx accepted HTTPS without a client certificate"

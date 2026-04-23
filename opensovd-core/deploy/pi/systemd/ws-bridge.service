@@ -13,8 +13,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=taktflow-pi
-Group=taktflow-pi
+User=__PI_SERVICE_USER__
+Group=__PI_SERVICE_GROUP__
 WorkingDirectory=/opt/taktflow/ws-bridge
 EnvironmentFile=/opt/taktflow/ws-bridge/ws-bridge.env
 ExecStart=/opt/taktflow/ws-bridge/ws-bridge

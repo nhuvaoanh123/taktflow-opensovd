@@ -40,8 +40,8 @@ Conflicts=ecu-sim.service
 
 [Service]
 Type=simple
-User=taktflow-pi
-Group=taktflow-pi
+User=__PI_SERVICE_USER__
+Group=__PI_SERVICE_GROUP__
 WorkingDirectory=/opt/taktflow/proxy
 ExecStart=/opt/taktflow/proxy/taktflow-can-doip-proxy \
     --config-file /opt/taktflow/proxy/proxy.toml \

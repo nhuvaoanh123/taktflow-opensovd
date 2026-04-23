@@ -2,11 +2,14 @@
 
 | | |
 |---|---|
-| Revision | Part II, Draft 1.1 |
+| Revision | Part II, Draft 1.10 |
 | Status | **DRAFT** — pending OEM answers to open questions in §II.9 |
 | Audience | AI worker or human engineer landing cold; assumes familiarity with [MASTER-PLAN.md](MASTER-PLAN.md) Parts 0–13. |
 | Relation | Extends [MASTER-PLAN.md](MASTER-PLAN.md). Part I gets Taktflow to a bench-validated, conformance-tested, documented reference stack (M10). Part II gets it into a customer vehicle at production. |
 | Date captured | 2026-04-20 |
+
+Current note (2026-04-23): `Q-PROD-1` and `Q-PROD-2` are now answered in
+[`docs/plan/part2-open-questions-answers.md`](docs/plan/part2-open-questions-answers.md).
 
 ---
 
@@ -17,6 +20,8 @@ Part II defines the work between **M10 (documentation maturity, end of Part I)**
 **What is frozen in this draft:** mission, scope buckets, phase skeleton, milestone skeleton, deployment-tier characteristics, capability-spec shells, quality-gate names, competitive landscape, upstream tracking state, chase list.
 
 **What is NOT frozen (pending OEM answers):** phase step tables, concrete HPC / OS target, safety-partition strategy, regulatory scope boundary, fleet broker model, upstream merge cadence, ODX-converter stack choice. These are flagged in §II.9 as `Q-PROD-1` through `Q-PROD-9`. Step tables in §II.7 are deliberately skeleton until those questions resolve — the plan-writing rule forbids unjustified `TBD_*` in deliverables.
+
+**Exception — surrogate execution.** A non-credit surrogate track may be populated where the goal is software-risk retirement on existing Pi-class Linux hardware. Such a track must say explicitly that it does **not** close `Q-PROD-1`, does **not** satisfy P12 entry, and does **not** count as M11 / `G-PROD-1` evidence.
 
 **How to execute a step in Part II:** same rule as Part I §0.5. Pick one pending unit from §II.7, satisfy every bullet under Acceptance, stop on a named blocker. Do not merge Part I steps with Part II steps.
 
@@ -81,6 +86,8 @@ Items that **stay out** even at Part II: upstream Eclipse contribution workflow,
 
 Phase dependency graph: P11 → P12 → P13 → P14. P13 and P14 do not split; P14 cannot start until P13 fleet-pilot evidence exists.
 
+Optional surrogate track (non-phase, non-credit): when budget or procurement blocks `Q-PROD-1`, the team may execute `P12-SUR-*` on the existing Raspberry Pi bench host or a Compute Module 5-class Linux edge target to remove Pi-bench assumptions and retire software portability risk. Completing that track does **not** mean P12 started, does **not** satisfy M11, and does **not** replace selection of an automotive-qualified HPC.
+
 ---
 
 ## II.4 Milestone Catalog (M11–M12)
@@ -106,6 +113,12 @@ Phase dependency graph: P11 → P12 → P13 → P14. P13 and P14 do not split; P
 | Logging / observability | DLT off-vehicle through the OEM cloud bridge (rate-controlled); OpenTelemetry off-vehicle bounded to prod SLOs |
 | Auth profile | Proximity-challenge + OAuth2 scoped roles (workshop / dealer / OEM-engineering / 3rd-party OBD per R155/R156 where applicable) per `Q-PROD-5` |
 | Touches physical ECUs? | Yes — all of them; this is the production vehicle |
+
+Resolved 2026-04-23 for first production freeze:
+
+- host family = Renesas R-Car S4
+- OS path = Linux BSP / Whitebox SDK
+- partition = QM-only Taktflow with T1-owned ASIL-B+ wrap and supervision
 
 Distinctions from Part I tiers:
 - HIL bench tier remains for regression; Production Vehicle is NOT the HIL bench.
@@ -545,15 +558,153 @@ Cadence returns to monthly automatically on the next observed upstream activity 
 
 **Reference.** Upstream README at `uds2sovd-proxy/README.md` (north-star sentence only); upstream PR #63 on [eclipse-opensovd/opensovd](https://github.com/eclipse-opensovd/opensovd/pull/63) (PlantUML-only, no body, open since 2025-11-28 — design-in-flight, watch don't absorb); approach (b) shipping sibling [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/); approach (c) in-design sibling [PROD-17](#ii-6-17-prod-17-diagnostic-library-framework-agnostic-app-registration); supersedes Part I `P10-SCA-A1`. Upstream review cadence for this workstream is set to quarterly in PROD-15 based on observed meeting activity (no published outcome on the UDS2SOVD↔ServiceApps finalisation item from the 2026-03-24 and 2026-03-31 meetings; upstream repository has had no source commits since the 2025-10-14 initial scaffold).
 
+### II.6.21 PROD-21 OEM pilot playbook finalization
+
+**Role.** Populate the pilot deployment playbook at [`docs/deploy/pilot-oem/README.md`](docs/deploy/pilot-oem/README.md) with the first OEM engagement's real values (release source, pilot VIN / identifiers, transport inventory, auth endpoints, observer / cloud values, evidence locations), so a second-party integrator can stand up a Taktflow pilot against concrete OEM infrastructure rather than placeholders. This is approach DOC-3 in the Part I documentation ladder: DOC-2 (integrator guide — cold-reader executable) lands repo-side; DOC-3 (OEM playbook) requires a real pilot to ground the values.
+
+**Why moved out of Part I.** Part I `P11-DOC-02` acceptance explicitly reads *"First OEM engagement populates real values"*. That acceptance is external-input gated — no amount of repo work can honestly produce it, because fabricated VINs / endpoints / evidence paths would defeat the purpose of a deployment playbook. Leaving it in Part I kept M10 artificially blocked on a gate the repo cannot close. Moving it to Part II aligns the gate with the cohort that owns the input: OEM engagement belongs to the production rails, not conformance/docs maturity. Precedent: Part I `P10-SCA-A1` was moved to Part II `PROD-20` for the same "work is real but gated on external context" reason.
+
+**Inputs.** Part I DOC-2 integrator guide (base structure); [`docs/deploy/pilot-oem/README.md`](docs/deploy/pilot-oem/README.md) current placeholder skeleton; OEM pilot engagement (external trigger — not an input Taktflow can produce); resolution of at least `Q-PROD-1` (HPC target) and `Q-PROD-5` (auth scopes) so the playbook can reference concrete values rather than candidate lists.
+
+**Outputs.**
+
+- **PROD-21.1 Pilot engagement intake.** OEM-side contact identified; scope-of-pilot memo lands at `docs/deploy/pilot-oem/intake-<oem-slug>.md` capturing: release source (which Taktflow commit / tag the pilot runs against), target vehicle / VIN or VIN range, HPC target identity, transport inventory (which in-vehicle networks, which external OBD / DoIP path), auth endpoint identities, observer / cloud bridge values, evidence-location agreement. No code change — this is a gate artifact confirming the pilot is real before downstream sub-items run.
+- **PROD-21.2 Playbook value population.** [`docs/deploy/pilot-oem/README.md`](docs/deploy/pilot-oem/README.md) rewritten with the PROD-21.1 values in place of placeholders. Every section that currently says "OEM provides X" resolves to a concrete value or a named document path under `docs/deploy/pilot-oem/`. Private-data scrub per `C:\Users\andao\.claude\rules\never_commit_private_data.md` and Part I CLAUDE.md "Never commit private data" — real OEM names, VINs, and endpoints land via placeholder-or-env-var mechanism (e.g. `${PILOT_OEM}`, `<pilot-vin>`) if the pilot is not public, or verbatim if the OEM has signed off on public disclosure.
+- **PROD-21.3 Evidence path wiring.** Pilot witness artifacts (boot log, SOVD E2E round-trip recording, CDA read proof on at least one legacy ECU, observer dashboard screenshot, auth handshake trace) land at the evidence paths agreed in PROD-21.1 — e.g. `docs/evidence/pilot-oem-<oem-slug>/`. Playbook cross-references each witness at the step where the integrator is expected to reproduce it.
+- **PROD-21.4 Cold-reader verification.** A third party (integrator or dealer) walks the playbook end-to-end on the PROD-21.1 vehicle without tribal-knowledge help from Taktflow's author. Any step that fails the walkthrough is fixed in the playbook before the step closes. Verification artifact: signed-off walkthrough log at `docs/deploy/pilot-oem/walkthrough-<oem-slug>.md`.
+- **PROD-21.5 Part I plan reconciliation.** After the walkthrough log lands, update [`MASTER-PLAN.md`](MASTER-PLAN.md) §7.12 to mark `P11-DOC-02` **closed via PROD-21** (retaining the supersede link for audit) and refresh the §7.12 execution note to name the PROD-21 closure date.
+
+**Constraints.**
+
+- **No fabricated values.** If the OEM engagement stalls, PROD-21 stays open — the playbook does not get populated with plausible-but-invented values just to close the row. The whole point of DOC-3 is to be executable by a cold reader against real infrastructure, and fabricated values silently break that contract.
+- **Private-data scrub is non-negotiable.** The repo mirror at `github.com/nhuvaoanh123/taktflow-opensovd` is public. OEM names, VINs, internal IPs, personal names, hardware serials, firmware hashes, and absolute paths revealing personal drive layout must be redacted per the global rule — either placeholder form or env-var form. Raw pasted bench output must be reviewed with the user before staging.
+- **M10 is not reblocked.** Once `P11-DOC-02` is marked superseded by PROD-21 in Part I, M10 / G-CONF may fire green without waiting for PROD-21.1. PROD-21 is a production-rails capability, not a conformance-phase prerequisite.
+- **No duplicate documentation.** PROD-21 populates one playbook, not a fork per OEM. If multiple OEM pilots run in parallel, each gets its own intake / walkthrough file under `docs/deploy/pilot-oem/`, but the base playbook stays single and parameterised.
+- **Reversibility.** If the first OEM pilot is cancelled before PROD-21.4, PROD-21.1..3 deliverables remain in the repo as the next OEM's starting point; PROD-21.4 re-runs under a new `<oem-slug>`. The supersede link on `P11-DOC-02` does not regress — the work has simply not yet closed through PROD-21.5.
+
+**Verification.**
+
+- PROD-21.1 intake memo checked in under `docs/deploy/pilot-oem/intake-<oem-slug>.md`, referenced from §II.9 as the PROD-21 entry trigger.
+- PROD-21.2 playbook diff reviewed against the current placeholder skeleton; no section left as placeholder unless explicitly flagged `<external-input>` with a reason.
+- PROD-21.3 evidence artifacts present at the agreed paths; playbook cross-reference renders.
+- PROD-21.4 walkthrough log checked in, signed off (name or role, not anonymous), with a list of playbook edits made during the walkthrough.
+- PROD-21.5 commit lands with [`MASTER-PLAN.md`](MASTER-PLAN.md) §7.12 updated and this Part II section marked closed in the §II.13 revision log.
+
+**Gate.** **G-PILOT-DOC** (new, named only if OEM playbook finalization needs to gate a downstream capability). Otherwise PROD-21 closes against its own DoD and feeds `G-PROD-1` target-HPC evidence indirectly via the pilot walkthrough.
+
+**Definition of done.** Walkthrough log at `docs/deploy/pilot-oem/walkthrough-<oem-slug>.md` exists, is signed off, and Part I §7.12 `P11-DOC-02` is marked superseded-and-closed via PROD-21.5.
+
+**Phase assignment.** **P13 (production rails)** or earliest production phase at which the first OEM pilot materialises — may land earlier in P12 if the first-vehicle drop itself is the pilot. Does not block M10. Feeds G-PROD-1 target-HPC evidence when the pilot runs on the Q-PROD-1 target.
+
+**Estimate.** 1–2 engineer-weeks of Taktflow-side work (intake memo + playbook population + evidence wiring + walkthrough support). Calendar bound is the OEM engagement timeline — can be days if the OEM is already onboarded, months if waiting on pilot allocation. Taktflow cannot shorten the calendar bound; can only shorten the engineer-week side once the pilot starts.
+
+**Reference.** Part I `P11-DOC-02` (superseded source); Part I §7.12 execution note (documents the external-input blocker); [`docs/deploy/pilot-oem/README.md`](docs/deploy/pilot-oem/README.md) (target deliverable); global rule `C:\Users\andao\.claude\rules\never_commit_private_data.md` (scrub discipline); Part I CLAUDE.md "Never commit private data" (project-level reinforcement); PROD-20 Phase assignment paragraph (precedent for "moved from P10-SCA-A1 to Part II without loss of phase exit credit").
+
 ---
 
 ## II.7 Execution Breakdown (Skeleton)
 
 > **This section is deliberately incomplete.** Concrete step tables for P12 / P13 / P14 depend on the open questions in §II.9. Populating them before those resolve would introduce unjustified `TBD_*` placeholders, which the Plan-Writing Rule forbids.
+>
+> **Only populated exception:** the explicit non-credit surrogate track below. It exists to keep software portability work moving when budget blocks target-HPC procurement, and it is not counted toward P12 / P13 / P14 entry or exit credit.
+
+### II.7.0 Pre-P12 surrogate track — Pi-class Linux edge host (non-credit)
+
+**Role.** Keep the program moving on hardware we already own — Raspberry Pi 4/5 bench host or Compute Module 5-class Linux target — while explicitly **not** claiming target-HPC selection, automotive qualification, first-vehicle drop, or safety-partition evidence. The surrogate track is for software portability and deploy-path cleanup only.
+
+**Entry.** P11 complete (M10). Existing Pi-class Linux hardware available. `Q-PROD-1` and `Q-PROD-2` may remain unresolved.
+
+**Exit.** Same Taktflow artifact family boots on the surrogate target from a clean repo-owned deploy path; SOVD GET `/sovd/v1/components` round-trips on the surrogate target; all Pi-bench-only assumptions discovered during bring-up are written down for carry-forward into PROD-1. Exit is **not** M11 and does **not** satisfy P12 entry.
+
+| Step ID | Status | Mode | Goal | Acceptance |
+|---|---|---|---|---|
+| P12-SUR-01 | done | decision_doc | Freeze surrogate scope and non-claims | Part II names the Pi-class surrogate track, allowed hardware class, evidence path, and explicit "does not count as P12/M11/G-PROD-1" rule |
+| P12-SUR-02 | done | repo_only | Boot same artifact family on Pi-class surrogate target | Boot witness lands under `docs/evidence/p12-surrogate/`; surrogate target serves `GET /sovd/v1/components` successfully |
+| P12-SUR-03 | done | repo_only | Remove bench-only assumptions from deploy/runtime path | Surrogate deploy path uses repo-owned config/scripts only; no hidden workstation-only edits required to boot |
+| P12-SUR-04 | done | decision_doc | Carry surrogate findings back into the production gate | `docs/plan/part2-open-questions-answers.md` or its successor ledger records the portability findings under a `Q-PROD-1` carry-forward note |
+
+**Constraints.**
+
+- Allowed surrogate hardware is limited to the existing Raspberry Pi bench host or a Compute Module 5-class Linux edge target. No claim of automotive qualification.
+- Surrogate evidence may inform PROD-1 and reduce software-portability risk, but it does **not** close `Q-PROD-1`, `Q-PROD-2`, `G-PROD-1`, or M11.
+- Surrogate work must bias toward the future production shape: same Rust workspace, same deploy/config family, same SOVD REST surface. No Pi-only product fork.
+- If the surrogate path needs a workaround that would be invalid on an automotive HPC (for example, a Pi-only transport, service model, or auth shortcut), that workaround must be written down as debt in `P12-SUR-04`, not quietly normalized into PROD-1 assumptions.
+
+Execution note (2026-04-23): `P12-SUR-02` closed using the checked-in
+Pi deploy flow at `opensovd-core/deploy/pi/phase5-full-stack.sh`. Witness
+captured at [`docs/evidence/p12-surrogate/2026-04-23-pi-boot-witness.md`](docs/evidence/p12-surrogate/2026-04-23-pi-boot-witness.md):
+the surrogate target restarted `sovd-main`, stayed `active`, and answered
+`GET /sovd/v1/components` with `bcm`, `cvc`, `dfm`, and `sc`.
+
+Execution note (2026-04-23): `P12-SUR-03` closed by removing the last
+bench-only assumptions from the same Pi deploy path. The checked-in
+script now takes the surrogate target from explicit local input
+(`PI=<pi-user>@<pi-bench-ip>` or the untracked neighbor env file),
+renders the systemd `User=` / `Group=` values from placeholders instead
+of a baked bench account, and auto-selects Windows OpenSSH transport
+when invoked from WSL so the repo path does not depend on hidden
+workstation-specific SSH wiring. Witness captured at
+[`docs/evidence/p12-surrogate/2026-04-23-pi-deploy-path-cleanup-witness.md`](docs/evidence/p12-surrogate/2026-04-23-pi-deploy-path-cleanup-witness.md).
+This remains surrogate-only evidence and does not satisfy real `P12`,
+M11, `Q-PROD-1`, `Q-PROD-2`, or `G-PROD-1`.
+
+Execution note (2026-04-23): `P12-SUR-04` closed by creating
+[`docs/plan/part2-open-questions-answers.md`](docs/plan/part2-open-questions-answers.md)
+and recording the `Q-PROD-1` carry-forward note from the surrogate
+track. The note freezes what the Pi-class surrogate work proved portable
+(repo-owned deploy/config shape, explicit target input, parameterized
+service account, unchanged SOVD surface) and what remains bench-only
+debt (WSL host transport helper, Linux/systemd wrapper, no target-HPC
+proof). This closes the surrogate track's planned work items without
+satisfying real `P12`, M11, `Q-PROD-1`, `Q-PROD-2`, or `G-PROD-1`.
 
 ### II.7.1 P12 — Vehicle HPC bring-up
 
 **Entry.** P11 complete (M10). `Q-PROD-1` resolved (target HPC + OS identified). `Q-PROD-2` resolved (safety-partition strategy agreed with T1).
+
+Resolved 2026-04-23:
+
+- target HPC / OS = Renesas R-Car S4 + Linux BSP / Whitebox SDK path
+- partition strategy = QM-only Taktflow with T1-owned ASIL-B+
+  supervision and any safety-island partitioning
+
+| Step ID | Status | Mode | Goal | Acceptance |
+|---|---|---|---|---|
+| P12-HPC-01 | done | decision_doc | Freeze the R-Car S4 Linux target profile | [`docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md`](docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md) records the board, OS path, `systemd` bring-up posture, QM/T1 partition boundary, carried-forward surrogate findings, and explicit non-goals |
+| P12-HPC-02 | done | repo_only | Create the checked-in R-Car S4 Linux deploy skeleton | `opensovd-core/deploy/rcar-s4/` lands with config templates, `systemd` units, env example, and a repo-owned deploy README free of Pi-only assumptions |
+| P12-HPC-03 | done | repo_only | Add the target build and release recipe for the R-Car S4 Linux path | Checked-in build / release instructions and artifact naming for the target board exist; no bench-only deploy assets leak into the release path |
+| P12-HPC-04 | pending | decision_doc | Author the QM/T1 production partition contract | `docs/safety/prod-partition-contract.md` freezes the QM boundary, supervision expectations, failure modes, and T1-owned ASIL-B+ wrap assumptions |
+| P12-HPC-05 | pending | repo_only | Capture the first target-board boot witness | Evidence under `docs/evidence/p12-hpc/` proves the R-Car S4 target boots the Taktflow artifact family and answers `GET /sovd/v1/components` |
+| P12-HPC-06 | pending | repo_only | Capture target-network diagnostic round-trip proof | Evidence under `docs/evidence/p12-hpc/` proves CDA-backed legacy ECU access and target-network round-trip on the chosen production-host path |
+
+Execution note (2026-04-23): `P12-HPC-01` closed by creating
+[`docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md`](docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md).
+That document freezes the first real P12 host profile after `Q-PROD-1`
+and `Q-PROD-2` resolution: Renesas R-Car S4 Starter Kit, Linux BSP /
+Whitebox SDK path, `systemd`-managed native bring-up, and QM-only
+Taktflow with T1-owned ASIL-B+ wrap. It is the authority for the next
+repo work in `P12-HPC-02` onward.
+
+Execution note (2026-04-23): `P12-HPC-02` closed by creating the
+checked-in Linux target skeleton under `opensovd-core/deploy/rcar-s4/`.
+The directory now contains a repo-owned deploy README, target-side
+`sovd-main` and proxy config templates, deployment env examples, and
+`systemd` unit templates for `sovd-main`, `taktflow-can-doip-proxy`,
+and `ws-bridge`. The skeleton intentionally avoids Raspberry-Pi-specific
+paths, `ecu-sim` conflicts, and workstation-only assumptions.
+
+Execution note (2026-04-23): `P12-HPC-03` closed by freezing the first
+R-Car S4 Linux build and release recipe under
+`opensovd-core/deploy/rcar-s4/BUILD-RELEASE.md` plus the checked-in
+`release-manifest.example.yaml`. The recipe now names the target bundle,
+stages the Rust `aarch64-unknown-linux-gnu` artifacts for `sovd-main`
+and `ws-bridge`, ships the repo-local Python proxy entrypoint from
+`gateway/can_to_doip_proxy/taktflow-can-doip-proxy`, and explicitly
+excludes Pi bench assets from the production-host release path.
+
+Supersession note (2026-04-23): the legacy reserved-ID sentence that
+still appears below is stale. The populated `P12-HPC-*` table above is
+the governing step list for P12.
 
 **Exit.** M11 — first-vehicle drop. Taktflow binary boots on target HPC in a prototype vehicle. SOVD GET `/sovd/v1/components` round-trips over in-vehicle Ethernet. CDA reads UDS from every legacy ECU. Edge ML advisory end-to-end on target HPC.
 
@@ -612,6 +763,13 @@ Each open question is a blocker on one or more capability specs and/or execution
 | Q-PROD-11b | **Audit of the other six presumed-vendored directories (`opensovd/`, `classic-diagnostic-adapter/`, `odx-converter/`, `uds2sovd-proxy/`, `cpp-bindings/`, `dlt-tracing-lib/`) — are they genuinely vendored snapshots of their upstream repos, or are any of them (like `opensovd-core/`) Taktflow-authored codebases under a name-colliding directory?** Only `fault-lib/` has been verified to date; the other six inherit the "vendored" label from earlier plan text without tree-level confirmation. Answer drives whether "we already own the code" framing for PROD-13 / PROD-14 / Part I §5.1.5 holds or needs the same correction `opensovd-core/` just received. | §II.11.1 table, PROD-13, PROD-14, Part I §5.1.5 |
 
 Answers are captured at `docs/plan/part2-open-questions-answers.md` as they arrive.
+
+Resolved 2026-04-23 in that ledger:
+
+- `Q-PROD-1` -> Renesas R-Car S4 plus the Linux BSP / Whitebox SDK path
+  for the first production freeze and P12 bring-up.
+- `Q-PROD-2` -> QM-only Taktflow with T1-owned ASIL-B+ wrap,
+  supervision, and any safety-island partitioning.
 
 ---
 
@@ -785,6 +943,16 @@ Carried forward from research §II.10, prioritized as **M (mandatory for product
 
 ## II.13 Revision Log
 
+- **2026-04-23, Draft 1.10** - closed `P12-HPC-03` by freezing the first R-Car S4 Linux build and release recipe under `opensovd-core/deploy/rcar-s4/BUILD-RELEASE.md` plus `release-manifest.example.yaml`. The release path now has fixed bundle naming, a staged file inventory for `sovd-main`, `ws-bridge`, and the repo-local `taktflow-can-doip-proxy` entrypoint, checksum instructions, and an explicit exclusion list that keeps Pi bench assets out of the production-host bundle.
+- **2026-04-23, Draft 1.9** - closed `P12-HPC-02` by creating the checked-in Linux target skeleton under `opensovd-core/deploy/rcar-s4/`. The new directory contains target-side `sovd-main` and CAN-to-DoIP proxy config templates, deployment env examples, and `systemd` unit templates for `sovd-main`, `taktflow-can-doip-proxy`, and `ws-bridge`, plus a repo-owned deploy README that avoids Pi-only assumptions.
+- **2026-04-23, Draft 1.8** - populated the real `P12-HPC-*` step table now that `Q-PROD-1` and `Q-PROD-2` are resolved, and completed `P12-HPC-01`. The first concrete P12 deliverable is the checked-in target profile [`docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md`](docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md), which freezes the Renesas R-Car S4 Starter Kit + Linux BSP / Whitebox SDK path, `systemd`-managed native bring-up, and QM-only / T1-wrap safety posture as the authority for later P12 repo work.
+- **2026-04-23, Draft 1.7** - resolved the two P12 entry blockers in [`docs/plan/part2-open-questions-answers.md`](docs/plan/part2-open-questions-answers.md). `Q-PROD-1` is now frozen to Renesas R-Car S4 plus the Linux BSP / Whitebox SDK path with `systemd`-managed native bring-up for P12. `Q-PROD-2` is now frozen to a QM-only Taktflow deployment with T1-owned ASIL-B+ wrap, supervision, and any safety-island partitioning. Part II now records those resolutions as the current P12 entry posture, although the real P12 step table is still unpopulated.
+- **2026-04-23, Draft 1.6** - closed `P12-SUR-04` by creating [`docs/plan/part2-open-questions-answers.md`](docs/plan/part2-open-questions-answers.md) and recording the surrogate-track carry-forward note under `Q-PROD-1`. The note freezes what the Pi-class surrogate work proved portable into PROD-1 (same artifact family, repo-owned deploy/config path, explicit target input, parameterized service account) and what stays surrogate-only debt (WSL host transport helper, Linux/systemd wrapper, no target-HPC proof). Result: the planned surrogate track is fully written down without claiming real P12, M11, `Q-PROD-1`, `Q-PROD-2`, or `G-PROD-1` closure.
+- **2026-04-23, Draft 1.5** - closed `P12-SUR-03` in the surrogate track. Removed the remaining bench-only deploy assumptions by requiring explicit local target input (`PI=<pi-user>@<pi-bench-ip>` or a neighboring untracked env file), parameterizing the rendered systemd service account, and teaching the Pi deploy flow to use Windows OpenSSH automatically when launched from WSL. Added the public-safe env template [`opensovd-core/deploy/pi/phase5-full-stack.env.example`](opensovd-core/deploy/pi/phase5-full-stack.env.example), updated the Pi deploy docs, and captured sanitized witness evidence at [`docs/evidence/p12-surrogate/2026-04-23-pi-deploy-path-cleanup-witness.md`](docs/evidence/p12-surrogate/2026-04-23-pi-deploy-path-cleanup-witness.md). Result: the surrogate target still boots from the repo-owned deploy path without hidden workstation-only edits, while preserving the explicit non-claim that this does not satisfy real P12, M11, `Q-PROD-1`, `Q-PROD-2`, or `G-PROD-1`.
+
+- **2026-04-23, Draft 1.4** — closed `P12-SUR-02` in the new surrogate track. Used the checked-in Pi deploy flow at `opensovd-core/deploy/pi/phase5-full-stack.sh` against the existing Pi-class surrogate target and captured sanitized witness evidence at [`docs/evidence/p12-surrogate/2026-04-23-pi-boot-witness.md`](docs/evidence/p12-surrogate/2026-04-23-pi-boot-witness.md). The witness proves repo-driven restart plus green `GET /sovd/v1/components` on the surrogate target, while preserving the explicit non-claim that this does not satisfy real P12, M11, `Q-PROD-1`, `Q-PROD-2`, or `G-PROD-1`.
+- **2026-04-23, Draft 1.3** — added **§II.7.0 Pre-P12 surrogate track — Pi-class Linux edge host (non-credit)** so execution can continue on already-owned Pi hardware without pretending the production-HPC gate is closed. `P12-SUR-01` is complete in this same edit: the plan now freezes the allowed surrogate hardware class (existing Raspberry Pi bench host or Compute Module 5-class Linux edge target), the witness path `docs/evidence/p12-surrogate/`, and the explicit non-claim rule that surrogate work does **not** satisfy P12 entry, M11, `Q-PROD-1`, `Q-PROD-2`, or `G-PROD-1`. Rationale: budget may block automotive-HPC procurement, but that should pause only the real production claim, not honest software-portability work.
+- **2026-04-23, Draft 1.2** — added §II.6.21 **PROD-21 OEM pilot playbook finalization** and marked Part I `P11-DOC-02` **superseded by PROD-21**. Rationale: DOC-02 acceptance *"First OEM engagement populates real values"* is external-input gated (no repo work closes it), so leaving it in Part I kept M10 / G-CONF artificially blocked. Five sub-deliverables PROD-21.1–21.5 (pilot engagement intake memo; playbook value population with private-data scrub; evidence path wiring; cold-reader walkthrough sign-off; Part I plan reconciliation). Phase-assigned to P13 (or the earliest production phase at which an OEM pilot materialises). Same precedent posture as `P10-SCA-A1` → `PROD-20`: Part I phase exit credit preserved, Part II owns the external-input-gated closure. [`MASTER-PLAN.md`](MASTER-PLAN.md) §7.12 P11 table and execution note updated in the same job.
 - **2026-04-21, Draft 1.1** - closed the remaining design gap inside PROD-16.2 by adding [`docs/adr/ADR-0035-fault-enabling-conditions-registry.md`](docs/adr/ADR-0035-fault-enabling-conditions-registry.md). The ADR freezes four things before code starts: shared numeric `ConditionId` shape (`u16`/`uint16_t`), reporter-side gate as primary authority, DFM-side three-way evaluator contract (`Enabled` / `Suppressed` / `Unknown` under ADR-0018 log-and-continue), and the `fault-sink-unix` wire migration rule (V2 postcard frame with `condition_ids`, dual decode fallback to ADR-0017 V1). PROD-16.2 now points at the concrete ADR file instead of "next available number".
 - **2026-04-20, Draft 0.1** — initial draft. Mission / scope / phases / milestones / deployment tier / capability shells / open questions / competitive research (incl. vendor table-stakes / chase list) / upstream tracking (Eclipse OpenSOVD org state incl. odx-converter, cpp-bindings, dlt-tracing-lib, and 9 open CDA PRs). Execution step tables deliberately skeleton pending `Q-PROD-1..9`.
 - **2026-04-21, Draft 0.2** — added §II.6.16 PROD-16 Fault-lib feature parity (debounce / enabling conditions / aging / IPC retry) after gap analysis against upstream `eclipse-opensovd/fault-lib` PR #7. Four sub-deliverables PROD-16.1..4, phase-assigned to P13. Chase-list row 16 added. Framing: PR #7 is idea source, not a Cargo dependency — our split preserves ADR-0002 (C-shim-on-ECU) and ADR-0003 (SQLite-default), both of which PR #7 violates.

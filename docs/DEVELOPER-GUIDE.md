@@ -120,6 +120,7 @@ See [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md) for full instructions.
 
 ```bash
 cd opensovd-core
+cp deploy/pi/phase5-full-stack.env.example deploy/pi/phase5-full-stack.env
 ./deploy/pi/phase5-full-stack.sh
 ```
 

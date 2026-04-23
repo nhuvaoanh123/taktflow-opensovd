@@ -56,6 +56,11 @@ taktflow-embedded-production/
 # artifacts, never for the public mirror.
 tmp-*-readback.bin
 
+# Local Pi deploy target/env material. Public-safe template is tracked as
+# `phase5-full-stack.env.example`; the real env file contains bench SSH
+# targets and must stay local.
+opensovd-core/deploy/pi/phase5-full-stack.env
+
 # Firmware and POSIX-test build outputs
 firmware/**/build/
 test/firmware/**/build/

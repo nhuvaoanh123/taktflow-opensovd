@@ -337,11 +337,14 @@ CDA_TESTER_ADDRESS=<laptop-ip> \
 
 ```bash
 cd opensovd-core
+cp deploy/pi/phase5-full-stack.env.example deploy/pi/phase5-full-stack.env
 PI=<pi-user>@<pi-bench-ip> \
 SOVD_CONFIG_FILE=deploy/pi/opensovd-pi-phase5-hybrid.toml \
 PHASE5_CDA_BASE_URL=http://<laptop-ip>:20002 \
 ./deploy/pi/phase5-full-stack.sh
 ```
+
+On Windows, run the same Bash flow from WSL or another Bash-capable authority host.
 
 4. Verify on-box health and the forwarded fleet shape.
 

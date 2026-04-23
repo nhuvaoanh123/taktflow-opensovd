@@ -82,6 +82,7 @@ service installation, and health check:
 
 ```bash
 cd opensovd-core
+cp deploy/pi/phase5-full-stack.env.example deploy/pi/phase5-full-stack.env
 ./deploy/pi/phase5-full-stack.sh
 ```
 
@@ -122,9 +123,9 @@ sqlite_path = "/opt/taktflow/sovd-main/dfm.db"
 ### Manual service control
 
 ```bash
-ssh taktflow-pi "sudo systemctl restart sovd-main"
-ssh taktflow-pi "sudo systemctl status sovd-main"
-ssh taktflow-pi "journalctl -u sovd-main -f"
+ssh <pi-user>@<pi-bench-ip> "sudo systemctl restart sovd-main"
+ssh <pi-user>@<pi-bench-ip> "sudo systemctl status sovd-main"
+ssh <pi-user>@<pi-bench-ip> "journalctl -u sovd-main -f"
 ```
 
 ## Configuration reference
@@ -174,13 +175,13 @@ components = ["ECU_A", "ECU_B"]
 
 ```bash
 # Stop services
-ssh taktflow-pi "sudo systemctl stop sovd-main taktflow-can-doip-proxy"
+ssh <pi-user>@<pi-bench-ip> "sudo systemctl stop sovd-main taktflow-can-doip-proxy"
 
 # Restore previous binary (if backed up)
-ssh taktflow-pi "sudo cp /opt/taktflow/sovd-main/sovd-main.bak /opt/taktflow/sovd-main/sovd-main"
+ssh <pi-user>@<pi-bench-ip> "sudo cp /opt/taktflow/sovd-main/sovd-main.bak /opt/taktflow/sovd-main/sovd-main"
 
 # Restart
-ssh taktflow-pi "sudo systemctl start sovd-main"
+ssh <pi-user>@<pi-bench-ip> "sudo systemctl start sovd-main"
 ```
 
 ### SIL

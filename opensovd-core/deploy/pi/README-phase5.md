@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 This directory contains the deployment assets for running
 `sovd-main` natively on the Taktflow Raspberry Pi bench host
-(`bench-pi@192.0.2.10`). It is the green side of
+(`PI=<pi-user>@<pi-bench-ip>`). It is the green side of
 `integration-tests/tests/phase5_pi_full_stack_bench.rs`.
 
 Scope: **D1 only**. D2..D12 from
@@ -20,8 +20,8 @@ Line A follow-up work.
 | Service                    | Host                 | Port  | Source of truth |
 |----------------------------|----------------------|-------|------------------|
 | `sovd-main`                | `127.0.0.1`         | 21002 | `sovd-main.service` + `opensovd-pi.toml` |
-| `ecu-sim`                  | `192.0.2.10`      | 13400 | `ecu-sim.service` (pre-existing) |
-| CAN-to-DoIP proxy (L-B)    | `192.0.2.10`      | 13401 | `taktflow-can-doip-proxy.service` |
+| `ecu-sim`                  | `<pi-bench-ip>`      | 13400 | `ecu-sim.service` (pre-existing) |
+| CAN-to-DoIP proxy (L-B)    | `<pi-bench-ip>`      | 13401 | `taktflow-can-doip-proxy.service` |
 | CDA (dev host)             | `127.0.0.1`          | 20002 | phase-5-line-a.md |
 | sovd-gateway (dev host)    | `127.0.0.1`          | 22002 | phase-5-line-a.md |
 
@@ -43,15 +43,29 @@ two ways:
 
 ## Deploy
 
-From the dev host, at the top of the `opensovd-core` checkout:
+From the dev host, create a local env file first:
+
+```bash
+cp deploy/pi/phase5-full-stack.env.example deploy/pi/phase5-full-stack.env
+```
+
+Fill `deploy/pi/phase5-full-stack.env` with the real private values for
+`PI=<pi-user>@<pi-bench-ip>` and any optional overrides you need.
+
+Then, at the top of the `opensovd-core` checkout:
 
 ```bash
 ./deploy/pi/phase5-full-stack.sh
 ```
 
+On Windows, run the same Bash script from WSL or another Bash-capable host.
+
 Optional env vars:
 
-- `PI` — override SSH target (default `bench-pi@192.0.2.10`)
+- `PI` — explicit SSH target in `<pi-user>@<pi-bench-ip>` form. No
+  default is baked into the script.
+- `PI_SERVICE_USER` / `PI_SERVICE_GROUP` — override the rendered
+  systemd service account if it differs from the SSH login user
 - `TARGET_TRIPLE` — override cross-target (default
   `aarch64-unknown-linux-gnu`)
 - `CARGO_BUILD_BACKEND` — `auto` (default), `cargo`, or `zigbuild`.
@@ -111,7 +125,7 @@ That observer mode:
 After deploy, verify from the dev host via SSH:
 
 ```bash
-ssh bench-pi@192.0.2.10 "curl -fsS http://127.0.0.1:21002/sovd/v1/components"
+ssh <pi-user>@<pi-bench-ip> "curl -fsS http://127.0.0.1:21002/sovd/v1/components"
 ```
 
 The response body is a `DiscoveredEntities` JSON structure with at
@@ -121,8 +135,9 @@ The shipped `opensovd-pi.toml` also pins
 `backend.sqlite_path=/opt/taktflow/sovd-main/dfm.db`. That keeps the
 SQLite store on the same deployed volume as the binary and avoids
 systemd working-directory ambiguity. The deploy script repairs
-ownership of `/opt/taktflow/sovd-main` back to `taktflow-pi` on every
-run so the service user can create and update the database file.
+ownership of `/opt/taktflow/sovd-main` back to the rendered
+`PI_SERVICE_USER:PI_SERVICE_GROUP` account on every run so the service
+user can create and update the database file.
 
 ## Observer nginx follow-up (T24.1.15, T24.1.16, T24.1.17)
 
@@ -264,12 +279,12 @@ way.
 ## Roll back
 
 ```bash
-ssh bench-pi@192.0.2.10 'sudo systemctl disable --now sovd-main.service'
-ssh bench-pi@192.0.2.10 'sudo systemctl disable --now taktflow-can-doip-proxy.service || true'
-ssh bench-pi@192.0.2.10 'sudo rm -f /etc/systemd/system/sovd-main.service \
-                                        /etc/systemd/system/taktflow-can-doip-proxy.service'
-ssh bench-pi@192.0.2.10 'sudo systemctl daemon-reload'
-ssh bench-pi@192.0.2.10 'sudo rm -rf /opt/taktflow/sovd-main /opt/taktflow/proxy'
+ssh <pi-user>@<pi-bench-ip> 'sudo systemctl disable --now sovd-main.service'
+ssh <pi-user>@<pi-bench-ip> 'sudo systemctl disable --now taktflow-can-doip-proxy.service || true'
+ssh <pi-user>@<pi-bench-ip> 'sudo rm -f /etc/systemd/system/sovd-main.service \
+/etc/systemd/system/taktflow-can-doip-proxy.service'
+ssh <pi-user>@<pi-bench-ip> 'sudo systemctl daemon-reload'
+ssh <pi-user>@<pi-bench-ip> 'sudo rm -rf /opt/taktflow/sovd-main /opt/taktflow/proxy'
 ```
 
 ecu-sim.service is untouched by rollback.

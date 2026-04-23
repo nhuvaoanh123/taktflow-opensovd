@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# First P12 Linux target template for the CAN-to-DoIP proxy on the
+# Renesas R-Car S4 host. Replace the sample ECU inventory below with the
+# target vehicle inventory before target-network bring-up.
+
+listen_address = "0.0.0.0"
+listen_port = 13400
+can_interface = "<target-can-interface>"
+
+[discovery]
+mode = "both"
+
+[[ecu]]
+name = "legacy-ecu-a"
+doip_logical_address = 0x0001
+can_request_id = 0x7E0
+can_response_id = 0x7E8

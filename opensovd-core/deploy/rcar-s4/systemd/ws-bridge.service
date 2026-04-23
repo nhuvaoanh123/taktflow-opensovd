@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# Optional observer relay unit template for the Renesas R-Car S4 Linux
+# bring-up path.
+
+[Unit]
+Description=Taktflow OpenSOVD ws-bridge (R-Car S4 Linux target)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__RCAR_SERVICE_USER__
+Group=__RCAR_SERVICE_GROUP__
+WorkingDirectory=/opt/taktflow/rcar-s4
+EnvironmentFile=/opt/taktflow/rcar-s4/config/ws-bridge.env
+ExecStart=/opt/taktflow/rcar-s4/bin/ws-bridge
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/taktflow/rcar-s4
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

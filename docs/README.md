@@ -27,6 +27,7 @@ All paths are relative to the repository root
 | `docs/ARCHITECTURE.md` | arc42-format project-level architecture description | You need the component topology, runtime views, deployment views, or a cross-cutting concept |
 | `docs/integration/README.md` | Final integrator guide: authority hosts, checked-in configs, auth profile selection, deployment proofs | You need to stand up the stack without tribal knowledge |
 | `docs/deploy/pilot-oem/README.md` | Pilot OEM deployment playbook with evidence slots and OEM-owned value register | You are preparing a first OEM pilot deployment |
+| `docs/deploy/production-targets/renesas-r-car-s4-linux-profile.md` | First P12 production-host target profile for Renesas R-Car S4 + Linux | You need the current authority for the production HPC target and bring-up assumptions |
 | `docs/integration/repair-shop.md` | Workshop / repair-shop operational guide aligned to UC1..UC5 | You need the mechanic-facing flow for faults, data, and routines |
 | `docs/examples/` | Happy-path walkthroughs for OTA, predictive maintenance, and repair-shop sessions | You want one realistic scenario end to end |
 | `docs/traceability/matrix.md` | Requirement -> design -> implementation -> verification matrix for the current repo | You need the Phase 11 manual traceability view |

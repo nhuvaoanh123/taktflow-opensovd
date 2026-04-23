@@ -1,0 +1,49 @@
+release_id: rcar-s4-linux-v0.1.0-g<shortsha>-YYYYMMDD
+workspace_version: 0.1.0
+git_commit: <full-git-sha>
+target:
+  board: renesas-r-car-s4-starter-kit
+  os_path: linux-bsp-whitebox
+  target_triple: aarch64-unknown-linux-gnu
+bundle:
+  root_dir: taktflow-rcar-s4-linux-v0.1.0-g<shortsha>-YYYYMMDD
+  archive: taktflow-rcar-s4-linux-v0.1.0-g<shortsha>-YYYYMMDD.tar.gz
+artifacts:
+  - path: bin/sovd-main
+    source: opensovd-core/target/aarch64-unknown-linux-gnu/release/sovd-main
+    kind: rust-binary
+    sha256: <hex-sha256>
+  - path: bin/ws-bridge
+    source: opensovd-core/target/aarch64-unknown-linux-gnu/release/ws-bridge
+    kind: rust-binary
+    sha256: <hex-sha256>
+  - path: bin/taktflow-can-doip-proxy
+    source: gateway/can_to_doip_proxy/taktflow-can-doip-proxy
+    kind: python-entrypoint
+    sha256: <hex-sha256>
+config_inputs:
+  - path: config/opensovd.toml
+    source: opensovd-core/deploy/rcar-s4/opensovd-rcar-s4.toml
+  - path: config/proxy.toml
+    source: opensovd-core/deploy/rcar-s4/opensovd-proxy-rcar-s4.toml
+  - path: config/ws-bridge.env.example
+    source: opensovd-core/deploy/rcar-s4/ws-bridge-rcar-s4.env.example
+systemd_units:
+  - path: systemd/sovd-main.service
+    source: opensovd-core/deploy/rcar-s4/systemd/sovd-main.service
+  - path: systemd/taktflow-can-doip-proxy.service
+    source: opensovd-core/deploy/rcar-s4/systemd/taktflow-can-doip-proxy.service
+  - path: systemd/ws-bridge.service
+    source: opensovd-core/deploy/rcar-s4/systemd/ws-bridge.service
+excluded_bench_assets:
+  - opensovd-core/deploy/pi/
+  - opensovd-core/deploy/pi/phase5-full-stack.sh
+  - opensovd-core/deploy/pi/phase5-full-stack.env.example
+  - opensovd-core/deploy/pi/opensovd-pi.toml
+  - opensovd-core/deploy/pi/systemd/
+  - opensovd-core/deploy/pi/observer-nginx/
+  - opensovd-core/deploy/pi/observer-observability/
+  - any ecu-sim unit, script, or binary
+notes:
+  - Fill in real hashes after staging the bundle.
+  - Render service-account placeholders on the target host, not in git.

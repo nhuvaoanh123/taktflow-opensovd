@@ -98,6 +98,7 @@ mod tests {
         assert!(config.auth.jwt.issuer.is_empty());
         assert!(config.auth.jwt.audience.is_empty());
         assert!(config.auth.jwt.jwks_path.is_empty());
+        assert!(!config.uds2sovd_proxy.enabled);
     }
 
     #[test]
@@ -234,6 +235,32 @@ jwks_path = "/tmp/jwks.json"
     }
 
     #[test]
+    fn toml_parses_uds2sovd_sidecar_overrides() -> Result<(), Box<dyn std::error::Error>> {
+        let config_str = r#"
+[uds2sovd_proxy]
+enabled = true
+binary_path = "/opt/taktflow/bin/uds2sovd-proxy"
+generated_config_path = "/opt/taktflow/config/uds2sovd-proxy.toml"
+bind_address = "127.0.0.1"
+bind_port = 13400
+sovd_base_url = "http://127.0.0.1:21002/"
+
+[[uds2sovd_proxy.target]]
+component_id = "cvc"
+mdd_path = "/opt/taktflow/mdd/CVC00000.mdd"
+logical_address = 1
+"#;
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::string(config_str));
+        let config: Configuration = figment.extract()?;
+        assert!(config.uds2sovd_proxy.enabled);
+        assert_eq!(config.uds2sovd_proxy.bind_port, 13400);
+        assert_eq!(config.uds2sovd_proxy.targets.len(), 1);
+        assert_eq!(config.uds2sovd_proxy.targets[0].component_id, "cvc");
+        Ok(())
+    }
+
+    #[test]
     fn toml_parses_dlt_overrides() -> Result<(), Box<dyn std::error::Error>> {
         let config_str = r#"
 [logging.dlt]
@@ -317,6 +344,24 @@ app_description = "OpenSOVD core DLT smoke"
         assert_eq!(mqtt.broker_host, "127.0.0.1");
         assert_eq!(mqtt.broker_port, 1883);
         assert!(mqtt.control_subscriber_enabled);
+        Ok(())
+    }
+
+    #[test]
+    fn checked_in_rcar_s4_template_parses() -> Result<(), Box<dyn std::error::Error>> {
+        let template = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or("sovd-main crate should live under opensovd-core")?
+            .join("deploy")
+            .join("rcar-s4")
+            .join("opensovd-rcar-s4.toml");
+        let figment = Figment::from(Serialized::defaults(Configuration::default()))
+            .merge(Toml::file(&template));
+        let config: Configuration = figment.extract()?;
+        assert!(!config.uds2sovd_proxy.enabled);
+        assert_eq!(config.uds2sovd_proxy.bind_port, 13400);
+        assert_eq!(config.uds2sovd_proxy.targets.len(), 1);
+        assert_eq!(config.uds2sovd_proxy.targets[0].component_id, "cvc");
         Ok(())
     }
 }

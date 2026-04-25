@@ -311,7 +311,7 @@ P11 requires P8, P9, P10.
 | Tier | Host | Authority | Role | Touches Physical ECUs? |
 |---|---|---|---|---|
 | Development | Ubuntu laptop (bench LAN, canonical working tree at `~/taktflow-opensovd`) | **PRIMARY - authoritative source of truth after the 2026-04-21 laptop merge** | Cross-compile, unit/integration tests, dev-time Docker, CDA home, and deploy origin for Pi and VPS. Canonical Phase 6+ work lands here first; Pi / VPS / AWS receive pushes, never originate them. | No |
-| Control / flash host | Windows 11 PC at `h:\taktflow-opensovd` (XDS110 attached for TMS570 flashing) | Control host mirror | Control shell, review workspace mirror, and TMS570 flashing host. It may stage or inspect work, but the laptop working tree is authoritative after the laptop merge. | Yes - XDS110 to TMS570 LaunchPad |
+| Control / flash host | Windows 11 PC at `<windows-workspace-root>/taktflow-opensovd` (XDS110 attached for TMS570 flashing) | Control host mirror | Control shell, review workspace mirror, and TMS570 flashing host. It may stage or inspect work, but the laptop working tree is authoritative after the laptop merge. | Yes - XDS110 to TMS570 LaunchPad |
 | Public SIL | Netcup VPS (`sovd.taktflow-systems.com`) | Public mirror (deploy target) | Public demo — engineering spec HTML, live SOVD SIL API, Grafana anonymous view | No |
 | HIL bench | Raspberry Pi 4 (Ubuntu 24.04 aarch64, bench LAN) | Deploy target (read-only for code; writes are for measurement data only) | Only tier that touches physical ECUs; runs CAN-to-DoIP proxy, observer nginx + mTLS, cloud_connector → AWS IoT Core, bench dashboard | Yes — USB-CAN adapter |
 | Cloud telemetry | AWS IoT Core (shared `taktflow-embedded-production` account) | Telemetry sink | Fleet telemetry sink; `DEVICE_ID=taktflow-sovd-hil-001` publishes `vehicle/dtc/new`, `taktflow/cloud/status` | No |
@@ -1254,7 +1254,7 @@ Status: complete 2026-04-21. All Phase 5 exit gates are satisfied.
 | P5-HIL-09 | done | repo_only | Add MDD FlatBuffers emitter to `tools/odx-gen` | Base `--emit=mdd` emitter landed; closed via P5-HIL-09b once variants + full round-trip were complete |
 | P5-HIL-09b | done | repo_only | Complete MDD emitter — variants + full round-trip | Generated Python bindings checked in; 5 structural round-trip tests pass |
 | P5-HIL-10 | done | repo_only | Install and document autonomous bench helpers | `mdd-ui` install + `tokio-console` attach steps recorded |
-| P5-HIL-11 | done | live_bench | Collect nightly-green proof, perf proof, demo video | Nightly-green proof captured in `H:\handoff\taktflow-opensovd\hil-proof-and-demo\artifacts\p5-hil-11-nightly-proof-20260420-210115.log` with all 8 HIL scenarios passing live against Pi `<pi-bench-ip>:21002`; fresh performance proof captured in [docs/bench/phase5-pi-perf-2026-04-20.md](docs/bench/phase5-pi-perf-2026-04-20.md) with avg `0.94 ms`, P99 `3.00 ms`, and max RSS `9.1 MiB`; short live demo capture archived as `H:\handoff\taktflow-opensovd\hil-proof-and-demo\artifacts\p5-hil-11-demo-20260420-210539.mp4` |
+| P5-HIL-11 | done | live_bench | Collect nightly-green proof, perf proof, demo video | Nightly-green proof captured in `<handoff-root>/taktflow-opensovd/hil-proof-and-demo/artifacts/p5-hil-11-nightly-proof-20260420-210115.log` with all 8 HIL scenarios passing live against Pi `<pi-bench-ip>:21002`; fresh performance proof captured in [docs/bench/phase5-pi-perf-2026-04-20.md](docs/bench/phase5-pi-perf-2026-04-20.md) with avg `0.94 ms`, P99 `3.00 ms`, and max RSS `9.1 MiB`; short live demo capture archived as `<handoff-root>/taktflow-opensovd/hil-proof-and-demo/artifacts/p5-hil-11-demo-20260420-210539.mp4` |
 
 ### 7.7 P6 — Hardening
 
@@ -1287,18 +1287,18 @@ FMEA approved; OTA demonstrable end-to-end on CVC.
 | P6-06 | done | repo_only | Finalize integrator guide (beyond skeleton) | `docs/integration/README.md` now gives concrete host-selection, install, config, auth-profile, deployment-mode, and troubleshooting instructions tied to the checked-in scripts and config files |
 
 Completion note (2026-04-22): P6-05 is now closed on the live bench. The
-physical CVC on ST-LINK `001A00363235510B37333439` was reflashed with the OTA
+physical CVC on ST-LINK `<cvc-stlink-serial>` was reflashed with the OTA
 firmware, the STM32 FDCAN path was tightened to admit only tester traffic on
 `0x7E0` and to advertise a small ISO-TP `STmin`, and the Pi bench then proved a
 signed SOVD bulk-data OTA end-to-end against `payload.bin`
-(`SHA-256 = 8B611777A40291E6EEE4A1F059AE10B49DF4A9EC861EE15EE762FC55A99827DF`).
+(`SHA-256 = <cvc-ota-payload-sha256>`).
 The final witness rerun against the rebuilt Pi `sovd-main` created transfer
 `1c472849-e5e0-4184-8da4-8834539359b7`, reached `Committed` after upload, then
 `Rolledback` after `DELETE`, with direct CAN witness reads
 `62F1A10300020300` / `62F1A28B611777` after commit and
 `62F1A10500010400` / `62F1A28B611777` after rollback. Bench evidence lives at
-`/home/taktflow-pi/p6-05-live-ota/witness-summary.json` and
-`/home/taktflow-pi/p6-05-live-ota/witness.log`.
+`<pi-home>/p6-05-live-ota/witness-summary.json` and
+`<pi-home>/p6-05-live-ota/witness.log`.
 
 Completion note (2026-04-22): P6-06 is now closed repo-side. The former
 integrator-guide skeleton at `docs/integration/README.md` was expanded into a
@@ -1375,17 +1375,17 @@ that creating a `fault-log` subscription emits the expected ADR-0027 MQTT event
 before the subscription is deleted again.
 
 Completion note (2026-04-22): `P7-XV-06` is now closed on the live bench. The
-Pi at `192.168.0.197:21002` was redeployed onto the native `sovd-main` build
+Pi at `<pi-bench-ip>:21002` was redeployed onto the native `sovd-main` build
 from commit `57f4d6b`, the runtime `extended-vehicle.toml` was installed under
 `/opt/taktflow/sovd-main`, and the Pi was switched onto the checked-in
 `deploy/pi/opensovd-pi.toml` profile so the Extended Vehicle `state` surface
 came up green on the live host. A bench client on the control host then
 consumed the Pi's loopback Mosquitto broker through an SSH forward
-(`127.0.0.1:18830 -> 192.168.0.197:127.0.0.1:1883`), and
+(`127.0.0.1:18830 -> <pi-bench-ip>:127.0.0.1:1883`), and
 `cargo test -p integration-tests --test phase7_hil_extended_vehicle_pubsub -- --nocapture`
 passed with `TAKTFLOW_BENCH=1`, `PHASE5_BENCH_READY=1`,
-`TAKTFLOW_PI_SOVD_MAIN_ADDR=192.168.0.197:21002`,
-`TAKTFLOW_PI_SOVD_MAIN_BASE_URL=http://192.168.0.197:21002`, and
+`TAKTFLOW_PI_SOVD_MAIN_ADDR=<pi-bench-ip>:21002`,
+`TAKTFLOW_PI_SOVD_MAIN_BASE_URL=http://<pi-bench-ip>:21002`, and
 `TAKTFLOW_PI_MQTT_ADDR=127.0.0.1:18830`, proving the required
 Pi-publishes / bench-consumes MQTT witness end to end.
 
@@ -1423,7 +1423,7 @@ proven on HIL.
 | P8-ML-07 | done | live_bench | Demonstrate predictive fault prediction on Pi HIL | End-to-end ML advisory visible on bench dashboard |
 | P8-ML-08 | done | live_bench | Demonstrate rollback on Pi HIL | Forced trigger → rollback → advisory stops |
 
-Completion note (2026-04-22): `P8-ML-07` and `P8-ML-08` are now green on the Pi bench. The observer dashboard at `https://192.168.0.197/` was refreshed with the Phase 8 UC21 widget, and a live mTLS browser proof now shows the CVC predictive advisory on the dashboard with model version `1.0.0`. The rollback witness then runs against the Pi HIL API and returns the safe baseline payload (`model_version=0.9.0`, `lifecycle_state=rolled_back`, `advisory_active=false`). Closing this also required aligning the checked-in Pi `sovd-main.service` deploy asset with the current HTTP safety guard by binding `sovd-main` on `127.0.0.1:21002` behind nginx instead of `0.0.0.0:21002`.
+Completion note (2026-04-22): `P8-ML-07` and `P8-ML-08` are now green on the Pi bench. The observer dashboard at `https://<pi-bench-ip>/` was refreshed with the Phase 8 UC21 widget, and a live mTLS browser proof now shows the CVC predictive advisory on the dashboard with model version `1.0.0`. The rollback witness then runs against the Pi HIL API and returns the safe baseline payload (`model_version=0.9.0`, `lifecycle_state=rolled_back`, `advisory_active=false`). Closing this also required aligning the checked-in Pi `sovd-main.service` deploy asset with the current HTTP safety guard by binding `sovd-main` on `127.0.0.1:21002` behind nginx instead of `0.0.0.0:21002`.
 
 ### 7.10 P9 — Cybersecurity & Cert Lifecycle
 
@@ -1495,7 +1495,7 @@ published.
 | P11-CONF-03 | done | repo_only | Implement ISO 20078 Extended Vehicle conformance | `test/conformance/iso-20078/` green in CI |
 | P11-CONF-04 | done | repo_only | Implement edge-case / interop suite | `test/conformance/interop/` green in CI |
 | P11-DOC-01 | done | decision_doc | Finalize integrator guide (DOC-2) | Every section executable by cold reader |
-| P11-DOC-02 | pending | decision_doc | Finalize OEM playbook (DOC-3) | First OEM engagement populates real values |
+| P11-DOC-02 | **superseded by Part II PROD-21** (2026-04-23) | decision_doc | ~~Finalize OEM playbook (DOC-3)~~ — acceptance *"First OEM engagement populates real values"* is external-input gated; no amount of repo work closes it without a real OEM pilot. Moved to Part II [`PROD-21 OEM pilot playbook finalization`](MASTER-PLAN-PART-2-PRODUCTION-GRADE.md#ii-6-21-prod-21-oem-pilot-playbook-finalization) §II.6.21. | (moved — acceptance now lives in PROD-21 Verification) |
 | P11-DOC-03 | done | decision_doc | Author repair-shop workflow guide (DOC-4) | `docs/integration/repair-shop.md` lands; covers UC1..UC5 |
 | P11-DOC-04 | done | decision_doc | Example walkthrough — OTA update | `docs/examples/ota-walkthrough.md` lands |
 | P11-DOC-05 | done | decision_doc | Example walkthrough — predictive maintenance | `docs/examples/predictive-maintenance.md` lands |
@@ -1504,9 +1504,13 @@ published.
 
 Execution note (2026-04-23): the repo-side conformance suites, repair-shop
 guide, example walkthroughs, traceability matrix, and integrator-guide
-finalization all landed. `P11-DOC-02` remains pending because its acceptance
-explicitly requires the first OEM engagement to populate real deployment
-values in `docs/deploy/pilot-oem/README.md`.
+finalization all landed. `P11-DOC-02` was previously held pending because its
+acceptance required first-OEM-engagement values; it is now **superseded by
+Part II [`PROD-21 OEM pilot playbook finalization`](MASTER-PLAN-PART-2-PRODUCTION-GRADE.md#ii-6-21-prod-21-oem-pilot-playbook-finalization)**
+so M10 / G-CONF is no longer artificially blocked on an external-input gate
+the repo cannot close. Phase 11 exit credit is preserved under the same
+"moved to Part II without loss of phase exit credit" posture that Part I
+`P10-SCA-A1` uses against PROD-20.
 
 ---
 

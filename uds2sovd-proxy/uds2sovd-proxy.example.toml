@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+
+[doip]
+bind_address = "127.0.0.1"
+bind_port = 13400
+protocol_version = 0x02
+proxy_logical_address = 0x0E80
+send_diagnostic_message_ack = true
+
+[sovd]
+base_url = "http://127.0.0.1:20002/"
+request_timeout_ms = 5000
+retry_attempts = 1
+retry_backoff_ms = 0
+
+[proxy]
+response_pending_interval_ms = 250
+response_pending_budget_ms = 30000
+
+[logging]
+filter_directive = "info"
+
+[logging.dlt]
+enabled = false
+app_id = "U2SP"
+app_description = "OpenSOVD uds2sovd-proxy"
+
+[logging.otel]
+enabled = false
+endpoint = "http://127.0.0.1:4317"
+service_name = "uds2sovd-proxy"
+
+[[target]]
+component_id = "cvc"
+mdd_path = "../opensovd-core/deploy/pi/cda-mdd/CVC00000.mdd"
+logical_address = 1
+fallback_to_base_variant = true
+
+[target.did_routes]
+"0xF190" = "vin"
+
+[target.routine_routes]
+"0x0246" = "ota-reset"

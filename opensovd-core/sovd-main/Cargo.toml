@@ -48,6 +48,7 @@ sovd-server = { workspace = true }
 sovd-extended-vehicle = { workspace = true }
 sovd-dfm = { workspace = true }
 sovd-interfaces = { workspace = true }
+sovd-gateway = { workspace = true }
 sovd-db-sqlite = { workspace = true }
 opcycle-taktflow = { workspace = true }
 sovd-tracing = { workspace = true, features = ["otel"] }

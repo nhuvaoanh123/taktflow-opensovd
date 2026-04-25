@@ -10,65 +10,67 @@ terms of the Apache License Version 2.0 which is available at
 https://www.apache.org/licenses/LICENSE-2.0
 -->
 
-# 🔌 UDS-to-SOVD Proxy 🚗
+# UDS-to-SOVD Proxy
 
-This repository contains the UDS-to-SOVD Proxy of the Eclipse OpenSOVD project and its documentation.
+`uds2sovd-proxy` is the first-cut UDS-over-DoIP ingress bridge for Taktflow.
+It accepts tester requests on the north face, resolves the addressed
+diagnostic service from runtime `.mdd` data, invokes the matching southbound
+SOVD REST call, and encodes the result back into a UDS reply.
 
-In the SOVD (Service-Oriented Vehicle Diagnostics) context, the UDS-to-SOVD Proxy serves as a
-protocol translation gateway between legacy UDS (Unified Diagnostic Services) based diagnostic
-tools and the modern SOVD-based diagnostic architecture.
+The authoritative design scope for this crate is
+[`docs/adr/ADR-0040-uds2sovd-proxy-design.md`](../docs/adr/ADR-0040-uds2sovd-proxy-design.md).
 
-It accepts UDS requests over DoIP (Diagnostics over IP), resolves the corresponding SOVD service
-using the diagnostic description (MDD) of the ECU, and translates them into SOVD REST API calls.
-The SOVD responses are then encoded back into UDS format and returned to the requesting tool.
+## Current scope
 
-This enables existing UDS-based diagnostic tools and workflows to seamlessly interact with
-SOVD-enabled vehicle architectures without modification.
+Supported in the first cut:
 
-## goals
+- `0x22 ReadDataByIdentifier`
+- `0x31 RoutineControl` start and results subfunctions
+- `0x19 ReadDTCInformation` status-mask count and list subsets
+- `0x14 ClearDiagnosticInformation` for all-DTC clear
 
-- 🔄 transparent UDS ↔ SOVD protocol translation
-- 🚀 high performance (asynchronous I/O)
-- 🤏 low memory and disk-space consumption
-- 🛡️ safe & secure
-- ⚡ fast startup
+Explicitly denied in the first cut:
 
-## introduction
+- `0x2E WriteDataByIdentifier`
+- `0x10 DiagnosticSessionControl`
+- `0x27 SecurityAccess`
+- `0x29 Authentication`
+- `0x31 0x02` routine stop
 
-### usage
+## Layout
 
-### prerequisites
+- `src/config.rs`: TOML configuration model and loader
+- `src/proxy.rs`: DoIP listener, request dispatch, UDS reply encoding
+- `src/mdd.rs`: runtime `.mdd` loading and service resolution
+- `src/sovd.rs`: southbound SOVD HTTP client
+- `src/uds.rs`: UDS parser and helper encoders
+- `src/tracing_setup.rs`: tracing bootstrap aligned with `sovd-tracing`
 
+## Example config
 
-### build the executable
+A checked-in example lives at
+[`uds2sovd-proxy.example.toml`](./uds2sovd-proxy.example.toml).
 
+Run the proxy with:
 
-## developing
+```shell
+cargo run --manifest-path uds2sovd-proxy/Cargo.toml -- --config-file uds2sovd-proxy/uds2sovd-proxy.example.toml
+```
 
-### pre commit
+## Verification
+
+Run the local crate checks with:
+
+```shell
+cargo fmt --manifest-path uds2sovd-proxy/Cargo.toml
+cargo test --manifest-path uds2sovd-proxy/Cargo.toml
+cargo check --manifest-path uds2sovd-proxy/Cargo.toml
+```
+
+## Development
+
+Project-wide checks can still be run with:
+
 ```shell
 uv run https://raw.githubusercontent.com/eclipse-opensovd/cicd-workflows/main/run_checks.py
 ```
-### codestyle
-
-see [codestyle](CODESTYLE.md)
-
-### testing
-
-#### unit tests
-
-Unittests are placed in the relevant module as usual in rust:
-```rust
-...
-#[cfg(test)]
-mod test {
-    ...
-}
-```
-
-Run unit tests with:
-```shell
-cargo test --locked --lib
-```
-
-#### integration tests

@@ -43,6 +43,7 @@ use sovd_dfm::{Dfm, FaultSinkBackend, OperationCycleBackend, PersistenceBackend}
 use sovd_extended_vehicle::{
     ExtendedVehicleMqttConfig, MqttPublisher, load_config as load_extended_vehicle_config,
 };
+use sovd_gateway::{Uds2SovdProxyProcess, Uds2SovdProxySidecar};
 use sovd_interfaces::{
     ComponentId, SovdBackend,
     traits::{fault_sink::FaultSink, operation_cycle::OperationCycle, sovd_db::SovdDb},
@@ -487,6 +488,14 @@ fn validate_extended_vehicle_runtime(
     Ok(())
 }
 
+fn start_uds2sovd_proxy_sidecar(
+    config: &Configuration,
+) -> Result<Option<Uds2SovdProxyProcess>, Box<dyn std::error::Error>> {
+    Uds2SovdProxySidecar::new(config.uds2sovd_proxy.clone())
+        .spawn_if_enabled()
+        .map_err(Into::into)
+}
+
 fn build_auth_config(
     config: &Configuration,
 ) -> Result<Option<sovd_server::AuthConfig>, Box<dyn std::error::Error>> {
@@ -664,6 +673,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         app
     };
 
+    let _uds2sovd_proxy_sidecar = start_uds2sovd_proxy_sidecar(&config)?;
     serve_app(&config, app).await?;
     Ok(())
 }
@@ -727,6 +737,7 @@ mod tests {
             logging: defaults.logging,
             rate_limit: defaults.rate_limit,
             auth: defaults.auth,
+            uds2sovd_proxy: defaults.uds2sovd_proxy,
         };
 
         let assembled = build_in_memory_server(&config)
@@ -758,6 +769,7 @@ mod tests {
             logging: defaults.logging,
             rate_limit: defaults.rate_limit,
             auth: defaults.auth,
+            uds2sovd_proxy: defaults.uds2sovd_proxy,
         };
 
         let assembled = build_in_memory_server(&config)
@@ -826,6 +838,7 @@ mod tests {
             logging: defaults.logging,
             rate_limit: defaults.rate_limit,
             auth: defaults.auth,
+            uds2sovd_proxy: defaults.uds2sovd_proxy,
         };
 
         let err = build_in_memory_server(&config)

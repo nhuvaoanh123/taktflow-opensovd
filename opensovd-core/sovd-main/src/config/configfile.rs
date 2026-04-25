@@ -18,8 +18,9 @@
 
 use serde::{Deserialize, Serialize};
 use sovd_dfm::DfmBackendConfig;
-use sovd_server::{AuthMode, RateLimitConfig};
+use sovd_gateway::Uds2SovdProxyConfig;
 use sovd_server::backends::cda::DEFAULT_CDA_PATH_PREFIX;
+use sovd_server::{AuthMode, RateLimitConfig};
 
 /// Optional `[mqtt]` TOML section for the `fault-sink-mqtt` backend.
 ///
@@ -270,6 +271,9 @@ pub struct Configuration {
     /// Phase 9 auth posture for the local HTTP surface.
     #[serde(default)]
     pub auth: AuthRuntimeConfig,
+    /// Optional UDS-to-SOVD ingress sidecar, owned by the gateway boundary.
+    #[serde(default)]
+    pub uds2sovd_proxy: Uds2SovdProxyConfig,
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -339,6 +343,7 @@ impl Default for Configuration {
             logging: LoggingConfig::default(),
             rate_limit: RateLimitConfig::default(),
             auth: AuthRuntimeConfig::default(),
+            uds2sovd_proxy: Uds2SovdProxyConfig::default(),
         }
     }
 }

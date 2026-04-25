@@ -21,3 +21,21 @@ control_subscriber_enabled = true
 
 [logging.otel]
 enabled = false
+
+# PROD-20.3 UDS-to-SOVD ingress sidecar boundary.
+# Disabled until the target MDD set is installed for the specific vehicle.
+[uds2sovd_proxy]
+enabled = false
+binary_path = "/opt/taktflow/rcar-s4/bin/uds2sovd-proxy"
+generated_config_path = "/opt/taktflow/rcar-s4/config/uds2sovd-proxy.toml"
+bind_address = "127.0.0.1"
+bind_port = 13400
+sovd_base_url = "http://127.0.0.1:21002/"
+
+[[uds2sovd_proxy.target]]
+component_id = "cvc"
+mdd_path = "/opt/taktflow/rcar-s4/mdd/CVC00000.mdd"
+logical_address = 1
+
+[uds2sovd_proxy.target.did_routes]
+"0xF190" = "vin"

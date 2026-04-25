@@ -44,9 +44,13 @@ sovd-db-sqlite = { workspace = true }
 opcycle-taktflow = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true, features = ["http1", "tokio"] }
+doip-codec = { workspace = true }
+doip-definitions = { workspace = true }
+futures = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_yaml = "0.9"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "sync"] }
+tokio-util = { workspace = true, features = ["codec"] }
 reqwest = { workspace = true, features = ["json"] }
 serde_json = { workspace = true }
 jsonwebtoken = { workspace = true }

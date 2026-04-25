@@ -53,6 +53,19 @@
 //! kind = "remote"
 //! address = "http://127.0.0.1:9001" # required for kind = "remote"
 //! components = ["cvc", "fzc"]
+//!
+//! [uds2sovd_proxy]
+//! enabled = true
+//! binary_path = "/opt/taktflow/bin/uds2sovd-proxy"
+//! generated_config_path = "/opt/taktflow/config/uds2sovd-proxy.toml"
+//! bind_address = "127.0.0.1"
+//! bind_port = 13400
+//! sovd_base_url = "http://127.0.0.1:21002/"
+//!
+//! [[uds2sovd_proxy.target]]
+//! component_id = "cvc"
+//! mdd_path = "/opt/taktflow/mdd/CVC00000.mdd"
+//! logical_address = 1
 //! ```
 //!
 //! Loading from TOML is done by [`GatewayConfig::from_toml_str`]. The
@@ -87,8 +100,13 @@ use sovd_interfaces::{
 };
 
 pub mod remote;
+pub mod uds2sovd;
 
 pub use remote::RemoteHost;
+pub use uds2sovd::{
+    Uds2SovdProxyConfig, Uds2SovdProxyError, Uds2SovdProxyProcess, Uds2SovdProxySidecar,
+    Uds2SovdProxyTargetConfig,
+};
 
 /// A named SOVD host participating in the federated gateway.
 ///
@@ -518,6 +536,9 @@ pub struct GatewayConfig {
     /// first-wins conflict resolution in [`Gateway::register_host`].
     #[serde(default, rename = "host")]
     pub hosts: Vec<GatewayHostConfig>,
+    /// Optional UDS-to-SOVD sidecar boundary. Disabled by default.
+    #[serde(default)]
+    pub uds2sovd_proxy: Uds2SovdProxyConfig,
 }
 
 /// One host entry from the TOML config.
@@ -562,6 +583,9 @@ impl GatewayConfig {
     }
 
     fn validate(&self) -> Result<()> {
+        self.uds2sovd_proxy
+            .validate()
+            .map_err(|e| SovdError::InvalidRequest(format!("uds2sovd_proxy: {e}")))?;
         for host in &self.hosts {
             match host.kind {
                 HostKind::Remote => {
@@ -915,6 +939,49 @@ mod tests {
         assert_eq!(cfg.hosts.len(), 2);
         assert_eq!(cfg.hosts.first().unwrap().kind, HostKind::Local);
         assert_eq!(cfg.hosts.get(1).unwrap().kind, HostKind::Remote);
+        assert!(!cfg.uds2sovd_proxy.enabled);
+    }
+
+    #[test]
+    fn parse_config_accepts_uds2sovd_sidecar_boundary() {
+        let toml = r#"
+            [uds2sovd_proxy]
+            enabled = true
+            binary_path = "/opt/taktflow/bin/uds2sovd-proxy"
+            generated_config_path = "/opt/taktflow/config/uds2sovd-proxy.toml"
+            bind_address = "127.0.0.1"
+            bind_port = 13400
+            sovd_base_url = "http://127.0.0.1:21002/"
+
+            [[uds2sovd_proxy.target]]
+            component_id = "cvc"
+            mdd_path = "/opt/taktflow/mdd/CVC00000.mdd"
+            logical_address = 1
+
+            [uds2sovd_proxy.target.did_routes]
+            "0xF190" = "vin"
+        "#;
+        let cfg = GatewayConfig::from_toml_str(toml).expect("parse sidecar");
+        assert!(cfg.uds2sovd_proxy.enabled);
+        assert_eq!(cfg.uds2sovd_proxy.bind_port, 13400);
+        assert_eq!(cfg.uds2sovd_proxy.targets.len(), 1);
+        assert_eq!(cfg.uds2sovd_proxy.targets[0].component_id, "cvc");
+        assert_eq!(cfg.uds2sovd_proxy.targets[0].did_routes["0xF190"], "vin");
+    }
+
+    #[test]
+    fn parse_config_rejects_enabled_uds2sovd_without_targets() {
+        let toml = r#"
+            [uds2sovd_proxy]
+            enabled = true
+            binary_path = "uds2sovd-proxy"
+            generated_config_path = "target/uds2sovd-proxy.toml"
+            bind_address = "127.0.0.1"
+            bind_port = 13400
+            sovd_base_url = "http://127.0.0.1:21002/"
+        "#;
+        let err = GatewayConfig::from_toml_str(toml).unwrap_err();
+        assert!(matches!(err, SovdError::InvalidRequest(ref m) if m.contains("at least one")));
     }
 
     #[test]

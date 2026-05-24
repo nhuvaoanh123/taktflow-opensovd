@@ -26,6 +26,11 @@
       "description": "Connect to a backend poller/cache API instead of opening direct Modbus sessions from this test console.",
       "capabilities": ["read_register_cache", "write_request", "shared_backend_cache"]
     },
+    "sunspec_modbus_tcp": {
+      "label": "SunSpec Modbus TCP",
+      "description": "Direct Modbus/TCP connection with SunSpec model scan, scaling, enum, and bitfield decoding.",
+      "capabilities": ["sunspec_scan", "sunspec_poll", "named_signal_decode"]
+    },
     "external_software": {
       "label": "External Software",
       "description": "Reserved integration point for an external app, HIL, CI runner, or service tool bridge.",

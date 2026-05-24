@@ -34,6 +34,13 @@ const TARGET_PRESETS = {
     readMode: "custom",
     customRegisters: "40071:1",
   },
+  sunspec_modbus: {
+    adapter: "sunspec_modbus_tcp",
+    host: "",
+    port: 502,
+    readMode: "profile",
+    customRegisters: "",
+  },
 };
 
 const icons = {
@@ -143,6 +150,11 @@ function updateAdapterHints() {
   if (adapter === "backend_polling_api") {
     $("host").placeholder = "Backend URL or host";
     $("port").placeholder = "Backend API port";
+    return;
+  }
+  if (adapter === "sunspec_modbus_tcp") {
+    $("host").placeholder = "SunSpec BMS IP or host";
+    $("port").placeholder = "SunSpec Modbus port";
     return;
   }
   $("host").placeholder = "BMS IP or host";
@@ -462,25 +474,54 @@ function visibleSignalEntries() {
 function collectSignals(run) {
   const samples = {};
   for (const event of run.events || []) {
-    if (event.event !== "read_ok" || !Array.isArray(event.raw)) continue;
-    const baseAddress = Number(event.address);
-    for (let index = 0; index < event.raw.length; index += 1) {
-      const value = Number(event.raw[index]);
+    if (event.event === "read_ok" && Array.isArray(event.raw)) {
+      const baseAddress = Number(event.address);
+      for (let index = 0; index < event.raw.length; index += 1) {
+        const value = Number(event.raw[index]);
+        if (!Number.isFinite(value)) continue;
+        const address = Number.isFinite(baseAddress) ? baseAddress + index : index;
+        const key = `${event.name}|${address}`;
+        if (!samples[key]) {
+          samples[key] = {
+            key,
+            label: `${event.name} [${address}]`,
+            source: event.name,
+            address,
+            addressText: String(address),
+            points: [],
+            latest: null,
+          };
+        }
+        const point = { ts: Number(event.ts), value };
+        samples[key].points.push(point);
+        samples[key].latest = point;
+      }
+    } else if (event.event === "sunspec_point") {
+      const value = Number(event.value ?? event.raw);
       if (!Number.isFinite(value)) continue;
-      const address = Number.isFinite(baseAddress) ? baseAddress + index : index;
-      const key = `${event.name}|${address}`;
+      const addressText = `M${event.model_id}.${event.point}`;
+      const key = [
+        "sunspec",
+        event.model_id,
+        event.instance || 1,
+        event.group || "",
+        event.group_index || "",
+        event.point,
+      ].join("|");
       if (!samples[key]) {
         samples[key] = {
           key,
-          label: `${event.name} [${address}]`,
-          source: event.name,
-          address,
-          addressText: String(address),
+          label: event.label || addressText,
+          source: event.model_name || `M${event.model_id}`,
+          address: event.point,
+          addressText,
+          unit: event.unit || "",
+          text: event.text || "",
           points: [],
           latest: null,
         };
       }
-      const point = { ts: Number(event.ts), value };
+      const point = { ts: Number(event.ts), value, text: event.text || "", unit: event.unit || "" };
       samples[key].points.push(point);
       samples[key].latest = point;
     }
@@ -596,12 +637,13 @@ function renderSignalList(entries, total) {
       ${entries
         .map((entry) => {
           const pinned = Boolean(state.signalBoard.pinned[entry.key]);
+          const latestText = entry.latest?.text || `${entry.latest?.value ?? ""}${entry.unit ? ` ${entry.unit}` : ""}`;
           return `
             <button class="pinButton ${pinned ? "pinned" : ""}" data-signal-key="${esc(entry.key)}" title="${pinned ? "Unpin" : "Pin"} ${esc(entry.label)}">
               <span>${pinned ? "Unpin" : "Pin"}</span>
             </button>
             <span class="signalName">${esc(entry.label)}</span>
-            <span class="signalValue">${esc(entry.latest?.value ?? "")}</span>
+            <span class="signalValue">${esc(latestText)}</span>
             <span class="signalSamples">${entry.points.length}</span>
           `;
         })
@@ -693,6 +735,11 @@ function summarizeProbe(result) {
     const mode = result.mode ? ` (${result.mode})` : "";
     const elapsed = Number.isFinite(result.elapsed_ms) ? ` ${result.elapsed_ms} ms` : "";
     return `Backend OK${mode}${elapsed}`;
+  }
+  if (result.adapter === "sunspec_modbus_tcp") {
+    const models = Array.isArray(result.models) ? ` ${result.models.length} models` : "";
+    const elapsed = Number.isFinite(result.elapsed_ms) ? ` ${result.elapsed_ms} ms` : "";
+    return `SunSpec OK${models}${elapsed}`;
   }
   const elapsed = Number.isFinite(result.elapsed_ms) ? ` ${result.elapsed_ms} ms` : "";
   return `TCP OK${elapsed}`;

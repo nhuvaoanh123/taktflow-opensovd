@@ -34,6 +34,14 @@ from modbus_client_sim import (
     recv_exact,
     validate_spec,
 )
+from sunspec_frontend import (
+    SUNSPEC_ADAPTER,
+    SunSpecUnavailable,
+    close_device,
+    connect_and_scan,
+    model_layout,
+    poll_summary,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -1093,8 +1101,15 @@ def run_scenario(run: RunState, request: dict[str, Any]) -> None:
                 output=choice.get("output"),
             )
 
+        sunspec_mode = adapter_name == SUNSPEC_ADAPTER
+        if sunspec_mode and scenario_id != "1":
+            raise ValueError("SunSpec adapter is read-only and is available through use case 1 dashboard/monitor")
+
         read_items = read_items_for_profile(profile, choice)
-        if scenario_id == "1" and read_mode == "custom":
+        if sunspec_mode:
+            read_items = []
+            run.event("sunspec_read_plan_selected", message="SunSpec model scan/poll replaces raw register plan")
+        elif scenario_id == "1" and read_mode == "custom":
             custom_registers = str(request.get("custom_registers") or "").strip()
             if not custom_registers:
                 raise ValueError("custom register text is required when read mode is custom")
@@ -1157,7 +1172,9 @@ def run_scenario(run: RunState, request: dict[str, Any]) -> None:
         if not host:
             raise ValueError("host is required for live execution")
 
-        if profile["kind"] == "connection":
+        if sunspec_mode:
+            failures += run_sunspec_poll(run, host, port, unit_id, connect_timeout, cycles, interval)
+        elif profile["kind"] == "connection":
             failures += run_connection_profile(
                 run,
                 request,
@@ -1223,6 +1240,68 @@ def run_scenario(run: RunState, request: dict[str, Any]) -> None:
     finally:
         run.finished_at = time.time()
         write_run_result(run)
+
+
+def run_sunspec_poll(
+    run: RunState,
+    host: str,
+    port: int,
+    unit_id: int,
+    connect_timeout: float,
+    cycles: int,
+    interval: float,
+) -> int:
+    bms = None
+    try:
+        started = time.perf_counter()
+        with socket.create_connection((host, port), timeout=connect_timeout):
+            pass
+        bms, vendor_model_path = connect_and_scan(host, port, unit_id)
+        layout = model_layout(bms)
+        run.event(
+            "connect_ok",
+            label="gui",
+            adapter=SUNSPEC_ADAPTER,
+            host=host,
+            port=port,
+            unit_id=unit_id,
+            elapsed_ms=int((time.perf_counter() - started) * 1000),
+            models=len(layout),
+            vendor_model_defs=bool(vendor_model_path),
+        )
+        run.event("sunspec_model_layout", models=layout)
+        for cycle in range(cycles):
+            if run.cancel_requested:
+                run.event("cancelled")
+                break
+            run.event("cycle_start", cycle=cycle, reads="sunspec_summary")
+            summary = poll_summary(bms)
+            points = summary["points"]
+            run.event(
+                "sunspec_summary",
+                timestamp=summary["timestamp"],
+                models_polled=summary["models_polled"],
+                signals=len(points),
+            )
+            for point in points:
+                run.event("sunspec_point", **point)
+            run.event("cycle_end", cycle=cycle)
+            if cycle < cycles - 1:
+                time.sleep(interval)
+        return 0
+    except SunSpecUnavailable as exc:
+        run.event("sunspec_unavailable", error=str(exc))
+        return 1
+    except Exception as exc:
+        run.event("scenario_error", error=str(exc))
+        return 1
+    finally:
+        if bms is not None:
+            try:
+                close_device(bms)
+                run.event("close", label="gui", adapter=SUNSPEC_ADAPTER)
+            except Exception as exc:
+                run.event("close_error", label="gui", adapter=SUNSPEC_ADAPTER, error=str(exc))
 
 
 def read_with_event_decode(client: GuiModbusClient, spec: RegisterSpec) -> list[int]:
@@ -1318,6 +1397,7 @@ def test_connection(payload: dict[str, Any]) -> dict[str, Any]:
     host_value = payload.get("backend_url") if adapter_name == "backend_polling_api" else payload.get("host")
     host = str(host_value or payload.get("host") or "").strip()
     port = int(payload.get("port") or defaults.get("port") or 502)
+    unit_id = int(payload.get("unit_id") or defaults.get("unit_id") or 1)
     connect_timeout = float(payload.get("connect_timeout") or defaults.get("connect_timeout") or 3.0)
     dry_run = bool(payload.get("dry_run", False))
 
@@ -1354,6 +1434,28 @@ def test_connection(payload: dict[str, Any]) -> dict[str, Any]:
             "elapsed_ms": int((time.perf_counter() - started) * 1000),
             "backend_ok": backend_payload.get("ok", True),
         }
+    if adapter_name == SUNSPEC_ADAPTER:
+        started = time.perf_counter()
+        bms = None
+        try:
+            with socket.create_connection((host, port), timeout=connect_timeout):
+                pass
+            bms, vendor_model_path = connect_and_scan(host, port, unit_id)
+            layout = model_layout(bms)
+            return {
+                "ok": True,
+                "dry_run": False,
+                "adapter": adapter_name,
+                "host": host,
+                "port": port,
+                "unit_id": unit_id,
+                "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                "models": layout,
+                "vendor_model_defs": bool(vendor_model_path),
+            }
+        finally:
+            if bms is not None:
+                close_device(bms)
     if adapter_name != "modbus_tcp":
         raise ValueError(f"adapter '{adapter_name}' is a planned integration point; connection test is not implemented")
 
@@ -1595,6 +1697,8 @@ def self_test() -> int:
         raise SystemExit("profile file must define modbus_tcp adapter")
     if "backend_polling_api" not in model["adapters"]:
         raise SystemExit("profile file must define backend_polling_api adapter")
+    if SUNSPEC_ADAPTER not in model["adapters"]:
+        raise SystemExit("profile file must define sunspec_modbus_tcp adapter")
     contract = backend_api_contract()
     if contract["required_endpoints"]["read_registers"]["path"] != "/api/v1/registers/read":
         raise SystemExit("backend API contract is missing the v1 read endpoint")

@@ -70,9 +70,10 @@ Open:
 http://127.0.0.1:8768/
 ```
 
-The selected-use-case detail pane shows `Scenario`, `Actions`, and
-`Operations`. Source CSV/OCR evidence snippets are not displayed in the
-frontend.
+The selected-use-case detail pane shows `Scenario`, `Actions`, `Operations`,
+and `Run Settings`. The top connection bar is limited to target/adapter/host
+settings, safety switches, and probe status. Source CSV/OCR evidence snippets
+are not displayed in the frontend.
 
 ## Run Use Case 1 Against The Plant
 
@@ -113,9 +114,12 @@ Use case `1` can also load a customer CSV, TSV, or XLSX register sheet from the
 interface console. For XLSX files, choose one workbook sheet and click
 `Scan Sheet`; the loaded-sheet memory is scoped to that selected sheet only.
 
-After scanning, set `Read Source` to `Loaded Sheet`. The `Monitor Registers`
-list contains the readable rows from the selected sheet. Keep all selected, or
-select only the signals you want to poll and plot in the Signal Board.
+After scanning, set `Read Source` to `Loaded Sheet`. Use `Monitor Picker` to
+enter the exact register address, table/address, key, or name you want to poll
+and plot in the Signal Board. The picker offers a capped autofill list from the
+loaded sheet as you type. The UI does not render the full readable register
+list, so large customer sheets can stay loaded without creating thousands of
+frontend options.
 
 ## Plot, Pin, And Monitor
 
@@ -157,8 +161,8 @@ directly against the local plant model.
 ## Use Case 14 RW Register Sheet Test
 
 Use case `14` can load a customer register sheet into the interface console,
-turn explicit `RW` holding-register rows into selectable write targets, and use
-all readable rows from the same sheet as monitor/plot context.
+turn explicit `RW` holding-register rows into selectable write targets, and
+keep the readable rows from the same sheet available as monitor/plot context.
 
 Supported upload formats:
 
@@ -180,9 +184,9 @@ Workflow:
 4. Click `Scan Sheet`.
 5. Pick one loaded `Write Target`; this list is filtered to explicit `RW`
    holding registers.
-6. In `Monitor Registers`, keep all loaded readable registers selected, or use
-   `Target` to monitor only the write target.
-7. Set `Write Value`.
+6. In `Monitor Picker`, enter or autofill any extra readable registers to
+   monitor, or use `Target` to monitor only the write target.
+7. Set `Write Value` in `Run Settings`.
 8. Keep `Dry Run` checked to review the plan, or uncheck `Dry Run` and check
    `Arm Writes` only when intentionally testing live hardware write/readback.
 9. Click `Run`.
@@ -191,9 +195,10 @@ The scan keeps selected register metadata in the backend process memory only.
 It does not write the uploaded customer sheet into the repository. The dynamic
 run reads the selected monitor context, writes the selected target value when
 writes are armed, reads the monitor context again, and verifies the target
-readback against the written value. The Signal Board plots the live monitor
-values captured from `read_ok` events, so it can show wider impact around the
-write step.
+readback against the written value. If no extra monitor registers are picked,
+use case `14` still reads back the write target for verification. The Signal
+Board plots the live monitor values captured from `read_ok` events, so it can
+show wider impact around the write step.
 
 ## SunSpec BMS Mode
 

@@ -14,6 +14,7 @@ const state = {
     items: [],
     selectedKey: "",
     monitorKeys: [],
+    monitorPicker: "",
     source: null,
     sheetName: "",
     sheets: [],
@@ -30,6 +31,7 @@ const state = {
 };
 
 const MONITOR_CYCLES = 3600;
+const MONITOR_SUGGESTION_LIMIT = 50;
 const TARGET_PRESETS = {
   manual: null,
   plant_api: {
@@ -133,7 +135,7 @@ function rwMemoryStatus(memory) {
   const writable = memory.writable_count ?? memory.count ?? 0;
   const readable = memory.register_count ?? (memory.registers || []).length;
   if (!readable && !writable) return "No sheet loaded";
-  return `${writable} RW | ${readable} monitor registers loaded`;
+  return `${writable} RW | ${readable} readable registers loaded`;
 }
 
 function applyRwRegisterMemory(memory, keepMonitorSelection = false) {
@@ -149,7 +151,7 @@ function applyRwRegisterMemory(memory, keepMonitorSelection = false) {
   if (keepMonitorSelection && priorMonitorKeys.size) {
     state.rwRegisters.monitorKeys = registers.filter((item) => priorMonitorKeys.has(item.key)).map((item) => item.key);
   } else {
-    state.rwRegisters.monitorKeys = registers.map((item) => item.key);
+    state.rwRegisters.monitorKeys = [];
   }
 }
 
@@ -254,12 +256,161 @@ function loadedSheetRegisters() {
   return state.rwRegisters.registers || [];
 }
 
+function readableSheetRegisters() {
+  return loadedSheetRegisters().filter((item) => item.readable !== false);
+}
+
 function selectedMonitorRegisters() {
-  const registers = loadedSheetRegisters();
+  const registers = readableSheetRegisters();
   if (!registers.length) return [];
   const selectedKeys = new Set(state.rwRegisters.monitorKeys);
-  if (!selectedKeys.size) return registers;
+  if (!selectedKeys.size) return [];
   return registers.filter((item) => selectedKeys.has(item.key));
+}
+
+function monitorPickerTerms(value) {
+  return String(value || "")
+    .split(/[\n,;]+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+}
+
+function normalizedRegisterTable(value) {
+  const table = String(value || "").trim().toLowerCase();
+  if (table === "hr") return "holding";
+  if (table === "ir") return "input";
+  return table;
+}
+
+function registerTableToken(value) {
+  const table = normalizedRegisterTable(value);
+  if (table === "holding") return "holding";
+  if (table === "input") return "input";
+  return table || "register";
+}
+
+function monitorMatchesForTerm(term) {
+  const registers = readableSheetRegisters();
+  const raw = String(term || "").trim();
+  const needle = raw.toLowerCase();
+  if (!needle) return [];
+
+  const keyMatches = registers.filter((entry) => String(entry.key || "").toLowerCase() === needle);
+  if (keyMatches.length) return keyMatches;
+
+  const addressMatch = raw.match(/^(?:(holding|input|coil|discrete|hr|ir)\s*[:# -]?\s*)?(\d+)(?::\d+)?$/i);
+  if (addressMatch) {
+    const table = normalizedRegisterTable(addressMatch[1]);
+    const address = Number(addressMatch[2]);
+    const matches = registers.filter(
+      (entry) => Number(entry.address) === address && (!table || normalizedRegisterTable(entry.table) === table),
+    );
+    if (matches.length) return matches;
+  }
+
+  return registers.filter(
+    (entry) =>
+      String(entry.name || "").toLowerCase() === needle ||
+      String(entry.label || "").toLowerCase() === needle,
+  );
+}
+
+function monitorSuggestionEntries(value, limit = MONITOR_SUGGESTION_LIMIT) {
+  const terms = monitorPickerTerms(value);
+  const raw = terms.length ? terms[terms.length - 1] : "";
+  const needle = raw.trim().toLowerCase();
+  if (!needle) return [];
+
+  const selectedKeys = new Set(state.rwRegisters.monitorKeys);
+  const scored = [];
+  for (const entry of readableSheetRegisters()) {
+    if (selectedKeys.has(entry.key)) continue;
+    const address = String(entry.address ?? "");
+    const tableAddress = `${registerTableToken(entry.table)}:${address}`;
+    const name = String(entry.name || "");
+    const label = String(entry.label || "");
+    const key = String(entry.key || "");
+    const fields = [
+      { value: tableAddress, score: 0 },
+      { value: address, score: 1 },
+      { value: name, score: 2 },
+      { value: label, score: 3 },
+      { value: key, score: 4 },
+    ];
+    let bestScore = null;
+    for (const field of fields) {
+      const haystack = field.value.toLowerCase();
+      if (!haystack) continue;
+      if (haystack === needle) bestScore = Math.min(bestScore ?? 99, field.score);
+      else if (haystack.startsWith(needle)) bestScore = Math.min(bestScore ?? 99, field.score + 10);
+      else if (haystack.includes(needle)) bestScore = Math.min(bestScore ?? 99, field.score + 20);
+    }
+    if (bestScore !== null) scored.push({ entry, score: bestScore, value: tableAddress });
+  }
+
+  return scored
+    .sort((a, b) => a.score - b.score || Number(a.entry.address) - Number(b.entry.address) || a.entry.name.localeCompare(b.entry.name))
+    .slice(0, limit);
+}
+
+function monitorSuggestionMarkup(value) {
+  return monitorSuggestionEntries(value)
+    .map(({ entry, value: optionValue }) => {
+      const label = `${entry.name || "Register"} | ${entry.address} | ${entry.access || "R"}`;
+      return `<option value="${esc(optionValue)}" label="${esc(label)}"></option>`;
+    })
+    .join("");
+}
+
+function updateMonitorSuggestions() {
+  const list = $("monitor_register_suggestions");
+  if (!list) return;
+  list.innerHTML = monitorSuggestionMarkup(state.rwRegisters.monitorPicker);
+}
+
+function applyMonitorPicker() {
+  const terms = monitorPickerTerms(state.rwRegisters.monitorPicker);
+  if (!terms.length) {
+    state.rwRegisters.status = "Enter a register address, name, or key to monitor";
+    renderDetails();
+    return;
+  }
+
+  const selected = new Set(state.rwRegisters.monitorKeys);
+  const missing = [];
+  const ambiguous = [];
+  let added = 0;
+  for (const term of terms) {
+    let matches = monitorMatchesForTerm(term);
+    if (!matches.length) {
+      const suggestions = monitorSuggestionEntries(term, 2);
+      if (suggestions.length === 1) matches = [suggestions[0].entry];
+      else if (suggestions.length > 1) {
+        ambiguous.push(term);
+        continue;
+      }
+    }
+    if (!matches.length) {
+      missing.push(term);
+      continue;
+    }
+    for (const match of matches) {
+      if (selected.has(match.key)) continue;
+      selected.add(match.key);
+      added += 1;
+    }
+  }
+
+  state.rwRegisters.monitorKeys = readableSheetRegisters()
+    .filter((entry) => selected.has(entry.key))
+    .map((entry) => entry.key);
+  state.rwRegisters.monitorPicker = [...ambiguous, ...missing].join(", ");
+  state.rwRegisters.status = ambiguous.length
+    ? `Added ${added}; narrow search for ${ambiguous.join(", ")}`
+    : missing.length
+      ? `Added ${added}; no match for ${missing.join(", ")}`
+      : `Added ${added} monitor register${added === 1 ? "" : "s"}`;
+  renderDetails();
 }
 
 function currentWriteValue() {
@@ -279,6 +430,9 @@ function rwPlanItem(entry, suffix = "") {
 }
 
 function plannedReads(item) {
+  if (item.id === "1" && state.case1ReadMode === "sheet") {
+    return selectedMonitorRegisters().map((entry) => rwPlanItem(entry));
+  }
   const rw = item.id === "14" ? selectedRwRegister() : null;
   if (rw) {
     const reads = selectedMonitorRegisters().map((entry) => rwPlanItem(entry));
@@ -357,6 +511,7 @@ function renderDetails() {
   bindTestChoiceControls(item);
   bindRwRegisterControls(item);
   bindRegisterReadControls(item);
+  renderRunSettings(item);
   updateWriteValueControl(item);
   renderSignalBoard(item);
 }
@@ -432,7 +587,7 @@ function renderOperations(item) {
   } else if (testChoices(item).length && !rw) {
     chips.push(renderTestChoiceControl(item));
   }
-  const reads = plannedReads(item);
+  const reads = item.id === "1" && state.case1ReadMode !== "sheet" ? [] : plannedReads(item);
   const readLimit = item.id === "14" || (item.id === "1" && state.case1ReadMode === "sheet") ? 14 : reads.length;
   for (const read of reads.slice(0, readLimit)) {
     chips.push(
@@ -457,6 +612,17 @@ function renderOperations(item) {
     chips.push(`<span class="chip manual">${icons.manual} Manual gate</span>`);
   }
   return chips.length ? chips.join("") : '<span class="chip manual">No executable Modbus plan</span>';
+}
+
+function renderRunSettings(item) {
+  const isConnectionCase = item.id === "11" || item.kind === "connection";
+  const isWriteCase = item.id === "14" || item.kind === "write_verify" || plannedWrites(item).length > 0;
+  document.querySelectorAll('[data-run-setting="connection"]').forEach((node) => {
+    node.classList.toggle("hidden", !isConnectionCase);
+  });
+  document.querySelectorAll('[data-run-setting="write"]').forEach((node) => {
+    node.classList.toggle("hidden", !isWriteCase);
+  });
 }
 
 function renderTestChoiceControl(item) {
@@ -494,8 +660,7 @@ function renderRwRegisterControl(item) {
   const isWriteUseCase = item?.id === "14";
   const rw = state.rwRegisters;
   const items = rw.items || [];
-  const registers = loadedSheetRegisters();
-  const monitorKeys = new Set(state.rwRegisters.monitorKeys);
+  const registers = readableSheetRegisters();
   const monitorCount = selectedMonitorRegisters().length;
   const selected = selectedRwRegister();
   const fileName = rw.file?.name || rw.source?.filename || "";
@@ -515,18 +680,21 @@ function renderRwRegisterControl(item) {
         })
         .join("")
     : '<option value="">No RW registers loaded</option>';
-  const monitorOptions = registers.length
-    ? registers
-        .map((entry) => {
-          const selectedAttr = monitorKeys.has(entry.key) || !monitorKeys.size ? " selected" : "";
-          return `<option value="${esc(entry.key)}"${selectedAttr}>${esc(entry.label || `${entry.name} | ${entry.address}`)}</option>`;
-        })
-        .join("")
-    : '<option value="">No monitor registers loaded</option>';
+  const selectedMonitorList = selectedMonitorRegisters();
+  const selectedMonitorChips = selectedMonitorList.length
+    ? selectedMonitorList
+        .slice(0, 12)
+        .map(
+          (entry) =>
+            `<button class="monitorChip" type="button" data-monitor-remove="${esc(entry.key)}" title="Remove ${esc(entry.label || entry.name)}">${esc(entry.label || `${entry.name} | ${entry.address}`)} <span>x</span></button>`,
+        )
+        .join("") +
+      (selectedMonitorList.length > 12 ? `<span class="monitorMore">+${esc(selectedMonitorList.length - 12)} more</span>` : "")
+    : '<span class="monitorEmpty">No monitor registers selected</span>';
   const status = rw.loading
     ? "Scanning"
     : selected
-      ? `${items.length} RW | ${registers.length} monitor | selected ${selected.name} ${selected.address}`
+      ? `${items.length} RW | ${registers.length} readable | selected ${selected.name} ${selected.address}`
       : rw.status;
   const sheetSelect = sheetOptions
     ? `
@@ -557,16 +725,19 @@ function renderRwRegisterControl(item) {
           : ""
       }
       <label class="rwMonitorSelect">
-        Monitor Registers
-        <select id="monitor_register_keys" name="monitor_register_keys" multiple size="${Math.min(8, Math.max(3, registers.length || 3))}" ${registers.length ? "" : "disabled"}>
-          ${monitorOptions}
-        </select>
+        Monitor Picker
+        <input id="monitor_register_picker" name="monitor_register_picker" list="monitor_register_suggestions" autocomplete="off" placeholder="40071, holding:40170, PackSoc" value="${esc(rw.monitorPicker)}" ${registers.length ? "" : "disabled"} />
+        <datalist id="monitor_register_suggestions">
+          ${monitorSuggestionMarkup(rw.monitorPicker)}
+        </datalist>
       </label>
       <div class="rwMonitorActions">
-        <button id="monitor_all_registers" class="secondary" type="button" ${registers.length ? "" : "disabled"}>All</button>
+        <button id="monitor_add_registers" class="secondary" type="button" ${registers.length ? "" : "disabled"}>Add</button>
+        <button id="monitor_clear_registers" class="secondary" type="button" ${monitorCount ? "" : "disabled"}>Clear</button>
         ${isWriteUseCase ? `<button id="monitor_target_register" class="secondary" type="button" ${selected ? "" : "disabled"}>Target</button>` : ""}
         <span>${esc(monitorCount)} selected</span>
       </div>
+      <div class="rwMonitorPicked">${selectedMonitorChips}</div>
       <span id="rw_register_status" class="rwRegisterStatus">${esc(fileName ? `${fileName} | ${status}` : status)}</span>
     </div>
   `;
@@ -606,8 +777,9 @@ function bindRwRegisterControls(item) {
   const sheetSelect = $("rw_sheet_name");
   const scanButton = $("rw_scan_sheet");
   const registerSelect = $("rw_register_key");
-  const monitorSelect = $("monitor_register_keys");
-  const monitorAllButton = $("monitor_all_registers");
+  const monitorPicker = $("monitor_register_picker");
+  const monitorAddButton = $("monitor_add_registers");
+  const monitorClearButton = $("monitor_clear_registers");
   const monitorTargetButton = $("monitor_target_register");
 
   if (sheetSelect) {
@@ -625,16 +797,26 @@ function bindRwRegisterControls(item) {
     });
   }
 
-  if (monitorSelect) {
-    monitorSelect.addEventListener("change", () => {
-      state.rwRegisters.monitorKeys = Array.from(monitorSelect.selectedOptions).map((option) => option.value);
-      renderDetails();
+  if (monitorPicker) {
+    monitorPicker.addEventListener("input", () => {
+      state.rwRegisters.monitorPicker = monitorPicker.value;
+      updateMonitorSuggestions();
+    });
+    monitorPicker.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      applyMonitorPicker();
     });
   }
 
-  if (monitorAllButton) {
-    monitorAllButton.addEventListener("click", () => {
-      state.rwRegisters.monitorKeys = loadedSheetRegisters().map((entry) => entry.key);
+  if (monitorAddButton) {
+    monitorAddButton.addEventListener("click", applyMonitorPicker);
+  }
+
+  if (monitorClearButton) {
+    monitorClearButton.addEventListener("click", () => {
+      state.rwRegisters.monitorKeys = [];
+      state.rwRegisters.status = "Monitor selection cleared";
       renderDetails();
     });
   }
@@ -651,6 +833,14 @@ function bindRwRegisterControls(item) {
       renderDetails();
     });
   }
+
+  document.querySelectorAll("[data-monitor-remove]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.getAttribute("data-monitor-remove");
+      state.rwRegisters.monitorKeys = state.rwRegisters.monitorKeys.filter((entry) => entry !== key);
+      renderDetails();
+    });
+  });
 
   if (fileInput) {
     fileInput.addEventListener("change", async () => {

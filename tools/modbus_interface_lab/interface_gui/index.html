@@ -37,30 +37,6 @@
         Port
         <input id="port" name="port" type="number" min="1" max="65535" />
       </label>
-      <label>
-        Unit
-        <input id="unit_id" name="unit_id" type="number" min="0" max="247" />
-      </label>
-      <label>
-        Cycles
-        <input id="cycles" name="cycles" type="number" min="1" max="1000" />
-      </label>
-      <label>
-        Interval
-        <input id="interval" name="interval" type="number" min="0" step="0.1" />
-      </label>
-      <label>
-        Sessions
-        <input id="sessions" name="sessions" type="number" min="1" max="64" />
-      </label>
-      <label>
-        Hold
-        <input id="hold_seconds" name="hold_seconds" type="number" min="0" step="0.5" />
-      </label>
-      <label>
-        Write Value
-        <input id="write_value" name="write_value" type="number" min="0" max="65535" />
-      </label>
       <label class="toggle">
         <input id="dry_run" name="dry_run" type="checkbox" checked />
         <span>Dry Run</span>
@@ -102,6 +78,35 @@
           <section>
             <h3>Operations</h3>
             <div id="operationPlan" class="chips"></div>
+          </section>
+          <section id="runSettingsPanel">
+            <h3>Run Settings</h3>
+            <div class="runSettingsGrid">
+              <label>
+                Unit
+                <input id="unit_id" name="unit_id" type="number" min="0" max="247" />
+              </label>
+              <label>
+                Cycles
+                <input id="cycles" name="cycles" type="number" min="1" max="1000" />
+              </label>
+              <label>
+                Interval
+                <input id="interval" name="interval" type="number" min="0" step="0.1" />
+              </label>
+              <label data-run-setting="write">
+                Write Value
+                <input id="write_value" name="write_value" type="number" min="0" max="65535" />
+              </label>
+              <label data-run-setting="connection">
+                Sessions
+                <input id="sessions" name="sessions" type="number" min="1" max="64" />
+              </label>
+              <label data-run-setting="connection">
+                Hold
+                <input id="hold_seconds" name="hold_seconds" type="number" min="0" step="0.5" />
+              </label>
+            </div>
           </section>
         </div>
         <section id="signalBoard" class="signalBoard hidden" aria-label="Signal board">

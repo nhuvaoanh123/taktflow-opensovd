@@ -818,8 +818,9 @@ def read_item_from_sheet_register(item: dict[str, Any]) -> dict[str, Any]:
 
 def monitor_items_for_request(request: dict[str, Any], rw_selection: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     raw_keys = request.get("monitor_register_keys")
-    keys = raw_keys if isinstance(raw_keys, list) else []
-    if not keys:
+    if isinstance(raw_keys, list):
+        keys = raw_keys
+    else:
         with RW_MEMORY_LOCK:
             keys = [str(item.get("key")) for item in RW_REGISTER_MEMORY.get("registers", [])]
     items = []
@@ -837,15 +838,14 @@ def monitor_items_for_request(request: dict[str, Any], rw_selection: dict[str, A
         seen_keys.add(item_key)
         items.append(item)
 
-    if not items:
-        raise ValueError("loaded sheet read mode requires at least one selected monitor register")
-
     target_seen = bool(rw_selection) and any(
         item.get("table") == rw_selection.get("table") and int(item.get("address", -1)) == int(rw_selection.get("address", -2))
         for item in items
     )
     if rw_selection and not target_seen:
         items.insert(0, {**rw_selection, "readable": True})
+    if not items:
+        raise ValueError("loaded sheet read mode requires at least one selected monitor register")
     return [read_item_from_sheet_register(item) for item in items]
 
 
@@ -1987,6 +1987,16 @@ def self_test() -> int:
     sheet_reads = monitor_items_for_request({"monitor_register_keys": [rw_snapshot["registers"][-1]["key"]]})
     if len(sheet_reads) != 1 or sheet_reads[0]["address"] != 30001:
         raise SystemExit("loaded-sheet read selection did not return the selected monitor register")
+    target_only_reads = monitor_items_for_request({"monitor_register_keys": []}, rw_snapshot["items"][0])
+    if len(target_only_reads) != 1 or target_only_reads[0]["address"] != 40170:
+        raise SystemExit("empty use case 14 monitor selection should keep target readback")
+    try:
+        monitor_items_for_request({"monitor_register_keys": []})
+    except ValueError as exc:
+        if "at least one selected monitor register" not in str(exc):
+            raise SystemExit(f"empty loaded-sheet monitor selection returned unclear error: {exc}") from exc
+    else:
+        raise SystemExit("empty loaded-sheet monitor selection should not read all registers")
     try:
         parse_custom_read_items("not-a-register")
     except ValueError as exc:

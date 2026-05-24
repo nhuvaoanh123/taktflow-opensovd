@@ -524,6 +524,13 @@ button.secondary {
   gap: 7px;
 }
 
+.runSettingsGrid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .registerRead {
   width: 100%;
   display: grid;
@@ -563,10 +570,6 @@ button.secondary {
   grid-column: 1 / -1;
 }
 
-.rwMonitorSelect select {
-  min-height: 126px;
-}
-
 .rwMonitorActions {
   grid-column: 1 / -1;
   display: flex;
@@ -576,6 +579,41 @@ button.secondary {
 }
 
 .rwMonitorActions span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rwMonitorPicked {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+  align-items: center;
+}
+
+.monitorChip {
+  max-width: 100%;
+  min-height: 28px;
+  border: 1px solid #bfd1c9;
+  background: #eef7f3;
+  color: #1d4d40;
+  padding: 5px 7px;
+  font-size: 12px;
+  font-weight: 700;
+  justify-content: flex-start;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.monitorChip span {
+  margin-left: 6px;
+  color: #55766b;
+}
+
+.monitorMore,
+.monitorEmpty {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
@@ -883,6 +921,7 @@ button.secondary {
   .boardHeader,
   .registerRead,
   .rwRegisterLoad,
+  .runSettingsGrid,
   .testChoice,
   .testChoiceIo {
     grid-template-columns: 1fr;

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import html
 import json
 import re
@@ -34,6 +35,22 @@ from modbus_client_sim import (
     recv_exact,
     validate_spec,
 )
+from plant_model import (
+    import_access_text,
+    import_address_value,
+    import_count,
+    import_data_type,
+    import_name,
+    import_scale_factor,
+    import_units,
+    import_writable,
+    infer_table,
+    parse_int,
+    parse_uploaded_rows,
+    read_multipart,
+    uploaded_file,
+    xlsx_sheet_names,
+)
 from sunspec_frontend import (
     SUNSPEC_ADAPTER,
     SunSpecUnavailable,
@@ -53,6 +70,8 @@ RUN_DIR = ROOT / "runs"
 PROFILE_FILE = DATA_DIR / "interface_profiles.json"
 MAX_REGISTERS_PER_READ = 120
 BACKEND_NOT_AVAILABLE = 0xFFFF
+RW_MEMORY_LOCK = threading.Lock()
+RW_REGISTER_MEMORY: dict[str, Any] = {"source": None, "items": [], "loaded_at": None}
 
 
 def display_path(path: Path) -> str:
@@ -567,6 +586,9 @@ def build_model() -> dict[str, Any]:
             "backend_contract": "/api/backend/contract",
             "backend_status": "/api/backend/status",
             "backend_read": "/api/backend/read",
+            "rw_registers": "/api/rw-registers",
+            "rw_register_import": "/api/rw-registers/import",
+            "rw_register_sheets": "/api/rw-registers/sheets",
         },
     }
 
@@ -643,6 +665,188 @@ def expected_values_for_item(item: dict[str, Any]) -> list[int]:
     if "value" in item:
         return [int(item["value"]) & 0xFFFF]
     raise ValueError(f"expected item {item.get('name') or item.get('address')} must define value or values")
+
+
+def rw_access_is_read_write(row: dict[str, Any]) -> bool:
+    access = import_access_text(row).lower()
+    normalized = re.sub(r"[^a-z]+", " ", access).strip()
+    compact = normalized.replace(" ", "")
+    if access:
+        return compact in {"rw", "readwrite", "readandwrite", "writeread", "writeandread"}
+    return import_writable(row)
+
+
+def sheet_register_is_readable(row: dict[str, Any]) -> bool:
+    access = import_access_text(row).lower()
+    normalized = re.sub(r"[^a-z]+", " ", access).strip()
+    compact = normalized.replace(" ", "")
+    if not access:
+        return True
+    return compact not in {"w", "wo", "write", "writeonly"}
+
+
+def sheet_register_name(row: dict[str, Any], address: int) -> str:
+    name = import_name(row)
+    if "|" in name:
+        name = next((part.strip() for part in name.split("|") if part.strip()), name)
+    return name or f"Sheet register {address}"
+
+
+def sheet_register_key(filename: str, sheet_name: str, row_index: int, table: str, address: int, name: str) -> str:
+    seed = f"{Path(filename).name}\0{sheet_name}\0{row_index}\0{table}\0{address}\0{name}"
+    digest = hashlib.sha1(seed.encode("utf-8", errors="replace")).hexdigest()[:12]
+    return f"{table}:{address}:{digest}"
+
+
+def sheet_register_count(row: dict[str, Any], table: str) -> int:
+    count = max(1, import_count(row))
+    if table in ("holding", "input"):
+        return min(count, MAX_REGISTERS_PER_READ)
+    return min(count, 2000)
+
+
+def scan_register_sheet_rows(rows: list[dict[str, Any]], filename: str, sheet_name: str = "") -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for row_index, row in enumerate(rows, start=2):
+        try:
+            address_value = import_address_value(row)
+            if address_value is None:
+                continue
+            try:
+                table = infer_table(row)
+            except SystemExit:
+                continue
+            address = parse_int(address_value)
+            count = sheet_register_count(row, table)
+        except (TypeError, ValueError):
+            continue
+
+        readable = sheet_register_is_readable(row)
+        writable = table == "holding" and rw_access_is_read_write(row)
+        if not readable and not writable:
+            continue
+
+        name = sheet_register_name(row, address)
+        item = {
+            "key": sheet_register_key(filename, sheet_name, row_index, table, address, name),
+            "name": name,
+            "table": table,
+            "address": address,
+            "count": count,
+            "data_type": import_data_type(row) or "raw",
+            "units": import_units(row),
+            "scale_factor": import_scale_factor(row),
+            "access": import_access_text(row) or ("RW" if writable else "R"),
+            "readable": readable,
+            "writable": writable,
+            "source_filename": Path(filename).name,
+            "sheet_name": sheet_name,
+            "row_index": row_index,
+        }
+        sheet_prefix = f"{sheet_name} | " if sheet_name else ""
+        item["label"] = f"{sheet_prefix}{item['name']} | {item['address']} | {item['access']}"
+        items.append(item)
+    return items
+
+
+def writable_rw_registers(registers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{**item, "count": 1} for item in registers if item.get("writable")]
+
+
+def rw_register_memory_snapshot() -> dict[str, Any]:
+    with RW_MEMORY_LOCK:
+        return {
+            "source": dict(RW_REGISTER_MEMORY["source"]) if RW_REGISTER_MEMORY.get("source") else None,
+            "registers": [dict(item) for item in RW_REGISTER_MEMORY.get("registers", [])],
+            "items": [dict(item) for item in RW_REGISTER_MEMORY["items"]],
+            "count": len(RW_REGISTER_MEMORY["items"]),
+            "register_count": len(RW_REGISTER_MEMORY.get("registers", [])),
+            "writable_count": len(RW_REGISTER_MEMORY["items"]),
+            "loaded_at": RW_REGISTER_MEMORY.get("loaded_at"),
+        }
+
+
+def store_rw_register_memory(filename: str, sheet_name: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    registers = scan_register_sheet_rows(rows, filename, sheet_name)
+    items = writable_rw_registers(registers)
+    source = {
+        "filename": Path(filename).name,
+        "sheet_name": sheet_name,
+        "rows_scanned": len(rows),
+    }
+    with RW_MEMORY_LOCK:
+        RW_REGISTER_MEMORY["source"] = source
+        RW_REGISTER_MEMORY["registers"] = registers
+        RW_REGISTER_MEMORY["items"] = items
+        RW_REGISTER_MEMORY["loaded_at"] = time.time()
+    return rw_register_memory_snapshot()
+
+
+def store_rw_register_memory_from_upload(filename: str, content: bytes, sheet_name: str = "") -> dict[str, Any]:
+    rows = parse_uploaded_rows(filename, content, sheet_name=sheet_name)
+    return store_rw_register_memory(filename, sheet_name, rows)
+
+
+def rw_register_by_key(key: str) -> dict[str, Any]:
+    with RW_MEMORY_LOCK:
+        for item in RW_REGISTER_MEMORY["items"]:
+            if str(item.get("key")) == key:
+                return dict(item)
+    raise ValueError("selected RW register is not loaded; scan a register sheet first")
+
+
+def sheet_register_by_key(key: str) -> dict[str, Any]:
+    with RW_MEMORY_LOCK:
+        for item in RW_REGISTER_MEMORY.get("registers", []):
+            if str(item.get("key")) == key:
+                return dict(item)
+        for item in RW_REGISTER_MEMORY.get("items", []):
+            if str(item.get("key")) == key:
+                return dict(item)
+    raise ValueError("selected monitor register is not loaded; scan a register sheet first")
+
+
+def read_item_from_sheet_register(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": item.get("label") or item.get("name") or f"{item.get('table', 'holding')} {item.get('address')}",
+        "table": item.get("table", "holding"),
+        "address": item["address"],
+        "count": item.get("count", 1),
+        "data_type": item.get("data_type", "raw"),
+    }
+
+
+def monitor_items_for_request(request: dict[str, Any], rw_selection: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    raw_keys = request.get("monitor_register_keys")
+    keys = raw_keys if isinstance(raw_keys, list) else []
+    if not keys:
+        with RW_MEMORY_LOCK:
+            keys = [str(item.get("key")) for item in RW_REGISTER_MEMORY.get("registers", [])]
+    items = []
+    seen_keys = set()
+    for key in keys:
+        try:
+            item = sheet_register_by_key(str(key))
+        except ValueError:
+            continue
+        if not item.get("readable", True):
+            continue
+        item_key = str(item.get("key"))
+        if item_key in seen_keys:
+            continue
+        seen_keys.add(item_key)
+        items.append(item)
+
+    if not items:
+        raise ValueError("loaded sheet read mode requires at least one selected monitor register")
+
+    target_seen = bool(rw_selection) and any(
+        item.get("table") == rw_selection.get("table") and int(item.get("address", -1)) == int(rw_selection.get("address", -2))
+        for item in items
+    )
+    if rw_selection and not target_seen:
+        items.insert(0, {**rw_selection, "readable": True})
+    return [read_item_from_sheet_register(item) for item in items]
 
 
 def verify_expected_registers(
@@ -1079,7 +1283,10 @@ def run_scenario(run: RunState, request: dict[str, Any]) -> None:
     read_mode = str(request.get("read_mode") or "profile")
 
     try:
-        choice = selected_test_choice(profile, scenario_id, request.get("test_choice_id"))
+        rw_selection = None
+        if scenario_id == "14" and request.get("rw_register_key"):
+            rw_selection = rw_register_by_key(str(request.get("rw_register_key")))
+        choice = None if rw_selection else selected_test_choice(profile, scenario_id, request.get("test_choice_id"))
         run.event(
             "scenario_start",
             title=case["title"],
@@ -1115,6 +1322,9 @@ def run_scenario(run: RunState, request: dict[str, Any]) -> None:
                 raise ValueError("custom register text is required when read mode is custom")
             read_items = parse_custom_read_items(custom_registers)
             run.event("custom_read_plan_selected", custom_registers=custom_registers, items=len(read_items))
+        elif scenario_id == "1" and read_mode == "sheet":
+            read_items = monitor_items_for_request(request)
+            run.event("loaded_sheet_read_plan_selected", items=len(read_items))
         elif choice:
             run.event("test_choice_read_plan_selected", items=len(read_items))
         else:
@@ -1122,6 +1332,42 @@ def run_scenario(run: RunState, request: dict[str, Any]) -> None:
 
         write_items = write_items_for_profile(profile, choice)
         expected_items = expected_items_for_choice(choice)
+        if rw_selection:
+            read_items = [
+                {
+                    "name": f"{rw_selection['name']} readback",
+                    "table": rw_selection["table"],
+                    "address": rw_selection["address"],
+                    "count": 1,
+                    "data_type": rw_selection.get("data_type", "raw"),
+                }
+            ]
+            write_items = [
+                {
+                    "name": rw_selection["name"],
+                    "table": rw_selection["table"],
+                    "address": rw_selection["address"],
+                    "value": write_value,
+                }
+            ]
+            expected_items = [
+                {
+                    "name": f"{rw_selection['name']} expected",
+                    "table": rw_selection["table"],
+                    "address": rw_selection["address"],
+                    "value": write_value,
+                }
+            ]
+            read_items = monitor_items_for_request(request, rw_selection)
+            run.event(
+                "rw_register_selected",
+                name=rw_selection["name"],
+                address=rw_selection["address"],
+                source=rw_selection.get("source_filename"),
+                sheet=rw_selection.get("sheet_name") or None,
+                value=write_value,
+            )
+            run.event("monitor_context_selected", items=len(read_items))
         reads = [make_spec(item, unit_id, address_base) for item in read_items]
         writes = [make_spec({**item, "count": 1}, unit_id, address_base) for item in write_items]
         write_values = [write_value_for_item(item, write_value) for item in write_items]
@@ -1610,6 +1856,8 @@ class Handler(BaseHTTPRequestHandler):
                 return json_response(self, build_model())
             if path == "/api/backend/contract":
                 return json_response(self, backend_api_contract())
+            if path == "/api/rw-registers":
+                return json_response(self, rw_register_memory_snapshot())
             if path.startswith("/api/run/"):
                 run_id = path.rsplit("/", 1)[-1]
                 with RUNS_LOCK:
@@ -1629,6 +1877,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         try:
+            if parsed.path == "/api/rw-registers/sheets":
+                _fields, files = read_multipart(self)
+                filename, content = uploaded_file(files)
+                sheets = xlsx_sheet_names(content) if filename.lower().endswith(".xlsx") else []
+                return json_response(self, {"filename": filename, "sheets": sheets})
+            if parsed.path == "/api/rw-registers/import":
+                fields, files = read_multipart(self)
+                filename, content = uploaded_file(files)
+                sheet_name = fields.get("sheet_name", "")
+                return json_response(self, store_rw_register_memory_from_upload(filename, content, sheet_name))
             if parsed.path == "/api/run":
                 payload = read_request_json(self)
                 scenario_id = str(payload.get("scenario_id") or "")
@@ -1689,10 +1947,10 @@ class Handler(BaseHTTPRequestHandler):
 def self_test() -> int:
     config = load_profile_config()
     model = build_model()
-    if len(model["use_cases"]) != 13:
-        raise SystemExit(f"expected 13 use cases, got {len(model['use_cases'])}")
-    if len(config["profiles"]) != 13:
-        raise SystemExit(f"expected 13 profiles, got {len(config['profiles'])}")
+    if len(model["use_cases"]) != 14:
+        raise SystemExit(f"expected 14 use cases, got {len(model['use_cases'])}")
+    if len(config["profiles"]) != 14:
+        raise SystemExit(f"expected 14 profiles, got {len(config['profiles'])}")
     if "modbus_tcp" not in model["adapters"]:
         raise SystemExit("profile file must define modbus_tcp adapter")
     if "backend_polling_api" not in model["adapters"]:
@@ -1710,6 +1968,25 @@ def self_test() -> int:
     custom_reads = [make_spec(item, 1, "auto") for item in parse_custom_read_items("40071:2, input:30001:4")]
     if len(custom_reads) != 2:
         raise SystemExit("custom register parser did not create expected reads")
+    rw_snapshot = store_rw_register_memory(
+        "sample.csv",
+        "",
+        [
+            {"modbus_address": "40170", "name": "SetEna", "rw_access": "RW", "type": "uint16"},
+            {"modbus_address": "30001", "name": "Status", "rw_access": "R", "type": "uint16"},
+        ],
+    )
+    if rw_snapshot["count"] != 1:
+        raise SystemExit("RW register memory should load exactly one read/write holding register")
+    if rw_snapshot["register_count"] != 2:
+        raise SystemExit("sheet register memory should retain readable context registers")
+    if rw_register_by_key(rw_snapshot["items"][0]["key"])["address"] != 40170:
+        raise SystemExit("RW register memory lookup returned the wrong register")
+    if not any(item["address"] == 30001 for item in rw_snapshot["registers"]):
+        raise SystemExit("sheet register memory did not retain non-RW monitor register")
+    sheet_reads = monitor_items_for_request({"monitor_register_keys": [rw_snapshot["registers"][-1]["key"]]})
+    if len(sheet_reads) != 1 or sheet_reads[0]["address"] != 30001:
+        raise SystemExit("loaded-sheet read selection did not return the selected monitor register")
     try:
         parse_custom_read_items("not-a-register")
     except ValueError as exc:

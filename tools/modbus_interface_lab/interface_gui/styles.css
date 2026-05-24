@@ -544,6 +544,52 @@ button.secondary {
   background: #f8faf8;
 }
 
+.rwRegisterLoad {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(130px, 0.6fr) minmax(92px, auto);
+  gap: 8px;
+  align-items: end;
+  padding: 9px;
+  border: 1px solid var(--line);
+  background: #f8faf8;
+}
+
+.rwRegisterSelect {
+  grid-column: 1 / -1;
+}
+
+.rwMonitorSelect {
+  grid-column: 1 / -1;
+}
+
+.rwMonitorSelect select {
+  min-height: 126px;
+}
+
+.rwMonitorActions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rwMonitorActions span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rwRegisterStatus {
+  grid-column: 1 / -1;
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .testChoiceIo {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -605,31 +651,6 @@ button.secondary {
   background: #f4eeee;
   border-color: #dfc5c2;
   color: var(--red);
-}
-
-.snippets {
-  margin-top: 10px;
-  display: grid;
-  gap: 7px;
-  max-height: 240px;
-  overflow: auto;
-}
-
-.snippet {
-  padding: 7px 8px;
-  border-left: 3px solid var(--blue);
-  border-radius: 0 6px 6px 0;
-  background: #f6f9fa;
-  color: #27312e;
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.snippet small {
-  display: block;
-  margin-bottom: 2px;
-  color: var(--muted);
-  font-size: 11px;
 }
 
 .signalBoard {
@@ -861,6 +882,7 @@ button.secondary {
 @media (max-width: 1200px) {
   .boardHeader,
   .registerRead,
+  .rwRegisterLoad,
   .testChoice,
   .testChoiceIo {
     grid-template-columns: 1fr;
@@ -918,6 +940,10 @@ button.secondary {
   }
 
   .registerRead {
+    grid-template-columns: 1fr;
+  }
+
+  .rwRegisterLoad {
     grid-template-columns: 1fr;
   }
 

@@ -8,6 +8,18 @@ const state = {
   testChoiceIds: {},
   case1ReadMode: "profile",
   case1CustomRegisters: "",
+  rwRegisters: {
+    file: null,
+    registers: [],
+    items: [],
+    selectedKey: "",
+    monitorKeys: [],
+    source: null,
+    sheetName: "",
+    sheets: [],
+    status: "No sheet loaded",
+    loading: false,
+  },
   signalBoard: {
     runId: null,
     samples: {},
@@ -102,18 +114,49 @@ function esc(value) {
 }
 
 async function api(path, options = {}) {
+  const defaultHeaders = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: { ...defaultHeaders, ...(options.headers || {}) },
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || response.statusText);
   return payload;
 }
 
+async function loadRwRegisterMemory() {
+  const memory = await api("/api/rw-registers");
+  applyRwRegisterMemory(memory, true);
+}
+
+function rwMemoryStatus(memory) {
+  const writable = memory.writable_count ?? memory.count ?? 0;
+  const readable = memory.register_count ?? (memory.registers || []).length;
+  if (!readable && !writable) return "No sheet loaded";
+  return `${writable} RW | ${readable} monitor registers loaded`;
+}
+
+function applyRwRegisterMemory(memory, keepMonitorSelection = false) {
+  const priorMonitorKeys = new Set(state.rwRegisters.monitorKeys);
+  const registers = memory.registers || memory.items || [];
+  state.rwRegisters.items = memory.items || [];
+  state.rwRegisters.registers = registers;
+  state.rwRegisters.source = memory.source || null;
+  state.rwRegisters.status = rwMemoryStatus(memory);
+  if (!state.rwRegisters.items.some((item) => item.key === state.rwRegisters.selectedKey)) {
+    state.rwRegisters.selectedKey = state.rwRegisters.items[0]?.key || "";
+  }
+  if (keepMonitorSelection && priorMonitorKeys.size) {
+    state.rwRegisters.monitorKeys = registers.filter((item) => priorMonitorKeys.has(item.key)).map((item) => item.key);
+  } else {
+    state.rwRegisters.monitorKeys = registers.map((item) => item.key);
+  }
+}
+
 async function loadModel() {
   try {
     state.model = await api("/api/model");
+    await loadRwRegisterMemory();
     populateAdapters(state.model.adapters, state.model.defaults.adapter);
     applyDefaults(state.model.defaults);
     $("sourceLine").textContent = `${state.model.use_case_markdown} | ${state.model.profile_file}`;
@@ -203,17 +246,60 @@ function selectedTestChoice(item) {
   return choices.find((choice) => choice.id === selectedId) || choices[0];
 }
 
+function selectedRwRegister() {
+  return state.rwRegisters.items.find((item) => item.key === state.rwRegisters.selectedKey) || null;
+}
+
+function loadedSheetRegisters() {
+  return state.rwRegisters.registers || [];
+}
+
+function selectedMonitorRegisters() {
+  const registers = loadedSheetRegisters();
+  if (!registers.length) return [];
+  const selectedKeys = new Set(state.rwRegisters.monitorKeys);
+  if (!selectedKeys.size) return registers;
+  return registers.filter((item) => selectedKeys.has(item.key));
+}
+
+function currentWriteValue() {
+  const input = $("write_value");
+  const value = Number(input?.value ?? state.model?.defaults?.write_value ?? 1);
+  return Number.isFinite(value) ? Math.max(0, Math.min(65535, value)) : 1;
+}
+
+function rwPlanItem(entry, suffix = "") {
+  return {
+    name: `${entry.name}${suffix}`,
+    table: entry.table,
+    address: entry.address,
+    count: Number(entry.count || 1),
+    data_type: entry.data_type || "raw",
+  };
+}
+
 function plannedReads(item) {
+  const rw = item.id === "14" ? selectedRwRegister() : null;
+  if (rw) {
+    const reads = selectedMonitorRegisters().map((entry) => rwPlanItem(entry));
+    const targetIncluded = reads.some((entry) => entry.table === rw.table && Number(entry.address) === Number(rw.address));
+    if (!targetIncluded) reads.unshift(rwPlanItem(rw, " readback"));
+    return reads;
+  }
   const choice = selectedTestChoice(item);
   return choice ? choice.reads || [] : item.reads || [];
 }
 
 function plannedWrites(item) {
+  const rw = item.id === "14" ? selectedRwRegister() : null;
+  if (rw) return [{ ...rwPlanItem(rw), count: 1, default: currentWriteValue() }];
   const choice = selectedTestChoice(item);
   return choice ? choice.writes || [] : item.writes || [];
 }
 
 function plannedExpected(item) {
+  const rw = item.id === "14" ? selectedRwRegister() : null;
+  if (rw) return [{ ...rwPlanItem(rw, " expected"), value: currentWriteValue() }];
   const choice = selectedTestChoice(item);
   return choice?.expected || [];
 }
@@ -262,7 +348,6 @@ function renderDetails() {
   $("detailText").textContent = item.detail || item.title;
   $("actionFlow").innerHTML = renderActionFlow(item);
   $("operationPlan").innerHTML = renderOperations(item);
-  $("csvSnippets").innerHTML = renderSnippets(item);
   $("monitorSelected").innerHTML = `${icons.monitor}<span>Monitor 1s</span>`;
   $("monitorSelected").title = `Live read every 1 second; stop manually or after ${MONITOR_CYCLES} cycles`;
   $("monitorSelected").classList.toggle("hidden", item.id !== "1");
@@ -270,6 +355,7 @@ function renderDetails() {
   $("cancelRun").innerHTML = `${icons.stop}<span>Cancel</span>`;
   bindActionButtons(item);
   bindTestChoiceControls(item);
+  bindRwRegisterControls(item);
   bindRegisterReadControls(item);
   updateWriteValueControl(item);
   renderSignalBoard(item);
@@ -337,15 +423,24 @@ async function transitionAction(item, actionId) {
 
 function renderOperations(item) {
   const chips = [];
+  const rw = item.id === "14" ? selectedRwRegister() : null;
   if (item.id === "1") {
     chips.push(renderRegisterReadControl());
-  } else if (testChoices(item).length) {
+    chips.push(renderRwRegisterControl(item));
+  } else if (item.id === "14") {
+    chips.push(renderRwRegisterControl(item));
+  } else if (testChoices(item).length && !rw) {
     chips.push(renderTestChoiceControl(item));
   }
-  for (const read of plannedReads(item)) {
+  const reads = plannedReads(item);
+  const readLimit = item.id === "14" || (item.id === "1" && state.case1ReadMode === "sheet") ? 14 : reads.length;
+  for (const read of reads.slice(0, readLimit)) {
     chips.push(
       `<span class="chip">${icons.read} ${esc(read.name)} ${esc(read.address)}:${esc(read.count)}</span>`,
     );
+  }
+  if (reads.length > readLimit) {
+    chips.push(`<span class="chip">+${esc(reads.length - readLimit)} monitor reads</span>`);
   }
   for (const write of plannedWrites(item)) {
     chips.push(
@@ -395,6 +490,88 @@ function renderTestChoiceControl(item) {
   `;
 }
 
+function renderRwRegisterControl(item) {
+  const isWriteUseCase = item?.id === "14";
+  const rw = state.rwRegisters;
+  const items = rw.items || [];
+  const registers = loadedSheetRegisters();
+  const monitorKeys = new Set(state.rwRegisters.monitorKeys);
+  const monitorCount = selectedMonitorRegisters().length;
+  const selected = selectedRwRegister();
+  const fileName = rw.file?.name || rw.source?.filename || "";
+  const sheetOptions = (rw.sheets || []).length
+    ? (rw.sheets || [])
+        .map(
+          (sheet) =>
+            `<option value="${esc(sheet.name)}"${sheet.name === rw.sheetName ? " selected" : ""}>${esc(sheet.name)}</option>`,
+        )
+        .join("")
+    : "";
+  const registerOptions = items.length
+    ? items
+        .map((entry) => {
+          const selectedAttr = entry.key === rw.selectedKey ? " selected" : "";
+          return `<option value="${esc(entry.key)}"${selectedAttr}>${esc(entry.label || `${entry.name} | ${entry.address}`)}</option>`;
+        })
+        .join("")
+    : '<option value="">No RW registers loaded</option>';
+  const monitorOptions = registers.length
+    ? registers
+        .map((entry) => {
+          const selectedAttr = monitorKeys.has(entry.key) || !monitorKeys.size ? " selected" : "";
+          return `<option value="${esc(entry.key)}"${selectedAttr}>${esc(entry.label || `${entry.name} | ${entry.address}`)}</option>`;
+        })
+        .join("")
+    : '<option value="">No monitor registers loaded</option>';
+  const status = rw.loading
+    ? "Scanning"
+    : selected
+      ? `${items.length} RW | ${registers.length} monitor | selected ${selected.name} ${selected.address}`
+      : rw.status;
+  const sheetSelect = sheetOptions
+    ? `
+      <label>
+        Sheet
+        <select id="rw_sheet_name" name="rw_sheet_name">
+          ${sheetOptions}
+        </select>
+      </label>
+    `
+    : "";
+  return `
+    <div class="rwRegisterLoad">
+      <label>
+        Register Sheet
+        <input id="rw_register_file" name="rw_register_file" type="file" accept=".csv,.tsv,.xlsx" />
+      </label>
+      ${sheetSelect}
+      <button id="rw_scan_sheet" class="secondary" type="button" ${rw.file && !rw.loading ? "" : "disabled"}>Scan Sheet</button>
+      ${
+        isWriteUseCase
+          ? `<label class="rwRegisterSelect">
+              Write Target
+              <select id="rw_register_key" name="rw_register_key" ${items.length ? "" : "disabled"}>
+                ${registerOptions}
+              </select>
+            </label>`
+          : ""
+      }
+      <label class="rwMonitorSelect">
+        Monitor Registers
+        <select id="monitor_register_keys" name="monitor_register_keys" multiple size="${Math.min(8, Math.max(3, registers.length || 3))}" ${registers.length ? "" : "disabled"}>
+          ${monitorOptions}
+        </select>
+      </label>
+      <div class="rwMonitorActions">
+        <button id="monitor_all_registers" class="secondary" type="button" ${registers.length ? "" : "disabled"}>All</button>
+        ${isWriteUseCase ? `<button id="monitor_target_register" class="secondary" type="button" ${selected ? "" : "disabled"}>Target</button>` : ""}
+        <span>${esc(monitorCount)} selected</span>
+      </div>
+      <span id="rw_register_status" class="rwRegisterStatus">${esc(fileName ? `${fileName} | ${status}` : status)}</span>
+    </div>
+  `;
+}
+
 function renderRegisterReadControl() {
   return `
     <div class="registerRead">
@@ -403,6 +580,7 @@ function renderRegisterReadControl() {
         <select id="read_mode" name="read_mode">
           <option value="profile">All Available</option>
           <option value="custom">Custom</option>
+          <option value="sheet">Loaded Sheet</option>
         </select>
       </label>
       <label>
@@ -420,6 +598,134 @@ function bindTestChoiceControls(item) {
     state.testChoiceIds[item.id] = select.value;
     renderDetails();
   });
+}
+
+function bindRwRegisterControls(item) {
+  if (!["1", "14"].includes(item.id)) return;
+  const fileInput = $("rw_register_file");
+  const sheetSelect = $("rw_sheet_name");
+  const scanButton = $("rw_scan_sheet");
+  const registerSelect = $("rw_register_key");
+  const monitorSelect = $("monitor_register_keys");
+  const monitorAllButton = $("monitor_all_registers");
+  const monitorTargetButton = $("monitor_target_register");
+
+  if (sheetSelect) {
+    sheetSelect.value = state.rwRegisters.sheetName;
+    sheetSelect.addEventListener("change", () => {
+      state.rwRegisters.sheetName = sheetSelect.value;
+    });
+  }
+
+  if (registerSelect) {
+    registerSelect.value = state.rwRegisters.selectedKey;
+    registerSelect.addEventListener("change", () => {
+      state.rwRegisters.selectedKey = registerSelect.value;
+      renderDetails();
+    });
+  }
+
+  if (monitorSelect) {
+    monitorSelect.addEventListener("change", () => {
+      state.rwRegisters.monitorKeys = Array.from(monitorSelect.selectedOptions).map((option) => option.value);
+      renderDetails();
+    });
+  }
+
+  if (monitorAllButton) {
+    monitorAllButton.addEventListener("click", () => {
+      state.rwRegisters.monitorKeys = loadedSheetRegisters().map((entry) => entry.key);
+      renderDetails();
+    });
+  }
+
+  if (monitorTargetButton) {
+    monitorTargetButton.addEventListener("click", () => {
+      const target = selectedRwRegister();
+      if (!target) return;
+      const targetRegister =
+        loadedSheetRegisters().find(
+          (entry) => entry.table === target.table && Number(entry.address) === Number(target.address),
+        ) || target;
+      state.rwRegisters.monitorKeys = [targetRegister.key];
+      renderDetails();
+    });
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener("change", async () => {
+      state.rwRegisters.file = fileInput.files[0] || null;
+      state.rwRegisters.sheets = [];
+      state.rwRegisters.sheetName = "";
+      if (!state.rwRegisters.file) {
+        state.rwRegisters.status = "No sheet loaded";
+        renderDetails();
+        return;
+      }
+      await loadRwWorkbookSheets();
+    });
+  }
+
+  if (scanButton) {
+    scanButton.addEventListener("click", scanRwRegisterSheet);
+  }
+}
+
+async function loadRwWorkbookSheets() {
+  const file = state.rwRegisters.file;
+  if (!file) return;
+  const isWorkbook = file.name.toLowerCase().endsWith(".xlsx");
+  if (!isWorkbook) {
+    state.rwRegisters.status = "Ready to scan";
+    renderDetails();
+    return;
+  }
+
+  state.rwRegisters.loading = true;
+  state.rwRegisters.status = "Reading sheets";
+  renderDetails();
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    const result = await api("/api/rw-registers/sheets", { method: "POST", body: form });
+    state.rwRegisters.sheets = result.sheets || [];
+    state.rwRegisters.sheetName = state.rwRegisters.sheets[0]?.name || "";
+    state.rwRegisters.status = state.rwRegisters.sheets.length ? "Workbook ready" : "Ready to scan";
+  } catch (error) {
+    state.rwRegisters.status = String(error);
+  } finally {
+    state.rwRegisters.loading = false;
+    renderDetails();
+  }
+}
+
+async function scanRwRegisterSheet() {
+  const file = state.rwRegisters.file;
+  if (!file) {
+    state.rwRegisters.status = "Choose a sheet first";
+    renderDetails();
+    return;
+  }
+
+  state.rwRegisters.loading = true;
+  state.rwRegisters.status = "Scanning sheet";
+  renderDetails();
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    if (state.rwRegisters.sheetName) form.append("sheet_name", state.rwRegisters.sheetName);
+    const memory = await api("/api/rw-registers/import", { method: "POST", body: form });
+    applyRwRegisterMemory(memory, false);
+    if (!state.rwRegisters.items.length && !state.rwRegisters.registers.length) {
+      state.rwRegisters.status = "No registers found";
+    }
+    if (selectedCase().id === "1") state.case1ReadMode = "sheet";
+  } catch (error) {
+    state.rwRegisters.status = String(error);
+  } finally {
+    state.rwRegisters.loading = false;
+    renderDetails();
+  }
 }
 
 function bindRegisterReadControls(item) {
@@ -450,7 +756,7 @@ function updateWriteValueControl(item) {
   const input = $("write_value");
   if (!input) return;
   const choice = selectedTestChoice(item);
-  const locked = Boolean(choice);
+  const locked = Boolean(choice && !(item.id === "14" && selectedRwRegister()));
   input.disabled = locked;
   input.title = locked ? "Selected test vector supplies fixed write values." : "";
   if (locked) {
@@ -532,7 +838,8 @@ function collectSignals(run) {
 function renderSignalBoard(item) {
   const board = $("signalBoard");
   if (!board) return;
-  if (item.id !== "1") {
+  const enabled = item.id === "1" || item.id === "14";
+  if (!enabled) {
     board.classList.add("hidden");
     return;
   }
@@ -542,15 +849,19 @@ function renderSignalBoard(item) {
   const total = signalEntries().length;
   const pinnedCount = Object.keys(state.signalBoard.pinned).length;
   const liveText = state.monitoring ? ` | live 1s monitor running | max ${MONITOR_CYCLES} cycles` : "";
+  const emptyText =
+    item.id === "14"
+      ? "Run use case 14 live to plot selected monitor registers before and after the write step."
+      : "Run use case 1 against hardware or the plant model, or start the 1s monitor.";
   $("signalBoardMeta").textContent =
     total > 0
       ? `${total} signals captured from run ${state.signalBoard.runId || ""} | ${pinnedCount} pinned${liveText}`
       : state.monitoring
         ? `Live 1s monitor started; waiting for the first read. Max ${MONITOR_CYCLES} cycles.`
-        : "Run use case 1 against hardware or the plant model, or start the 1s monitor.";
+        : emptyText;
   $("signalPlotMode").value = state.signalBoard.plotMode;
   $("signalFilter").value = state.signalBoard.filter;
-  $("startSignalMonitor").disabled = state.monitoring;
+  $("startSignalMonitor").disabled = item.id !== "1" || state.monitoring;
   $("startSignalMonitor").title = `Live read every 1 second; stop manually or after ${MONITOR_CYCLES} cycles`;
   $("stopSignalMonitor").disabled = !state.monitoring;
   $("stopSignalMonitor").title = "Stop the active live monitor run";
@@ -682,21 +993,6 @@ function bindSignalBoardControls() {
   });
 }
 
-function renderSnippets(item) {
-  const snippets = item.snippets || [];
-  if (!snippets.length) return '<div class="snippet"><small>No CSV match</small>No matching OCR line found.</div>';
-  return snippets
-    .map(
-      (row) => `
-        <div class="snippet">
-          <small>${esc(row.sheet_key)} | ${esc(row.source_image)} | line ${esc(row.line_index)}</small>
-          ${esc(row.text)}
-        </div>
-      `,
-    )
-    .join("");
-}
-
 function formPayload(id) {
   const numeric = [
     "port",
@@ -721,6 +1017,12 @@ function formPayload(id) {
   if (id === "1") {
     payload.read_mode = $("read_mode")?.value || state.case1ReadMode;
     payload.custom_registers = $("custom_registers")?.value || state.case1CustomRegisters;
+    if (payload.read_mode === "sheet") {
+      payload.monitor_register_keys = selectedMonitorRegisters().map((entry) => entry.key);
+    }
+  } else if (id === "14" && selectedRwRegister()) {
+    payload.rw_register_key = state.rwRegisters.selectedKey;
+    payload.monitor_register_keys = selectedMonitorRegisters().map((entry) => entry.key);
   } else {
     const item = state.model.use_cases.find((entry) => entry.id === id);
     const choice = item ? selectedTestChoice(item) : null;
@@ -769,6 +1071,11 @@ async function runSelected() {
   const item = selectedCase();
   setRunState("Starting", "running");
   $("runLog").textContent = "";
+  if (item.id === "1" || item.id === "14") {
+    state.signalBoard.samples = {};
+    state.signalBoard.runId = null;
+    renderSignalBoard(item);
+  }
   try {
     const payload = await api("/api/run", {
       method: "POST",
@@ -850,7 +1157,7 @@ async function pollRun() {
     const run = await api(`/api/run/${state.activeRunId}`);
     setRunState(`${run.status}${run.exit_code === null ? "" : ` (${run.exit_code})`}`, runTone(run.status));
     $("runLog").textContent = run.events.map(formatEvent).join("\n");
-    if (run.scenario_id === "1") {
+    if (run.scenario_id === "1" || run.scenario_id === "14") {
       state.signalBoard.runId = run.run_id;
       state.signalBoard.samples = collectSignals(run);
       renderSignalBoard(selectedCase());
@@ -858,7 +1165,7 @@ async function pollRun() {
     const done = ["completed", "failed", "cancelled"].includes(run.status);
     if (done) state.monitoring = false;
     if (!done) state.pollTimer = setTimeout(pollRun, 600);
-    else if (run.scenario_id === "1") renderSignalBoard(selectedCase());
+    else if (run.scenario_id === "1" || run.scenario_id === "14") renderSignalBoard(selectedCase());
   } catch (error) {
     state.monitoring = false;
     setRunState("Error", "error");
@@ -885,6 +1192,9 @@ $("adapter").addEventListener("change", () => {
 $("host").addEventListener("input", markConnectionDirty);
 $("port").addEventListener("input", markConnectionDirty);
 $("unit_id").addEventListener("input", markConnectionDirty);
+$("write_value").addEventListener("input", () => {
+  if (state.selectedId === "14" && selectedRwRegister()) renderDetails();
+});
 $("target_preset").addEventListener("change", applyTargetPreset);
 $("probeConnection").addEventListener("click", probeConnection);
 loadModel();

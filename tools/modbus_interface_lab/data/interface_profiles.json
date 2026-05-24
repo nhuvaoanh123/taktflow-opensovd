@@ -450,6 +450,53 @@
         {"name": "M1 service connectivity check", "sheet": "sheet_1", "table": "holding", "address": 40002, "count": 9, "data_type": "raw"},
         {"name": "M64093 custom/service range", "sheet": "sheet_64093", "table": "holding", "address": 42282, "count": 96, "data_type": "raw"}
       ]
+    },
+    "14": {
+      "kind": "write_verify",
+      "terms": ["RW", "readback", "SetEna", "SetCon"],
+      "test_choices": [
+        {
+          "id": "rw_write_zero_readback",
+          "label": "Write 0 and read back",
+          "input": "Write SetCon=0 and SetEna=0 to RW registers 40171 and 40170.",
+          "output": "Read back SetCon=0 and SetEna=0 from the same register addresses.",
+          "reads": [
+            {"name": "RW command register readback", "sheet": "sheet_804", "table": "holding", "address": 40170, "count": 2, "data_type": "raw"}
+          ],
+          "writes": [
+            {"name": "SetCon", "table": "holding", "address": 40171, "value": 0},
+            {"name": "SetEna", "table": "holding", "address": 40170, "value": 0}
+          ],
+          "expected": [
+            {"name": "SetEna", "table": "holding", "address": 40170, "value": 0},
+            {"name": "SetCon", "table": "holding", "address": 40171, "value": 0}
+          ]
+        },
+        {
+          "id": "rw_write_one_readback",
+          "label": "Write 1 and read back",
+          "input": "Write SetEna=1 and SetCon=1 to RW registers 40170 and 40171.",
+          "output": "Read back SetEna=1 and SetCon=1 from the same register addresses.",
+          "reads": [
+            {"name": "RW command register readback", "sheet": "sheet_804", "table": "holding", "address": 40170, "count": 2, "data_type": "raw"}
+          ],
+          "writes": [
+            {"name": "SetEna", "table": "holding", "address": 40170, "value": 1},
+            {"name": "SetCon", "table": "holding", "address": 40171, "value": 1}
+          ],
+          "expected": [
+            {"name": "SetEna", "table": "holding", "address": 40170, "value": 1},
+            {"name": "SetCon", "table": "holding", "address": 40171, "value": 1}
+          ]
+        }
+      ],
+      "reads": [
+        {"name": "RW command register readback", "sheet": "sheet_804", "table": "holding", "address": 40170, "count": 2, "data_type": "raw"}
+      ],
+      "writes": [
+        {"name": "SetEna", "table": "holding", "address": 40170, "default": 0},
+        {"name": "SetCon", "table": "holding", "address": 40171, "default": 0}
+      ]
     }
   }
 }

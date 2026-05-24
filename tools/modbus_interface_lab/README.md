@@ -10,7 +10,6 @@ This folder contains a small local lab for BMS interface testing:
 - `plant_gui/`: static assets for the plant-model GUI.
 - `data/interface_profiles.json`: executable read/write profiles.
 - `data/use_cases.md`: use-case catalog loaded by both tools.
-- `data/loadable_sheets/all_loadable_sheets.csv`: optional structured register data for plant-model import.
 
 The tools use only Python standard-library modules for raw Modbus and plant
 model operation. XLSX import uses a lightweight built-in parser for simple
@@ -53,7 +52,8 @@ Optional register-data import:
 
 1. Open the plant GUI.
 2. Use `Load Register File`.
-3. Select `tools/modbus_interface_lab/data/loadable_sheets/all_loadable_sheets.csv`.
+3. Select a reviewed CSV, TSV, or XLSX register table with address/count/value
+   style columns.
 4. Confirm the import count in the page summary.
 
 ## Start The Interface Console
@@ -69,6 +69,10 @@ Open:
 ```text
 http://127.0.0.1:8768/
 ```
+
+The selected-use-case detail pane shows `Scenario`, `Actions`, and
+`Operations`. Source CSV/OCR evidence snippets are not displayed in the
+frontend.
 
 ## Run Use Case 1 Against The Plant
 
@@ -102,6 +106,16 @@ Expected evidence in `Run Log`:
 
 The Signal Board should show one captured signal and render a plot for register
 `40071`.
+
+## Use Case 1 With A Loaded Register Sheet
+
+Use case `1` can also load a customer CSV, TSV, or XLSX register sheet from the
+interface console. For XLSX files, choose one workbook sheet and click
+`Scan Sheet`; the loaded-sheet memory is scoped to that selected sheet only.
+
+After scanning, set `Read Source` to `Loaded Sheet`. The `Monitor Registers`
+list contains the readable rows from the selected sheet. Keep all selected, or
+select only the signals you want to poll and plot in the Signal Board.
 
 ## Plot, Pin, And Monitor
 
@@ -139,6 +153,47 @@ The preset sets:
 
 Use the same use-case and register controls. This opens Modbus/TCP sessions
 directly against the local plant model.
+
+## Use Case 14 RW Register Sheet Test
+
+Use case `14` can load a customer register sheet into the interface console,
+turn explicit `RW` holding-register rows into selectable write targets, and use
+all readable rows from the same sheet as monitor/plot context.
+
+Supported upload formats:
+
+- CSV
+- TSV
+- XLSX
+
+Expected sheet columns can use the same names accepted by the plant import
+path, including address-style columns such as `address`, `register`, or
+`modbus_address`, name columns such as `name` or `label`, and access columns
+such as `rw_access`, `access`, or `rw`.
+
+Workflow:
+
+1. Select use case `14`.
+2. Use `Register Sheet` to choose the customer CSV, TSV, or XLSX file.
+3. If the file is XLSX, choose one workbook sheet. The scan is scoped to that
+   selected sheet only.
+4. Click `Scan Sheet`.
+5. Pick one loaded `Write Target`; this list is filtered to explicit `RW`
+   holding registers.
+6. In `Monitor Registers`, keep all loaded readable registers selected, or use
+   `Target` to monitor only the write target.
+7. Set `Write Value`.
+8. Keep `Dry Run` checked to review the plan, or uncheck `Dry Run` and check
+   `Arm Writes` only when intentionally testing live hardware write/readback.
+9. Click `Run`.
+
+The scan keeps selected register metadata in the backend process memory only.
+It does not write the uploaded customer sheet into the repository. The dynamic
+run reads the selected monitor context, writes the selected target value when
+writes are armed, reads the monitor context again, and verifies the target
+readback against the written value. The Signal Board plots the live monitor
+values captured from `read_ok` events, so it can show wider impact around the
+write step.
 
 ## SunSpec BMS Mode
 
@@ -239,6 +294,9 @@ Interface console:
 - `POST /api/run/<run_id>/cancel`
 - `POST /api/backend/status`
 - `POST /api/backend/read`
+- `GET /api/rw-registers`
+- `POST /api/rw-registers/sheets`
+- `POST /api/rw-registers/import`
 
 Plant model:
 

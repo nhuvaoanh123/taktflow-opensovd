@@ -320,6 +320,36 @@ python .\tools\modbus_interface_lab\plant_model.py --self-test
 python .\tools\modbus_interface_lab\interface_console.py --self-test
 ```
 
+## Playwright E2E
+
+The browser e2e playbook is isolated under `playwright/` so the Modbus
+interface lab keeps its runtime Python files separate from the Node test
+harness.
+
+From the repository root:
+
+```powershell
+cd .\tools\modbus_interface_lab\playwright
+npm install
+npm run test:e2e
+```
+
+For a visible browser run:
+
+```powershell
+npm run test:e2e:headed
+```
+
+The Playwright config starts or reuses:
+
+- `plant_model.py` on HTTP port `8766` and Modbus port `1502`
+- `interface_console.py` on HTTP port `8768`
+
+The specs are under `playwright/tests/e2e/`. Use case 1 has focused assertions
+for both the Plant API backend path and the direct Plant Modbus path. The
+core-use-cases spec smoke-runs use cases 1 through 13 through the Plant API
+backend adapter.
+
 ## Privacy And Naming
 
 The package uses repository-relative paths in the UI and API model responses.

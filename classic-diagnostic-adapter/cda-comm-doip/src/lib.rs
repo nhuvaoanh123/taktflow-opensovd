@@ -26,6 +26,7 @@ use doip_definitions::{
     header::ProtocolVersion,
     payload::{DiagnosticMessage, DiagnosticMessageNack, DoipPayload, GenericNack},
 };
+use futures::FutureExt;
 use thiserror::Error;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 
@@ -163,7 +164,7 @@ impl<T: EcuAddressProvider + DoipComParamProvider> DoipDiagGateway<T> {
         shutdown_signal: F,
     ) -> Result<Self, DoipGatewaySetupError>
     where
-        F: Future<Output = ()> + Clone + Send + 'static,
+        F: Future<Output = ()> + Send + 'static,
     {
         let DoipConfig {
             protocol_version,
@@ -195,15 +196,23 @@ impl<T: EcuAddressProvider + DoipComParamProvider> DoipDiagGateway<T> {
 
         tracing::info!("Initializing DoipDiagGateway");
 
-        let mut socket = create_socket(tester_ip, gateway_port)?;
+        let mut socket = create_socket(
+            tester_ip,
+            gateway_port,
+            doip_connection_config.protocol_version,
+        )?;
         let mask = create_netmask(tester_ip, tester_subnet)?;
 
+        let shared_shutdown_signal = shutdown_signal.shared();
+
+        // Keep `mut`: the Taktflow static-gateway fallback (ADR-0010)
+        // reassigns `gateways` when broadcast discovery returns empty.
         let mut gateways = vir_vam::get_vehicle_identification::<T, F>(
             &mut socket,
             mask,
             gateway_port,
             &ecus,
-            shutdown_signal.clone(),
+            shared_shutdown_signal.clone(),
         )
         .await
         .map_err(|err| {
@@ -310,7 +319,7 @@ impl<T: EcuAddressProvider + DoipComParamProvider> DoipDiagGateway<T> {
             gateway.clone(),
             variant_detection,
             send_timeout,
-            shutdown_signal,
+            shared_shutdown_signal,
         )
         .await;
 
@@ -907,6 +916,7 @@ fn create_netmask(tester_ip: &str, tester_subnet: &str) -> Result<u32, DoipGatew
 fn create_socket(
     tester_ip: &str,
     gateway_port: u16,
+    protocol_version: ProtocolVersion,
 ) -> Result<DoIPUdpSocket, DoipGatewaySetupError> {
     let tester_ip = match tester_ip {
         "127.0.0.1" => "0.0.0.0",
@@ -959,7 +969,7 @@ fn create_socket(
     })?;
 
     let std_sock: std::net::UdpSocket = socket.into();
-    DoIPUdpSocket::new(std_sock).map_err(|e| {
+    DoIPUdpSocket::new(std_sock, protocol_version).map_err(|e| {
         DoipGatewaySetupError::SocketCreationFailed(format!(
             "DoipGateway: Failed to create DoIP socket from std socket: {e:?}"
         ))

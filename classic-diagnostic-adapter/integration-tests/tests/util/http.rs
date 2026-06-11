@@ -19,6 +19,7 @@ use serde::de::DeserializeOwned;
 
 use crate::util::TestingError;
 
+#[derive(Debug)]
 pub(crate) struct Response {
     #[allow(dead_code)]
     status: StatusCode,
@@ -165,7 +166,7 @@ pub(crate) async fn send_cda_request(
     headers: Option<&HeaderMap>,
     query_params: Option<&QueryParams>,
 ) -> Result<Response, TestingError> {
-    let base_url = format!("http://{}:{}", &config.server.address, config.server.port);
+    let base_url = format!("http://{}:{}", config.server.address, config.server.port);
     let url_params = query_params
         .unwrap_or(&QueryParams::default())
         .to_query_string();

@@ -32,11 +32,11 @@ pub(crate) async fn get_vehicle_identification<T, F>(
     netmask: u32,
     gateway_port: u16,
     ecus: &Arc<HashMap<String, RwLock<T>>>,
-    shutdown_signal: F,
+    mut shutdown_signal: futures::future::Shared<F>,
 ) -> Result<Vec<DoipTarget>, DiagServiceError>
 where
     T: EcuAddressProvider,
-    F: Future<Output = ()> + Clone + Send + 'static,
+    F: Future<Output = ()> + Send + 'static,
 {
     // send VIR
     tracing::info!("Broadcasting VIR");
@@ -56,7 +56,7 @@ where
     let vam_timeout = Duration::from_secs(1); // not the actual timeout from the spec ...
 
     tokio::select! {
-        () = shutdown_signal.clone() => {
+        () = &mut shutdown_signal => {
             tracing::info!("Shutdown signal received");
         },
         () = tokio::time::sleep(vam_timeout) => {
@@ -106,10 +106,10 @@ pub(crate) async fn listen_for_vams<T, F>(
     gateway: DoipDiagGateway<T>,
     variant_detection: mpsc::Sender<Vec<String>>,
     send_timeout: Duration,
-    shutdown_signal: F,
+    mut shutdown_signal: futures::future::Shared<F>,
 ) where
     T: EcuAddressProvider + DoipComParamProvider,
-    F: Future<Output = ()> + Clone + Send + 'static,
+    F: Future<Output = ()> + Send + 'static,
 {
     #[derive(Debug)]
     struct DoipMessageContext {
@@ -261,7 +261,11 @@ pub(crate) async fn listen_for_vams<T, F>(
             let broadcast_socket = if connection_config.source_ip == broadcast_ip {
                 Arc::clone(&gateway.socket)
             } else {
-                match crate::create_socket(broadcast_ip, gateway_port) {
+                match crate::create_socket(
+                    broadcast_ip,
+                    gateway_port,
+                    doip_connection_config.protocol_version,
+                ) {
                     Ok(sock) => Arc::new(Mutex::new(sock)),
                     Err(e) => {
                         tracing::warn!(
@@ -279,9 +283,8 @@ pub(crate) async fn listen_for_vams<T, F>(
 
             loop {
                 let mut socket = broadcast_socket.lock().await;
-                let signal = shutdown_signal.clone();
                 tokio::select! {
-                    () = signal => {
+                    () = &mut shutdown_signal => {
                         break
                     },
                     Some(Ok((doip_msg, source_addr))) = socket.recv() => {

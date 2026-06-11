@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Revision | Part II, Draft 1.21 |
+| Revision | Part II, Draft 1.22 |
 | Status | **DRAFT** — pending OEM answers to open questions in §II.9 |
 | Audience | AI worker or human engineer landing cold; assumes familiarity with [MASTER-PLAN.md](MASTER-PLAN.md) Parts 0–13. |
 | Relation | Extends [MASTER-PLAN.md](MASTER-PLAN.md). Part I gets Taktflow to a bench-validated, conformance-tested, documented reference stack (M10). Part II gets it into a customer vehicle at production. |
@@ -346,6 +346,20 @@ odx-converter landed both watched PRs `#34`/`#35` (PROD-13 review due);
 `inc_diagnostics` stays absorb-only with a new C++ API PR `#4`. The `Q-PROD-11`
 keep-standalone decision is reaffirmed. Details in
 [`docs/upstream/eclipse-opensovd-status-2026-06-11.md`](docs/upstream/eclipse-opensovd-status-2026-06-11.md).
+
+**Merge note (2026-06-11).** The consolidation pass following the check
+executed (per [`docs/upstream/consolidation-plan-2026-06-11.md`](docs/upstream/consolidation-plan-2026-06-11.md)):
+the stranded 2026-05-01 working-tree state was gate-verified and
+committed; the CDA correctness/security slice (`64c8834`, `885d831`,
+`5ab66a1`, `68a67a9`, `0720f41`, openssl 0.10.80) was absorbed with one
+ADR-0010-preserving conflict resolution, deferring only `6b21111` (MDD
+regeneration toolchain); PROD-12 spec data filters landed natively in
+`sovd-server`; PROD-19 version discovery landed as the unversioned
+`/version-info` endpoint plus `SovdClient::version_info` /
+`select_version`; `odx-converter/` synced to upstream `dc04859`;
+`Q-PROD-11b` closed with three new delta reports. All gates green on
+the control PC; laptop merge-back via the
+`taktflow/upstream-check-2026-06-11` origin branch.
 
 ### II.6.16 PROD-16 Fault-lib feature parity (debounce / enabling conditions / aging / IPC retry)
 
@@ -858,7 +872,7 @@ Each open question is a blocker on one or more capability specs and/or execution
 | Q-PROD-9 | **ODX-converter production posture — keep the vendored Kotlin/JVM [`odx-converter/`](odx-converter/) on the CI side only (offline MDD compile, JVM never ships to vehicle), ship the JVM into the production deployment boundary, or port to Rust to drop the JVM dep?** Upstream tool is pre-1.0 but actively developed. | PROD-13, P13 step table |
 | Q-PROD-11 | **Answered 2026-05-01 by [`docs/upstream/deltas/opensovd-core-main-side-by-side.md`](docs/upstream/deltas/opensovd-core-main-side-by-side.md): keep Taktflow `opensovd-core/` standalone; do not absorb upstream `main` as a second vendored subtree.** Cherry-pick individual patterns instead: topology/data-provider boundaries for PROD-8/PROD-12, hyper/tower client and Unix connector shape for PROD-19, generic authn/authz and Rego option for PROD-5, and Unix socket/systemd socket-activation patterns for P12/P13. Upstream `main` remains a reference watched under PROD-15. | PROD-15, PROD-5, PROD-8, PROD-12, PROD-17, PROD-19, §II.11.2 tracking |
 | Q-PROD-10f | **Fate of the `SovdClient` trait** in [`opensovd-core/sovd-interfaces/src/traits/client.rs`](opensovd-core/sovd-interfaces/src/traits/client.rs) — delete outright or retain as design-only documentation (`#[allow(dead_code)]` + module-level comment pointing at ADR-0033). Per ADR-0033 no production code implements this trait; decision is a one-line commit message in PROD-19.1, not a plan blocker. | PROD-19.1 commit |
-| Q-PROD-11b | **Audit of the remaining presumed-vendored directories (`opensovd/`, `odx-converter/`, `cpp-bindings/`, `dlt-tracing-lib/`) — are they genuinely vendored snapshots of their upstream repos, or are any of them (like `opensovd-core/`) Taktflow-authored codebases under a name-colliding directory?** Resolved so far: `opensovd/` is a vendored governance/design snapshot and is synced to upstream `2f7b1c0606f4`; `fault-lib/` is vendored; `classic-diagnostic-adapter/` is vendored/upstream-shaped with local patches; `uds2sovd-proxy/` is a vendored upstream scaffold with a Taktflow product implementation overlaid. Remaining audits: `odx-converter/`, `cpp-bindings/`, and `dlt-tracing-lib/`. Answer drives whether "we already own the code" framing for PROD-13 / PROD-14 / Part I §5.1.5 holds or needs further correction. | §II.11.1 table, PROD-13, PROD-14, Part I §5.1.5 |
+| Q-PROD-11b | **ANSWERED 2026-06-11 — all seven OpenSOVD-shaped subtrees are now audited; none besides `opensovd-core/` is a name collision.** Final three audits: `odx-converter/` is a vendored snapshot at upstream `0cce8bb` plus four Taktflow-authored community-schema files, synced to upstream `dc04859` on 2026-06-11 ([delta report](docs/upstream/deltas/odx-converter.md)); `cpp-bindings/` is a vendored snapshot at `0a2313f` with zero divergence — upstream still has only its initial README ([delta report](docs/upstream/deltas/cpp-bindings.md)); `dlt-tracing-lib/` is a vendored snapshot at v0.1.2 with nine SPDX-header-only local patches, kept as-is ([delta report](docs/upstream/deltas/dlt-tracing-lib.md)). Earlier resolutions: `opensovd/` vendored + synced to `2f7b1c0606f4`; `fault-lib/` vendored; `classic-diagnostic-adapter/` vendored with local patches; `uds2sovd-proxy/` vendored scaffold with Taktflow product overlay. The "we already own the code" framing for PROD-13 / PROD-14 / Part I §5.1.5 holds. | §II.11.1 table, PROD-13, PROD-14, Part I §5.1.5 |
 
 Answers are captured at `docs/plan/part2-open-questions-answers.md` as they arrive.
 
@@ -942,11 +956,11 @@ Taktflow collapses most of the Eclipse OpenSOVD component set into top-level dir
 | [`opensovd/`](opensovd/) | [eclipse-opensovd/opensovd](https://github.com/eclipse-opensovd/opensovd) (governance, ADRs, MVP scope) | **vendored governance/design snapshot (confirmed and synced 2026-05-01 to upstream `2f7b1c0606f4`)**; see [`docs/upstream/deltas/opensovd.md`](docs/upstream/deltas/opensovd.md) | — |
 | [`opensovd-core/`](opensovd-core/) | [eclipse-opensovd/opensovd-core](https://github.com/eclipse-opensovd/opensovd-core) | **not vendored — name collision (confirmed 2026-04-21).** Taktflow's `opensovd-core/` is the Taktflow-authored `sovd-*` stack (`sovd-server`, `sovd-gateway`, `sovd-dfm`, `sovd-interfaces`, `sovd-client`, `sovd-main`, `sovd-ml`, `sovd-extended-vehicle`, `sovd-covesa`, `sovd-db`). The independent upstream implementation is now on upstream `main` after `opensovd-core#34` (2026-04-28); it is not absorbed into Taktflow. | Rust (both, independently) |
 | [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/) | [eclipse-opensovd/classic-diagnostic-adapter](https://github.com/eclipse-opensovd/classic-diagnostic-adapter) | **vendored/upstream-shaped subtree with local patches (confirmed 2026-05-01)**; see [`docs/upstream/deltas/classic-diagnostic-adapter.md`](docs/upstream/deltas/classic-diagnostic-adapter.md) | Rust |
-| [`odx-converter/`](odx-converter/) | [eclipse-opensovd/odx-converter](https://github.com/eclipse-opensovd/odx-converter) (PDX → MDD, pre-1.0) | presumed vendored snapshot (not yet audited vs. fork) | Kotlin / JVM |
+| [`odx-converter/`](odx-converter/) | [eclipse-opensovd/odx-converter](https://github.com/eclipse-opensovd/odx-converter) (PDX → MDD, pre-1.0) | vendored snapshot, synced to upstream `dc04859` 2026-06-11 + four Taktflow community-schema files ([delta](docs/upstream/deltas/odx-converter.md)) | Kotlin / JVM |
 | [`fault-lib/`](fault-lib/) | [eclipse-opensovd/fault-lib](https://github.com/eclipse-opensovd/fault-lib) | **vendored snapshot (confirmed 2026-04-21 — tree shapes match; src files diverge with local edits)** | Rust |
 | [`uds2sovd-proxy/`](uds2sovd-proxy/) | [eclipse-opensovd/uds2sovd-proxy](https://github.com/eclipse-opensovd/uds2sovd-proxy) | **vendored upstream scaffold with Taktflow product implementation overlaid (confirmed 2026-05-01)**; see [`docs/upstream/deltas/uds2sovd-proxy.md`](docs/upstream/deltas/uds2sovd-proxy.md) | Rust |
-| [`cpp-bindings/`](cpp-bindings/) | [eclipse-opensovd/cpp-bindings](https://github.com/eclipse-opensovd/cpp-bindings) (C++ SOVD core APIs) | presumed vendored snapshot (not yet audited vs. fork) | C++ |
-| [`dlt-tracing-lib/`](dlt-tracing-lib/) | [eclipse-opensovd/dlt-tracing-lib](https://github.com/eclipse-opensovd/dlt-tracing-lib) | presumed vendored snapshot (not yet audited vs. fork) | Rust |
+| [`cpp-bindings/`](cpp-bindings/) | [eclipse-opensovd/cpp-bindings](https://github.com/eclipse-opensovd/cpp-bindings) (C++ SOVD core APIs) | vendored snapshot at `0a2313f`, zero divergence, at upstream head ([delta](docs/upstream/deltas/cpp-bindings.md)) | C++ |
+| [`dlt-tracing-lib/`](dlt-tracing-lib/) | [eclipse-opensovd/dlt-tracing-lib](https://github.com/eclipse-opensovd/dlt-tracing-lib) | vendored snapshot at v0.1.2 + nine SPDX-header-only local patches, kept as-is ([delta](docs/upstream/deltas/dlt-tracing-lib.md)) | Rust |
 
 **Audit status.** Checked so far: `opensovd-core/` (name-collision, confirmed), `opensovd/` (vendored governance/design snapshot, confirmed and synced), `fault-lib/` (vendored, confirmed), `classic-diagnostic-adapter/` (vendored/upstream-shaped with local patches, confirmed), and `uds2sovd-proxy/` (vendored scaffold with local product implementation overlaid, confirmed). The remaining three rows labelled "presumed vendored" (`odx-converter/`, `cpp-bindings/`, `dlt-tracing-lib/`) inherit that claim from earlier plan text and have not been verified at the tree or file level. A second name collision in that group is possible but not expected; audit is tracked as `Q-PROD-11b` (§II.9).
 
@@ -1044,6 +1058,30 @@ Carried forward from research §II.10, prioritized as **M (mandatory for product
 ---
 
 ## II.13 Revision Log
+
+- **2026-06-11, Draft 1.22** - executed the consolidation pass from
+  [`docs/upstream/consolidation-plan-2026-06-11.md`](docs/upstream/consolidation-plan-2026-06-11.md).
+  Gate-verified and committed the stranded 2026-05-01 work (opensovd
+  subtree sync, CDA #287/#267/#273 merge, PROD-20.5 fixtures, May delta
+  reports). Absorbed the CDA correctness/security slice toward upstream
+  `53f8032` (DID echo-byte check #327, slice-bounds fix, DoIP UDP
+  protocol version, TOCTOU fix, shutdown_signal #351, openssl 0.10.80;
+  deferred 6b21111 pending MDD regeneration). Landed PROD-12 spec data
+  filters in `sovd-server` (categories/groups/tags, groups-precedence
+  per spec, axum-extra repeated params, OpenAPI regenerated). Landed
+  PROD-19 version discovery: unversioned `/version-info` endpoint, new
+  `VersionInfo`/`SovdServerInfo` spec DTOs with snapshot goldens, and
+  `SovdClient::version_info`/`select_version` on the reqwest transport
+  per ADR-0033. Synced `odx-converter/` to upstream `dc04859`
+  (SNREF/ODXLINK resolution, MDD metadata, schema-compat CI), keeping
+  the four Taktflow community-schema files. Answered `Q-PROD-11b` with
+  delta reports for `odx-converter`, `cpp-bindings`, and
+  `dlt-tracing-lib`; updated SS II.11.1. Recorded the RUSTSEC-2025-0134
+  rustls-pemfile posture in `deny.toml`. Known limitation: full CDA
+  default-feature workspace check and the JVM odx-converter build
+  remain deferred to the primary workstation; local stable clippy
+  surfaces pre-existing pedantic findings in `sovd-ml`/`backends/cda.rs`
+  unrelated to this pass (CI-pinned 1.88 is authoritative).
 
 - **2026-06-11, Draft 1.21** - executed the `PROD-15` monthly upstream check
   and consolidation review. Added

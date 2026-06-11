@@ -124,6 +124,23 @@ Feature/API drift (needs a deliberate slice, collides with local overlay):
 7. `inc_diagnostics` absorb-only posture holds; monthly cadence continues
    (new C++ API PR `#4` strengthens the do-not-build-competing-lib rationale).
 
+## Execution Addendum - same day
+
+The consolidation pass planned in
+[`consolidation-plan-2026-06-11.md`](consolidation-plan-2026-06-11.md)
+was executed after this check (CONS-01..CONS-09): the stranded
+2026-05-01 work was gate-verified and committed; the CDA
+correctness/security slice was absorbed (only `6b21111` deferred,
+pending MDD regeneration toolchain); PROD-12 data filters and PROD-19
+version discovery landed natively; `odx-converter/` was synced to
+`dc04859`; `Q-PROD-11b` was closed with delta reports for
+[`odx-converter`](deltas/odx-converter.md),
+[`cpp-bindings`](deltas/cpp-bindings.md), and
+[`dlt-tracing-lib`](deltas/dlt-tracing-lib.md); the rustls-pemfile
+posture was recorded in `deny.toml`. Decision 1 above ("no merge in
+this check") describes the audit step only - the same-day absorption
+pass is documented in Part II revision log Draft 1.22.
+
 ## Next Upstream Work
 
 1. Commit (or merge back to the primary workstation) the outstanding

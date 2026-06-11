@@ -96,7 +96,7 @@ tasks.shadowJar {
 
 fun determineCommitHash(): String? {
     // when built in a pipeline, always prefer the hash from the pipeline
-    val commitHash = System.getenv("GITHUB_SHA")
+    val commitHash = System.getenv("GITHUB_SHA") ?: System.getenv("CI_COMMIT_SHA")
     if (commitHash != null) {
         return commitHash
     }
@@ -122,7 +122,7 @@ fun Manifest.addAttributes() {
     val timestamp = Instant.ofEpochSecond(epochSeconds).toString()
 
     attributes(
-        "Implementation-Title" to project.name,
+        "Implementation-Title" to "odx-converter",
         "Implementation-Version" to rootProject.version,
         "Implementation-Commit" to commitHash,
         "Implementation-BuildDate" to timestamp,

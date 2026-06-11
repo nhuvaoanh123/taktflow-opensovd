@@ -132,16 +132,32 @@ class FileConverter(
 
         val inputFileData = mutableMapOf<String, ZipEntryInfos>()
 
+        val linkCollector = ODXLinkCollector()
+
         ZipFile(inputFile).use { zipFile ->
             val readParseFileDuration =
                 measureTime {
-                    fillInputFileData(zipFile, odxData, inputFileData)
+                    fillInputFileData(zipFile, odxData, inputFileData, linkCollector)
                 }
             logger.fine("Reading and parsing into objects took $readParseFileDuration")
 
             val odxRawSize = inputFileData.filter { it.key.contains(".odx") }.map { it.value.size }.sum()
 
-            val odxCollection = ODXCollection(odxData, odxRawSize)
+            val odxCollection = ODXCollectionGroup(odxData, odxRawSize, options, logger, linkCollector.linkToFile)
+
+            if (options.withAudiences.isNotEmpty()) {
+                val validAudiences = odxCollection.additionalAudiences.map { it.shortname }
+                val invalidAudiences =
+                    options.withAudiences.filter { requested ->
+                        validAudiences.none { it.equals(requested, ignoreCase = true) }
+                    }
+                if (invalidAudiences.isNotEmpty()) {
+                    logger.warning(
+                        "The following audiences specified with --with-audience are not defined in the diagnostic description: " +
+                            "${invalidAudiences.joinToString(", ")}. Valid audiences are: ${validAudiences.joinToString(", ")}",
+                    )
+                }
+            }
 
             var compressionDuration: Duration = Duration.ZERO
             val plugins = retrievePlugins()
@@ -159,7 +175,14 @@ class FileConverter(
                     mddFile.putMetadata("created", getCurrentTimeReproducible().toString())
                     mddFile.putMetadata("source", inputFile.name)
                     mddFile.putMetadata("options", Json.encodeToString(options))
-                    // additional metadata?
+                    mddFile.putMetadata(
+                        "converter",
+                        "${ManifestReader.title} ${ManifestReader.version} (${ManifestReader.commitHash.take(7)})",
+                    )
+                    mddFile.putMetadata(
+                        "plugins",
+                        plugins.joinToString(", ") { "${it.getPluginIdentifier()}@${it.getPluginVersion()}" },
+                    )
 
                     val pluginHandler =
                         PluginApiHandler(mddFile, logger) { chunk, pluginApiHandler ->
@@ -211,6 +234,7 @@ class FileConverter(
         zipFile: ZipFile,
         odxData: MutableMap<String, ODX>,
         inputFileData: MutableMap<String, ZipEntryInfos>,
+        linkCollector: ODXLinkCollector,
     ) {
         zipFile.entries().toList().forEach { entry ->
             if (entry.isDirectory) {
@@ -223,6 +247,7 @@ class FileConverter(
         }
 
         val unmarshaller = context.createUnmarshaller()
+        unmarshaller.listener = linkCollector
 
         var hadParseErrors = false
         // Output ODX validation errors to log file
@@ -244,6 +269,7 @@ class FileConverter(
             if (!entry.key.contains(".odx")) {
                 return@forEach
             }
+            linkCollector.currentFile = entry.key
             val odx =
                 entry.value.inputStream.invoke().use {
                     unmarshaller
@@ -300,13 +326,21 @@ class Converter : CliktCommand(name = "odx-converter") {
 
     val logOnConsole: Boolean by option("--log-on-console")
         .help(
-            "Whether to also log to console when processing multiple files (if only one file is processed, logging is always done on console in addition to the log file)",
+            "Whether to also log to console when processing multiple files (if only one file is processed, " +
+                "logging is always done on console in addition to the log file)",
         ).flag(default = false)
 
     val parallel: Int by option("-j", "--parallel")
         .help("Maximum number of files to process in parallel (default: number of available processors)")
         .int()
         .default(Runtime.getRuntime().availableProcessors())
+
+    val withAudiences: List<String> by option("--with-audience")
+        .help(
+            "Includes services only when audience short names match - can be used multiple times, services without " +
+                "any enabled audience will always be included, but services with enabled audiences will only be " +
+                "included if at least one of the audience entries matches",
+        ).multiple()
 
     private var hadErrors: Boolean = false
     private val context: JAXBContext =
@@ -324,7 +358,8 @@ class Converter : CliktCommand(name = "odx-converter") {
 
     override fun run() {
         if (version) {
-            println("Version: " + ManifestReader.version)
+            println(ManifestReader.title)
+            println("Version: " + ManifestReader.version + "+" + ManifestReader.commitHash.take(7))
             println("Built: " + ManifestReader.buildDate)
             println("Commit: " + ManifestReader.commitHash)
             exitProcess(0)
@@ -373,6 +408,7 @@ class Converter : CliktCommand(name = "odx-converter") {
                                                         it.second,
                                                     )
                                                 },
+                                            withAudiences = withAudiences,
                                         )
                                     val converter = FileConverter(logger, context)
                                     converter.convert(inputFile, outFile, options, stats)
@@ -410,7 +446,7 @@ class Converter : CliktCommand(name = "odx-converter") {
 
 fun main(args: Array<String>) {
     val converter = Converter()
-    println("${converter.commandName} - version: ${ManifestReader.version}\n")
+    println("${ManifestReader.title} - version: ${ManifestReader.version}+${ManifestReader.commitHash.take(7)}\n")
     if (args.isEmpty()) {
         converter.main(arrayOf("--help"))
     } else {

@@ -21,17 +21,17 @@ class ChunkBuilder {
     fun createJobsChunks(
         logger: Logger,
         inputData: Map<String, ZipEntryInfos>,
-        odx: ODXCollection,
+        odx: ODXCollectionGroup,
         options: ConverterOptions,
     ): List<Chunk.Builder> {
         if (!options.includeJobFiles) {
             return emptyList()
         }
         val jobFiles =
-            odx.singleEcuJobs.values
+            odx.singleEcuJobs
                 .flatMap { it.progcodes?.progcode ?: emptyList() }
                 .mapNotNull { it.codefile }
-        val libraries = odx.libraries.values.mapNotNull { it.codefile }
+        val libraries = odx.libraries.mapNotNull { it.codefile }
         val files = (jobFiles + libraries).toSet()
         return files.mapNotNull { fileName ->
             val data = inputData[fileName]
@@ -52,7 +52,7 @@ class ChunkBuilder {
     fun createPartialChunks(
         logger: Logger,
         inputData: Map<String, ZipEntryInfos>,
-        odx: ODXCollection,
+        odx: ODXCollectionGroup,
         options: ConverterOptions,
     ): List<Chunk.Builder> {
         if (options.partialJobFiles.isEmpty()) {
@@ -60,10 +60,10 @@ class ChunkBuilder {
         }
 
         val jobFiles =
-            odx.singleEcuJobs.values
+            odx.singleEcuJobs
                 .flatMap { it.progcodes?.progcode ?: emptyList() }
                 .mapNotNull { it.codefile }
-        val libraries = odx.libraries.values.mapNotNull { it.codefile }
+        val libraries = odx.libraries.mapNotNull { it.codefile }
         val files = (jobFiles + libraries).toSet()
         return files.flatMap { jobFileName ->
             options.partialJobFiles
@@ -113,7 +113,7 @@ class ChunkBuilder {
 
     fun createEcuDataChunk(
         logger: Logger,
-        odxCollection: ODXCollection,
+        odxCollection: ODXCollectionGroup,
         options: ConverterOptions,
     ): Chunk.Builder {
         val dw = DatabaseWriter(logger = logger, odx = odxCollection, options = options)

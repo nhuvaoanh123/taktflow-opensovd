@@ -1,0 +1,83 @@
+session:
+  id: prod20-uds2sovd-tier1-bench-v1
+  deliverable: PROD-20.5
+  recorded_date: 2026-05-01
+  purpose: Tier-1-facing UDS-over-DoIP bench replay for the Taktflow UDS-to-SOVD proxy.
+
+tester:
+  profile: raw-uds-over-doip
+  source_address: 0x0E00
+  target_logical_address: 0x0001
+  compatibility:
+    - any unmodified UDS tester that can send raw ISO 14229 service bytes over ISO 13400 DoIP
+    - open-source DoIP/UDS clients when configured for the same logical addresses
+
+doip:
+  bind_address: 127.0.0.1
+  protocol_version: 2
+  proxy_logical_address: 0x0E80
+
+target:
+  component_id: cvc
+  mdd_path: opensovd-core/deploy/pi/cda-mdd/CVC00000.mdd
+  logical_address: 0x0001
+  did_routes:
+    "0xF190": vin
+  routine_routes:
+    "0x0000": motor-self-test
+
+sovd_stub:
+  vin: TFTPROD20VIN00012
+  routine_execution_id: exec-prod20-bench
+  routine_result_hex: A5
+  dtcs:
+    - code: C00100
+      status: 0x09
+
+performance:
+  startup_ready_ms: 1500
+  steady_state_p95_ms: 25
+  per_request_max_ms: 100
+
+steps:
+  - name: read-vin-did
+    uds_request_hex: 22 F1 90
+    expected_response_hex: 62 F1 90 54 46 54 50 52 4F 44 32 30 56 49 4E 30 30 30 31 32
+    expected_sovd:
+      method: GET
+      path: /sovd/v1/components/cvc/data/vin
+
+  - name: start-motor-self-test
+    uds_request_hex: 31 01 00 00
+    expected_response_hex: 71 01 00 00 A5
+    expected_sovd:
+      method: POST
+      path: /sovd/v1/components/cvc/operations/motor-self-test/executions
+
+  - name: read-motor-self-test-result
+    uds_request_hex: 31 03 00 00
+    expected_response_hex: 71 03 00 00 A5
+    expected_sovd:
+      method: GET
+      path: /sovd/v1/components/cvc/operations/motor-self-test/executions/exec-prod20-bench
+
+  - name: read-dtc-count
+    uds_request_hex: 19 01 FF
+    expected_response_hex: 59 01 FF 01 00 01
+    expected_sovd:
+      method: GET
+      path: /sovd/v1/components/cvc/faults
+
+  - name: read-dtc-list
+    uds_request_hex: 19 02 FF
+    expected_response_hex: 59 02 FF C0 01 00 09
+    expected_sovd:
+      method: GET
+      path: /sovd/v1/components/cvc/faults
+
+  - name: clear-all-dtcs
+    uds_request_hex: 14 FF FF FF
+    expected_response_hex: "54"
+    expected_sovd:
+      method: DELETE
+      path: /sovd/v1/components/cvc/faults

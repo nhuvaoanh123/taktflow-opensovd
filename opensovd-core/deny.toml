@@ -28,6 +28,7 @@ feature-depth = 1
 ignore = [
   { id = "RUSTSEC-2023-0071", reason = "Marvin side-channel impacts RSA CRT decryption; crate used only for signing/verification (RS256). No key gen/decryption paths executed." },
   { id = "RUSTSEC-2026-0097", reason = "Impact should be low as we do not call the affected code path; Updated locked dependency to unaffected version as far as possible; remaining affected version is transitive from jsonwebtoken and we need to wait until they provide an updated version." },
+  { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is unmaintained (informational). Transitive only via rumqttc 0.24 / rustls-native-certs on the Extended Vehicle MQTT path; server TLS does not use it. rumqttc 0.25.1 still depends on it, so no upgrade removes it. Revisit when rumqttc drops the dependency (upstream opensovd-core swapped to rustls-pki-types in their TLS path, commit 6508b54)." },
 ]
 
 # This section is considered when running `cargo deny check licenses`

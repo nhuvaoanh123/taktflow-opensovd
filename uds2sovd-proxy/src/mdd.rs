@@ -190,7 +190,7 @@ impl LoadedTarget {
         let dynamic_parameters = filter_dynamic_parameters(
             parsed.into_json()?.data,
             self.manager
-                .get_service_parameter_metadata(&diag_comm.name)?,
+                .get_request_parameter_metadata(&diag_comm.name)?,
         );
 
         Ok(ResolvedService {
@@ -288,10 +288,11 @@ fn filter_dynamic_parameters(
     let dynamic_names = metadata
         .into_iter()
         .filter_map(|metadata| match metadata.param_type {
-            ParameterTypeMetadata::Value => Some(metadata.name),
+            ParameterTypeMetadata::Value { .. } => Some(metadata.name),
             ParameterTypeMetadata::CodedConst { .. } | ParameterTypeMetadata::PhysConst { .. } => {
                 None
             }
+            ParameterTypeMetadata::MatchingRequestParam { .. } => None,
         })
         .collect::<Vec<_>>();
 
@@ -343,7 +344,7 @@ mod tests {
             cda_interfaces::ServiceParameterMetadata {
                 name: "argument".to_owned(),
                 semantic: None,
-                param_type: ParameterTypeMetadata::Value,
+                param_type: ParameterTypeMetadata::default(),
             },
         ];
 

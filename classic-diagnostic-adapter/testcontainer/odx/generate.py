@@ -37,6 +37,7 @@ from metadata import (
 )
 from routine_services import add_motor_self_test_service
 from reset import add_reset_services
+from routine_control import add_routine_control_services
 from security_access import add_security_access_services
 from shared import add_common_datatypes, add_state_charts, add_common_diag_comms
 from dtc_services import (
@@ -175,8 +176,10 @@ def add_base_variant(
     add_dtc_read_services(base_variant)
     # 14
     add_dtc_clear_services(base_variant)
-    # 31 01 42 00 - Clear User-Defined DTC Memory
+    # 31 - Clear User-Defined DTC Memory
     add_dtc_clear_user_memory_service(base_variant)
+    # 31 - Operations (SelfTest, CalibrateSensors)
+    add_routine_control_services(base_variant)
     # 31 01 52 10 - Phase 5 bench motor self test
     add_motor_self_test_service(base_variant)
 

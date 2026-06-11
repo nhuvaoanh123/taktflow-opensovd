@@ -19,12 +19,13 @@ use cda_interfaces::{
     STRINGS, SecurityAccess, ServicePayload, StringId,
     datatypes::{
         AddressingMode, CLEAR_FAULT_MEM_POS_RESPONSE_SID, ComParams, ComplexComParamValue,
-        ComponentConfigurationsInfo, ComponentDataInfo, DTC_CODE_BIT_LEN, DatabaseNamingConvention,
-        DiagnosticServiceAffixPosition, DtcLookup, DtcReadInformationFunction, RetryPolicy, SdSdg,
-        TesterPresentSendType, semantics, single_ecu,
+        ComponentConfigurationsInfo, ComponentDataInfo, ComponentOperationsInfo, DTC_CODE_BIT_LEN,
+        DatabaseNamingConvention, DiagnosticServiceAffixPosition, DtcLookup,
+        DtcReadInformationFunction, RetryPolicy, RoutineSubfunctions, SdSdg, TesterPresentSendType,
+        semantics, single_ecu,
     },
     diagservices::{DiagServiceResponse, DiagServiceResponseType, FieldParseError, UdsPayloadData},
-    dlt_ctx, service_ids,
+    dlt_ctx, service_ids, subfunction_ids,
     util::{self, ends_with_ignore_ascii_case, starts_with_ignore_ascii_case},
 };
 use cda_plugin_security::SecurityPlugin;
@@ -354,7 +355,7 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
         }
 
         let sdgs = if let Some(service) = service {
-            self.lookup_diag_service(service)
+            self.lookup_diag_service(service, None, None)
                 .await?
                 .diag_comm()
                 .and_then(|sdg| sdg.sdgs())
@@ -466,8 +467,11 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
         diag_service: &cda_interfaces::DiagComm,
         payload: &ServicePayload,
         map_to_json: bool,
+        functional_group_name: Option<&str>,
     ) -> Result<DiagServiceResponseStruct, DiagServiceError> {
-        let mapped_service = self.lookup_diag_service(diag_service).await?;
+        let mapped_service = self
+            .lookup_diag_service(diag_service, functional_group_name, None)
+            .await?;
         let mapped_diag_comm = mapped_service
             .diag_comm()
             .map(datatypes::DiagComm)
@@ -593,7 +597,7 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
         } else {
             // Returning a response here, because even valid databases may not define a
             // response for a service.
-            tracing::debug!("No matching response found for SID: {sid}");
+            tracing::warn!("No matching response found for SID: {sid}");
             Ok(DiagServiceResponseStruct {
                 service: diag_service.clone(),
                 data: payload.data.clone(),
@@ -625,8 +629,11 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
         diag_service: &cda_interfaces::DiagComm,
         security_plugin: &DynamicPlugin,
         data: Option<UdsPayloadData>,
+        functional_group_name: Option<&str>,
     ) -> Result<ServicePayload, DiagServiceError> {
-        let mapped_service = self.lookup_diag_service(diag_service).await?;
+        let mapped_service = self
+            .lookup_diag_service(diag_service, functional_group_name, None)
+            .await?;
         let mapped_dc = mapped_service
             .diag_comm()
             .ok_or(DiagServiceError::InvalidDatabase(
@@ -639,8 +646,11 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
                 diag_service.name
             )))?;
 
-        self.check_service_access(security_plugin, &mapped_service)
-            .await?;
+        // Skip the service access check for functional calls
+        if functional_group_name.is_none() {
+            self.check_service_access(security_plugin, &mapped_service)
+                .await?;
+        }
 
         let mut mapped_params = request
             .params()
@@ -654,16 +664,16 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
 
         mapped_params.sort_by(|a, b| {
             match (a.has_byte_position(), b.has_byte_position()) {
-                // Both have a position → normal comparison
+                // Both have a position -> normal comparison
                 (true, true) => a
                     .byte_position()
                     .cmp(&b.byte_position())
                     .then(a.bit_position().cmp(&b.bit_position())),
-                // Only a has no position → a goes after b
+                // Only a has no position -> a goes after b
                 (false, true) => std::cmp::Ordering::Greater,
-                // Only b has no position → b goes after a
+                // Only b has no position -> b goes after a
                 (true, false) => std::cmp::Ordering::Less,
-                // Neither has a position → preserve order
+                // Neither has a position -> preserve order
                 (false, false) => std::cmp::Ordering::Equal,
             }
         });
@@ -752,7 +762,7 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
         .and_then(|service| service.try_into().ok())
         .ok_or_else(|| {
             DiagServiceError::NotFound(format!(
-                "Service with functional class '{func_class_name}' and SID 0x{service_id:02X} not \
+                "Service with functional class '{func_class_name}' and SID {service_id:#04X} not \
                  found"
             ))
         })
@@ -837,6 +847,7 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
                         .trim_short_name_affixes(short_name),
                     type_,
                     lookup_name: Some(short_name.to_owned()),
+                    subfunction_id: None,
                 })
             })
             .collect();
@@ -854,8 +865,18 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
         &self,
         service_id: u8,
         name: &str,
+        functional_group_name: Option<&str>,
     ) -> Result<DiagComm, DiagServiceError> {
-        let services = self.lookup_services_by_sid(service_id)?;
+        let services = if let Some(fg_name) = functional_group_name {
+            self.get_services_from_functional_group_and_parent_refs(fg_name, |service| {
+                service
+                    .request_id()
+                    .is_some_and(|req_id| req_id == service_id)
+            })?
+        } else {
+            self.lookup_services_by_sid(service_id)?
+        };
+
         let result = services.iter().find_map(|service| {
             let diag_comm = service.diag_comm()?;
             let short_name = diag_comm.short_name()?;
@@ -880,6 +901,7 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
                 name: short_name.to_owned(),
                 type_: DiagCommType::try_from(service_id).ok()?,
                 lookup_name: Some(short_name.to_owned()),
+                subfunction_id: None,
             })
         });
 
@@ -940,6 +962,68 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
                 Some(self.diag_comm_to_component_data_info(&(diag_comm.into())))
             })
             .collect())
+    }
+
+    /// Returns all `RoutineControl` (SID 0x31) services for the functional group,
+    /// with flags indicating whether Stop (0x02) and `RequestResults` (0x03)
+    /// subfunctions are also defined.
+    fn get_functional_group_operations_info(
+        &self,
+        security_plugin: &DynamicPlugin,
+        functional_group_name: &str,
+    ) -> Result<Vec<ComponentOperationsInfo>, DiagServiceError> {
+        let routine_ctrl_services = self.get_services_from_functional_group_and_parent_refs(
+            functional_group_name,
+            |service| {
+                service
+                    .request_id()
+                    .is_some_and(|id| id == service_ids::ROUTINE_CONTROL)
+                    && Self::is_service_visible(security_plugin, service)
+            },
+        )?;
+
+        Ok(self.filter_and_transform_operations(routine_ctrl_services))
+    }
+
+    /// Check which additional `RoutineControl` subfunctions are defined for a specific routine
+    /// within a functional group.
+    ///
+    /// Mirrors `get_routine_subfunctions` but scopes the lookup to the given functional group's
+    /// diag layer instead of the ECU variant.
+    ///
+    /// # Errors
+    /// Returns `DiagServiceError::NotFound` if the functional group does not exist, or if the
+    /// Start (0x01) subfunction for the given service name is not found within it.
+    fn get_functional_group_routine_subfunctions(
+        &self,
+        security_plugin: &DynamicPlugin,
+        functional_group_name: &str,
+        service_name: &str,
+    ) -> Result<RoutineSubfunctions, DiagServiceError> {
+        let all_rc_services = self.get_services_from_functional_group_and_parent_refs(
+            functional_group_name,
+            |service| {
+                service
+                    .request_id()
+                    .is_some_and(|id| id == service_ids::ROUTINE_CONTROL)
+                    && Self::is_service_visible(security_plugin, service)
+                    && service.diag_comm().is_some_and(|dc| {
+                        dc.short_name().is_some_and(|name| {
+                            self.trim_routine_name(name)
+                                .eq_ignore_ascii_case(service_name)
+                        })
+                    })
+            },
+        )?;
+
+        if all_rc_services.is_empty() {
+            return Err(DiagServiceError::NotFound(format!(
+                "No RoutineControl service with name '{service_name}' found in functional group \
+                 '{functional_group_name}'"
+            )));
+        }
+
+        Ok(Self::subfunction_flags_from_services(&all_rc_services))
     }
 
     fn get_components_single_ecu_jobs_info(&self) -> Vec<ComponentDataInfo> {
@@ -1075,7 +1159,7 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
         &self,
         diag_service: &cda_interfaces::DiagComm,
     ) -> Result<String, DiagServiceError> {
-        let mapped_service = self.lookup_diag_service(diag_service).await?;
+        let mapped_service = self.lookup_diag_service(diag_service, None, None).await?;
         let request = mapped_service
             .request()
             .ok_or(DiagServiceError::RequestNotSupported(format!(
@@ -1260,6 +1344,57 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
         Ok(result)
     }
 
+    /// Returns all `RoutineControl` (SID 0x31) services for the given ECU,
+    /// with flags indicating whether Stop (0x02) and `RequestResults` (0x03)
+    /// subfunctions are also defined.
+    fn get_components_operations_info(
+        &self,
+        security_plugin: &DynamicPlugin,
+    ) -> Vec<ComponentOperationsInfo> {
+        let routine_control_services = self.get_services_from_variant_and_parent_refs(|service| {
+            service
+                .request_id()
+                .is_some_and(|id| id == service_ids::ROUTINE_CONTROL)
+                && Self::is_service_visible(security_plugin, service)
+        });
+
+        self.filter_and_transform_operations(routine_control_services)
+    }
+
+    /// Check which additional `RoutineControl` subfunctions are defined for a specific routine.
+    /// Looks for services named `{service_name}_Stop` (0x02) and
+    /// `{service_name}_RequestResults` (0x03).
+    ///
+    /// # Errors
+    /// Returns `DiagServiceError::NotFound` if the Start (0x01) subfunction for the given
+    /// service name is not found in the ECU description.
+    fn get_routine_subfunctions(
+        &self,
+        service_name: &str,
+        security_plugin: &DynamicPlugin,
+    ) -> Result<RoutineSubfunctions, DiagServiceError> {
+        let all_rc_services = self.get_services_from_variant_and_parent_refs(|service| {
+            service
+                .request_id()
+                .is_some_and(|id| id == service_ids::ROUTINE_CONTROL)
+                && Self::is_service_visible(security_plugin, service)
+                && service.diag_comm().is_some_and(|dc| {
+                    dc.short_name().is_some_and(|name| {
+                        self.trim_routine_name(name)
+                            .eq_ignore_ascii_case(service_name)
+                    })
+                })
+        });
+
+        if all_rc_services.is_empty() {
+            return Err(DiagServiceError::NotFound(format!(
+                "No RoutineControl service found for routine '{service_name}'"
+            )));
+        }
+
+        Ok(Self::subfunction_flags_from_services(&all_rc_services))
+    }
+
     fn lookup_dtc_services(
         &self,
         service_types: Vec<DtcReadInformationFunction>,
@@ -1328,6 +1463,7 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
                             name: service_short_name.clone(),
                             type_: DiagCommType::Faults,
                             lookup_name: Some(service_short_name),
+                            subfunction_id: None,
                         },
                         dtcs,
                     },
@@ -1341,7 +1477,7 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
         service: &cda_interfaces::DiagComm,
         security_plugin: &DynamicPlugin,
     ) -> Result<(), DiagServiceError> {
-        let mapped_service = self.lookup_diag_service(service).await?;
+        let mapped_service = self.lookup_diag_service(service, None, None).await?;
         self.check_service_access(security_plugin, &mapped_service)
             .await
     }
@@ -1436,48 +1572,13 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
             response_type,
         })
     }
-    fn get_service_parameter_metadata(
+    fn get_request_parameter_metadata(
         &self,
         service_name: &str,
     ) -> Result<Vec<cda_interfaces::ServiceParameterMetadata>, DiagServiceError> {
         use cda_interfaces::ServiceParameterMetadata;
-        fn extract_param_type_metadata(
-            param: &datatypes::Parameter<'_>,
-            service_name: &str,
-            name: &str,
-        ) -> Result<cda_interfaces::ParameterTypeMetadata, DiagServiceError> {
-            use cda_interfaces::ParameterTypeMetadata;
 
-            let param_type = match param.param_type()? {
-                datatypes::ParamType::CodedConst => param
-                    .specific_data_as_coded_const()
-                    .and_then(|cc| cc.coded_value())
-                    .map_or(ParameterTypeMetadata::Value, |v| {
-                        ParameterTypeMetadata::CodedConst {
-                            coded_value: v.to_owned(),
-                        }
-                    }),
-                datatypes::ParamType::PhysConst => param
-                    .specific_data_as_phys_const()
-                    .and_then(|pc| pc.phys_constant_value())
-                    .map_or_else(
-                        || {
-                            tracing::warn!(
-                                "Service '{}' param '{}' PHYS-CONST has no value",
-                                service_name,
-                                name
-                            );
-                            ParameterTypeMetadata::Value
-                        },
-                        |v| ParameterTypeMetadata::PhysConst {
-                            phys_constant_value: v.to_owned(),
-                        },
-                    ),
-                _ => ParameterTypeMetadata::Value,
-            };
-
-            Ok(param_type)
-        }
+        use crate::diag_kernel::param_metadata::extract_request_param_type;
 
         let service = self.get_meta_data_service(service_name)?;
         let Some(request) = service.request() else {
@@ -1508,7 +1609,7 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
                 })?;
 
                 let semantic = param.semantic().map(ToOwned::to_owned);
-                let param_type = extract_param_type_metadata(&param, service_name, &name).ok()?;
+                let param_type = extract_request_param_type(&param, service_name, &name).ok()?;
 
                 Some(ServiceParameterMetadata {
                     name,
@@ -1518,6 +1619,81 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
             })
             .collect();
 
+        Ok(metadata)
+    }
+
+    /// Get parameter metadata for the POS-RESPONSE of a service.
+    ///
+    /// Returns one [`ResponseParameterInfo`] per parameter in the first positive
+    /// response definition, including byte layout (position, size) and type
+    /// information. This is the response-side counterpart of
+    /// [`get_request_parameter_metadata`] (which returns request parameters).
+    ///
+    /// For MUX DOP parameters, the MUX cases are expanded: each case's inner
+    /// structure parameters are returned with their names prefixed by the case
+    /// short name
+    fn get_response_parameter_metadata(
+        &self,
+        service_name: &str,
+    ) -> Result<Vec<cda_interfaces::ResponseParameterInfo>, DiagServiceError> {
+        use cda_interfaces::ResponseParameterInfo;
+
+        use crate::diag_kernel::param_metadata::{
+            byte_size_from_coded_const, byte_size_from_value_param, expand_mux_cases,
+            extract_response_param_type,
+        };
+
+        let service = self.get_meta_data_service(service_name)?;
+        let pos_responses = match service.pos_responses() {
+            Some(r) if !r.is_empty() => r,
+            _ => return Ok(Vec::new()),
+        };
+
+        let Some(params) = pos_responses.iter().next().and_then(|r| r.params()) else {
+            return Ok(Vec::new());
+        };
+
+        let mut metadata: Vec<ResponseParameterInfo> = Vec::new();
+        for raw_param in params {
+            let param = datatypes::Parameter(raw_param);
+            let Some(name) = param.short_name().map(ToOwned::to_owned) else {
+                continue;
+            };
+            let semantic = param.semantic().map(ToOwned::to_owned);
+            let param_type = extract_response_param_type(&param);
+
+            let byte_size = match &param_type {
+                cda_interfaces::ParameterTypeMetadata::Value { .. } => {
+                    let (size, is_mux) = byte_size_from_value_param(&param);
+                    if is_mux {
+                        metadata.extend(expand_mux_cases(&param, param.byte_position()));
+                        continue;
+                    }
+                    size
+                }
+                cda_interfaces::ParameterTypeMetadata::CodedConst { .. } => {
+                    byte_size_from_coded_const(&param)
+                }
+                cda_interfaces::ParameterTypeMetadata::MatchingRequestParam { byte_length } => {
+                    Some(*byte_length)
+                }
+                cda_interfaces::ParameterTypeMetadata::PhysConst { .. } => None,
+            };
+            metadata.push(ResponseParameterInfo {
+                name,
+                semantic,
+                param_type,
+                byte_position: param.byte_position(),
+                bit_position: param.bit_position(),
+                byte_size,
+            });
+        }
+
+        tracing::debug!(
+            "Service '{}' has {} positive-response parameters (MUX-expanded)",
+            service_name,
+            metadata.len()
+        );
         Ok(metadata)
     }
 
@@ -1598,7 +1774,7 @@ impl<S: SecurityPlugin> cda_interfaces::EcuManager for EcuManager<S> {
         payload: &ServicePayload,
         map_to_json: bool,
     ) -> Result<DiagServiceResponseStruct, DiagServiceError> {
-        let mapped_service = self.lookup_diag_service(diag_service).await?;
+        let mapped_service = self.lookup_diag_service(diag_service, None, None).await?;
         let request = mapped_service
             .request()
             .ok_or(DiagServiceError::RequestNotSupported(format!(
@@ -1757,6 +1933,43 @@ impl<S: SecurityPlugin> cda_interfaces::DoipComParamProvider for EcuManager<S> {
 }
 
 impl<S: SecurityPlugin> EcuManager<S> {
+    /// Trims affixes from a routine control service name to derive the base routine name.
+    fn trim_routine_name(&self, name: &str) -> String {
+        let name_trimmed = self
+            .database_naming_convention
+            .trim_service_name_affixes(service_ids::ROUTINE_CONTROL, name.to_owned());
+        self.database_naming_convention
+            .trim_short_name_affixes(&name_trimmed)
+    }
+
+    /// Derives `has_stop` / `has_request_results` flags by folding over an
+    /// already-fetched slice of `DiagService`s.
+    ///
+    /// The caller is responsible for pre-filtering the slice to only the
+    /// services that belong to the routine of interest. This helper does not
+    /// perform any database traversal.
+    fn subfunction_flags_from_services(
+        services: &[datatypes::DiagService<'_>],
+    ) -> RoutineSubfunctions {
+        let mask = u32::from(cda_interfaces::DEFAULT_SUBFUNCTION_MASK);
+        let mut has_stop = false;
+        let mut has_request_results = false;
+        for service in services {
+            if let Some((sf, _)) = service.request_sub_function_id() {
+                let masked = sf & mask;
+                if masked == u32::from(subfunction_ids::routine::STOP) {
+                    has_stop = true;
+                } else if masked == u32::from(subfunction_ids::routine::REQUEST_RESULTS) {
+                    has_request_results = true;
+                }
+            }
+        }
+        RoutineSubfunctions {
+            has_stop,
+            has_request_results,
+        }
+    }
+
     /// Load diagnostic database for given path
     ///
     /// The created `DiagServiceManager` stores the loaded database as well as some
@@ -2117,11 +2330,92 @@ impl<S: SecurityPlugin> EcuManager<S> {
     }
 
     /// Lookup a diagnostic service by its diag comm definition.
-    /// This is treated special with a cache because it is used for *every* UDS request.
+    ///
+    /// When `functional_group_name` is `Some`, the service is looked up in the
+    /// named functional group's `DiagLayer` and its parent references instead of
+    /// the ECU variant. When `None`, the lookup uses the ECU variant (with
+    /// caching, because it is used for *every* UDS request).
+    ///
+    /// `subfunction_mask` is an optional bitmask applied to both the incoming
+    /// `DiagComm::subfunction_id` and the database service's subfunction value
+    /// before comparing.  When it is `None`, [`DEFAULT_SUBFUNCTION_MASK`] (`0x7F`) is
+    /// used, which masks out the suppress-positive-response bit (bit 7).
     pub(in crate::diag_kernel) async fn lookup_diag_service(
         &self,
         diag_comm: &cda_interfaces::DiagComm,
+        functional_group_name: Option<&str>,
+        subfunction_mask: Option<u8>,
     ) -> Result<datatypes::DiagService<'_>, DiagServiceError> {
+        // When a subfunction id is provided, match on base name + subfunction id
+        // rather than constructing a name suffix. The cache key encodes both so
+        // that a subfunction-id lookup and a plain name lookup for the same base
+        // name never collide.
+        if let Some(sf_id) = diag_comm.subfunction_id {
+            let base_name = diag_comm.name.to_lowercase();
+            let effective_mask =
+                subfunction_mask.unwrap_or(cda_interfaces::DEFAULT_SUBFUNCTION_MASK);
+            let mask_u32 = u32::from(effective_mask);
+
+            let prefixes = diag_comm.type_.service_prefixes();
+            let predicate = |service: &datatypes::DiagService<'_>| {
+                service.diag_comm().is_some_and(|dc| {
+                    dc.short_name()
+                        .is_some_and(|name| starts_with_ignore_ascii_case(name, &base_name))
+                }) && service
+                    .request_id()
+                    .is_some_and(|sid| prefixes.contains(&sid))
+                    && service
+                        .request_sub_function_id()
+                        .is_some_and(|(id, _)| (id & mask_u32) == (u32::from(sf_id) & mask_u32))
+            };
+
+            if let Some(fg_name) = functional_group_name {
+                return self
+                    .get_services_from_functional_group_and_parent_refs(fg_name, predicate)?
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| {
+                        DiagServiceError::NotFound(format!(
+                            "Diagnostic service '{base_name}' with subfunction {sf_id:#04X} not \
+                             found in functional group '{fg_name}'"
+                        ))
+                    });
+            }
+
+            let cache_key = format!("{base_name}:sf{sf_id}:m{effective_mask:02X}");
+            let lookup_id = STRINGS.get_or_insert(&cache_key);
+
+            if let Some(Some(location)) = self.db_cache.diag_services.read().await.get(&lookup_id) {
+                return match self.get_service_by_location(location) {
+                    Some(service) => Ok(service),
+                    None => Err(DiagServiceError::NotFound(format!(
+                        "Cached diagnostic service '{base_name}' with subfunction {sf_id:#04X} \
+                         not found at stored location"
+                    ))),
+                };
+            }
+
+            if let Some((service, location)) = self.search_with_location(&predicate) {
+                self.db_cache
+                    .diag_services
+                    .write()
+                    .await
+                    .insert(lookup_id, Some(location));
+                return Ok(service);
+            }
+
+            self.db_cache
+                .diag_services
+                .write()
+                .await
+                .insert(lookup_id, None);
+
+            return Err(DiagServiceError::NotFound(format!(
+                "Diagnostic service '{base_name}' with subfunction {sf_id:#04X} not found in \
+                 variant or parent refs"
+            )));
+        }
+
         let lookup_name = if let Some(name) = &diag_comm.lookup_name {
             name.to_owned()
         } else {
@@ -2129,19 +2423,13 @@ impl<S: SecurityPlugin> EcuManager<S> {
                 DiagCommAction::Read => format!("{}_Read", diag_comm.name),
                 DiagCommAction::Write => format!("{}_Write", diag_comm.name),
                 DiagCommAction::Start => format!("{}_Start", diag_comm.name),
+                DiagCommAction::RequestResults => {
+                    format!("{}_RequestResults", diag_comm.name)
+                }
+                DiagCommAction::Stop => format!("{}_Stop", diag_comm.name),
             }
         }
         .to_lowercase();
-        let lookup_id = STRINGS.get_or_insert(&lookup_name);
-
-        if let Some(Some(location)) = self.db_cache.diag_services.read().await.get(&lookup_id) {
-            return match self.get_service_by_location(location) {
-                Some(service) => Ok(service),
-                None => Err(DiagServiceError::NotFound(format!(
-                    "Cached diagnostic service '{lookup_name}' not found at stored location"
-                ))),
-            };
-        }
 
         let prefixes = diag_comm.type_.service_prefixes();
         let predicate = |service: &datatypes::DiagService<'_>| {
@@ -2152,6 +2440,30 @@ impl<S: SecurityPlugin> EcuManager<S> {
                 .request_id()
                 .is_some_and(|sid| prefixes.contains(&sid))
         };
+
+        if let Some(fg_name) = functional_group_name {
+            return self
+                .get_services_from_functional_group_and_parent_refs(fg_name, predicate)?
+                .into_iter()
+                .next()
+                .ok_or_else(|| {
+                    DiagServiceError::NotFound(format!(
+                        "Diagnostic service '{lookup_name}' not found in functional group \
+                         '{fg_name}'"
+                    ))
+                });
+        }
+
+        let lookup_id = STRINGS.get_or_insert(&lookup_name);
+
+        if let Some(Some(location)) = self.db_cache.diag_services.read().await.get(&lookup_id) {
+            return match self.get_service_by_location(location) {
+                Some(service) => Ok(service),
+                None => Err(DiagServiceError::NotFound(format!(
+                    "Cached diagnostic service '{lookup_name}' not found at stored location"
+                ))),
+            };
+        }
 
         // Search and cache the location
         if let Some((service, location)) = self.search_with_location(&predicate) {
@@ -3190,14 +3502,11 @@ impl<S: SecurityPlugin> EcuManager<S> {
                 let (case_name, struct_) = selected_case
                     .or_else(|| {
                         mux_dop.default_case().and_then(|default_case| {
-                            default_case.short_name().and_then(|name| {
-                                default_case
-                                    .structure()
-                                    .and_then(|s| {
-                                        s.specific_data_as_structure().map(|s| Some(s.into()))
-                                    })
-                                    .map(|struct_| (name, struct_))
-                            })
+                            default_case
+                                .short_name()
+                                .zip(default_case.structure().and_then(|s| {
+                                    s.specific_data_as_structure().map(|s| Some(s.into()))
+                                }))
                         })
                     })
                     .ok_or_else(|| {
@@ -4719,6 +5028,59 @@ impl<S: SecurityPlugin> EcuManager<S> {
 
         self.set_default_states().await
     }
+
+    /// Filter and transform services into `ComponentOperationsInfo`
+    /// This is used for operation lookup and metadata.
+    fn filter_and_transform_operations(
+        &self,
+        services: Vec<datatypes::DiagService<'_>>,
+    ) -> Vec<ComponentOperationsInfo> {
+        services
+            .into_iter()
+            // filter out services that don't have a DiagComm with a short name
+            // and crate a tuple of (id, service) where id is the trimmed short name
+            // without any affixes
+            .filter_map(|service| {
+                let diag_comm = service.diag_comm()?;
+                let id = self.trim_routine_name(diag_comm.short_name()?);
+                Some((id, service))
+            })
+            // fold over the id of the previous steps creating a map of
+            // ids to a list of services with the same trimmed short name
+            .fold(
+                HashMap::new(),
+                |mut acc: HashMap<String, Vec<datatypes::DiagService>>, (id, service)| {
+                    acc.entry(id).or_default().push(service);
+                    acc
+                },
+            )
+            .into_iter()
+            .filter_map(|(id, services)| {
+                // filter out entries that have an empty list of services (shouldn't happen)
+                let first_service = services.first()?;
+                // map to a struct of `ComponentOperationsInfo`
+                let name = first_service
+                    .diag_comm()
+                    .expect(
+                        "DiagComm has to be present as otherwise it would be filtered out before",
+                    )
+                    .long_name()
+                    .and_then(|ln| ln.value())
+                    .map(|v| self.database_naming_convention.trim_long_name_affixes(v))
+                    .unwrap_or_default();
+                let RoutineSubfunctions {
+                    has_stop,
+                    has_request_results,
+                } = Self::subfunction_flags_from_services(&services);
+                Some(ComponentOperationsInfo {
+                    id,
+                    name,
+                    has_stop,
+                    has_request_results,
+                })
+            })
+            .collect()
+    }
 }
 
 fn mux_case_struct_from_selector_value<'a>(
@@ -5011,7 +5373,7 @@ mod tests {
         expected_json: serde_json::Value,
     ) {
         let response = ecu_manager
-            .convert_from_uds(service, &create_payload(payload_data), true)
+            .convert_from_uds(service, &create_payload(payload_data), true, None)
             .await
             .unwrap();
         assert_eq!(response.serialize_to_json().unwrap().data, expected_json);
@@ -5024,7 +5386,7 @@ mod tests {
         payload_data: Vec<u8>,
     ) -> DiagServiceError {
         ecu_manager
-            .convert_from_uds(service, &create_payload(payload_data), true)
+            .convert_from_uds(service, &create_payload(payload_data), true, None)
             .await
             .unwrap_err()
     }
@@ -5036,7 +5398,7 @@ mod tests {
         payload_data: Vec<u8>,
     ) {
         let response = ecu_manager
-            .convert_from_uds(service, &create_payload(payload_data), true)
+            .convert_from_uds(service, &create_payload(payload_data), true, None)
             .await;
         assert!(response.is_ok(), "Expected convert_from_uds to succeed");
     }
@@ -6155,6 +6517,7 @@ mod tests {
             name: dc_name.to_owned(),
             type_: DiagCommType::Data,
             lookup_name: Some(dc_name.to_owned()),
+            subfunction_id: None,
         };
 
         (ecu_manager, dc, sid)
@@ -6296,6 +6659,7 @@ mod tests {
             name: dc_name.to_owned(),
             type_: DiagCommType::Configurations,
             lookup_name: Some(dc_name.to_owned()),
+            subfunction_id: None,
         };
 
         (ecu_manager, dc, sid_response)
@@ -6417,8 +6781,134 @@ mod tests {
             name: dc_name.to_owned(),
             type_: DiagCommType::Configurations,
             lookup_name: Some(dc_name.to_owned()),
+            subfunction_id: None,
         };
         (new_ecu_manager(db), dc)
+    }
+
+    /// Helper that builds an ECU manager whose variant has a service with a
+    /// `ProgrammingSecurity` precondition **and** a functional group containing
+    /// the same service. Returns `(ecu_manager, diag_comm, sid)`.
+    fn create_ecu_manager_with_preconditions_and_functional_group() -> (
+        super::EcuManager<DefaultSecurityPluginData>,
+        cda_interfaces::DiagComm,
+        u8,
+    ) {
+        let mut db_builder = EcuDataBuilder::new();
+        let protocol = db_builder.create_protocol(Protocol::DoIp.value(), None, None, None);
+        let cp_ref = db_builder.create_com_param_ref(None, None, None, Some(protocol), None);
+
+        let locked_state = db_builder.create_state("LockedSecurity", None);
+        let extended_state = db_builder.create_state("ExtendedSecurity", None);
+        let programming_state = db_builder.create_state("ProgrammingSecurity", None);
+
+        let default_session_state = db_builder.create_state("DefaultSession", None);
+        let extended_session_state = db_builder.create_state("ExtendedSession", None);
+        let programming_session_state = db_builder.create_state("ProgrammingSession", None);
+
+        let locked_to_extended = db_builder.create_state_transition(
+            "LockedToExtended",
+            Some("LockedSecurity"),
+            Some("ExtendedSecurity"),
+        );
+        let extended_to_programming = db_builder.create_state_transition(
+            "ExtendedToProgramming",
+            Some("ExtendedSecurity"),
+            Some("ProgrammingSecurity"),
+        );
+        let default_to_extended_session = db_builder.create_state_transition(
+            "DefaultToExtended",
+            Some("DefaultSession"),
+            Some("ExtendedSession"),
+        );
+        let extended_to_programming_session = db_builder.create_state_transition(
+            "ExtendedToProgramming",
+            Some("ExtendedSession"),
+            Some("ProgrammingSession"),
+        );
+
+        let security_state_chart = db_builder.create_state_chart(
+            "SecurityAccess",
+            Some(semantics::SECURITY),
+            Some(vec![locked_to_extended, extended_to_programming]),
+            Some("LockedSecurity"),
+            Some(vec![locked_state, extended_state, programming_state]),
+        );
+        let session_state_chart = db_builder.create_state_chart(
+            "Session",
+            Some(semantics::SESSION),
+            Some(vec![
+                default_to_extended_session,
+                extended_to_programming_session,
+            ]),
+            Some("DefaultSession"),
+            Some(vec![
+                default_session_state,
+                extended_session_state,
+                programming_session_state,
+            ]),
+        );
+
+        let precondition_ref = db_builder.create_pre_condition_state_ref(programming_state);
+        let sid = service_ids::WRITE_DATA_BY_IDENTIFIER;
+        let dc_name = "TestFGService";
+
+        // Service for the functional group diag layer
+        let fg_diag_comm = db_builder.create_diag_comm(DiagCommParams {
+            short_name: dc_name,
+            pre_condition_state_refs: Some(vec![precondition_ref]),
+            protocols: Some(vec![protocol]),
+            ..Default::default()
+        });
+        let fg_request = create_sid_only_request!(db_builder, sid);
+        let fg_service = new_diag_service!(db_builder, fg_diag_comm, fg_request, vec![], vec![]);
+        let fg_layer = db_builder.create_diag_layer(DiagLayerParams {
+            short_name: "TestFunctionalGroup",
+            diag_services: Some(vec![fg_service]),
+            ..Default::default()
+        });
+        let functional_group = db_builder.create_functional_group(fg_layer, None);
+
+        // Same service for the variant diag layer
+        let variant_diag_comm = db_builder.create_diag_comm(DiagCommParams {
+            short_name: dc_name,
+            pre_condition_state_refs: Some(vec![precondition_ref]),
+            protocols: Some(vec![protocol]),
+            ..Default::default()
+        });
+        let variant_request = create_sid_only_request!(db_builder, sid);
+        let variant_service = new_diag_service!(
+            db_builder,
+            variant_diag_comm,
+            variant_request,
+            vec![],
+            vec![]
+        );
+        let variant_layer = db_builder.create_diag_layer(DiagLayerParams {
+            short_name: TEST_DIAG_LAYER,
+            com_param_refs: Some(vec![cp_ref]),
+            diag_services: Some(vec![variant_service]),
+            state_charts: Some(vec![session_state_chart, security_state_chart]),
+            ..Default::default()
+        });
+        let variant = db_builder.create_variant(variant_layer, true, None, None);
+
+        let db = db_builder.finish(EcuDataParams {
+            ecu_name: "TestEcu",
+            revision: "1",
+            version: "1.0.0",
+            variants: Some(vec![variant]),
+            functional_groups: Some(vec![functional_group]),
+            ..Default::default()
+        });
+
+        let dc = cda_interfaces::DiagComm {
+            name: dc_name.to_owned(),
+            type_: DiagCommType::Configurations,
+            lookup_name: Some(dc_name.to_owned()),
+            subfunction_id: None,
+        };
+        (new_ecu_manager(db), dc, sid)
     }
 
     fn create_ecu_manager_with_length_key_request_service()
@@ -6606,7 +7096,6 @@ mod tests {
     fn create_ecu_manager_with_routine_control_service()
     -> super::EcuManager<DefaultSecurityPluginData> {
         const SERVICE_ID: u8 = 0x31;
-        const SUBFUNCTION: u8 = 0x03;
         const ROUTINE_ID: u16 = 0x0A5C;
         const SERVICE_NAME: &str = "Test";
 
@@ -6626,7 +7115,7 @@ mod tests {
         // Create the subfunction parameter
         let subfunction_param = db_builder.create_coded_const_param(
             "RoutineControlType",
-            &SUBFUNCTION.to_string(),
+            &subfunction_ids::routine::REQUEST_RESULTS.to_string(),
             1,
             0,
             8,
@@ -6877,7 +7366,7 @@ mod tests {
         mux_1_json: serde_json::Value,
     ) {
         let response = ecu_manager
-            .convert_from_uds(service, &create_payload(data.clone()), true)
+            .convert_from_uds(service, &create_payload(data.clone()), true, None)
             .await
             .unwrap();
 
@@ -6900,7 +7389,7 @@ mod tests {
         let payload_data =
             UdsPayloadData::ParameterMap(serde_json::from_value(mux_1_json).unwrap());
         let mut service_payload = ecu_manager
-            .create_uds_payload(service, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(service, &skip_sec_plugin!(), Some(payload_data), None)
             .await
             .unwrap();
         // The bytes set below are not modified by the create_uds_payload function,
@@ -6939,7 +7428,7 @@ mod tests {
         );
 
         let result = ecu_manager
-            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         let service_payload = result.unwrap();
@@ -7000,7 +7489,7 @@ mod tests {
         );
 
         let result = ecu_manager
-            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         // Should fail because param2 is missing
@@ -7027,7 +7516,7 @@ mod tests {
         );
 
         let result = ecu_manager
-            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         // Should fail because we provided an array instead of an object
@@ -7057,7 +7546,7 @@ mod tests {
         );
 
         let result = ecu_manager
-            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         let conversion_error = result.unwrap_err();
@@ -7081,7 +7570,7 @@ mod tests {
                 UdsPayloadData::ParameterMap(serde_json::from_value(test_value).unwrap());
 
             let service_payload = ecu_manager
-                .create_uds_payload(service, &skip_sec_plugin!(), Some(payload_data))
+                .create_uds_payload(service, &skip_sec_plugin!(), Some(payload_data), None)
                 .await
                 .unwrap();
 
@@ -7141,7 +7630,7 @@ mod tests {
         );
 
         let result = ecu_manager
-            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         // Should fail because we provided an array instead of an object
@@ -7170,7 +7659,7 @@ mod tests {
             UdsPayloadData::ParameterMap(serde_json::from_value(test_value).unwrap());
 
         let result = ecu_manager
-            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&service, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         // Should fail because case1 data is missing
@@ -7445,7 +7934,7 @@ mod tests {
         let payload = vec![0x7F, sid];
 
         let response = ecu_manager
-            .convert_from_uds(&service, &create_payload(payload), true)
+            .convert_from_uds(&service, &create_payload(payload), true, None)
             .await
             .unwrap();
         assert_eq!(response.response_type, DiagServiceResponseType::Negative);
@@ -7458,7 +7947,7 @@ mod tests {
         let data = vec![0x7F, sid, 0x33];
 
         let response = ecu_manager
-            .convert_from_uds(&service, &create_payload(data), true)
+            .convert_from_uds(&service, &create_payload(data), true, None)
             .await
             .unwrap();
         assert_eq!(response.response_type, DiagServiceResponseType::Negative);
@@ -7646,13 +8135,13 @@ mod tests {
     }
 
     #[test]
-    fn test_get_service_parameter_metadata_success() {
+    fn test_get_request_parameter_metadata_success() {
         use cda_interfaces::ParameterTypeMetadata;
 
         let ecu_manager = create_ecu_manager_with_parameter_metadata();
 
         // Get parameter metadata for the test service
-        let result = ecu_manager.get_service_parameter_metadata("RDBI_TestService");
+        let result = ecu_manager.get_request_parameter_metadata("RDBI_TestService");
         assert!(result.is_ok());
 
         let metadata = result.unwrap();
@@ -7680,16 +8169,16 @@ mod tests {
         let data_param = metadata.iter().find(|m| m.name == "data").unwrap();
         assert!(matches!(
             data_param.param_type,
-            ParameterTypeMetadata::Value
+            ParameterTypeMetadata::Value { .. }
         ));
     }
 
     #[test]
-    fn test_get_service_parameter_metadata_service_not_found() {
+    fn test_get_request_parameter_metadata_service_not_found() {
         let ecu_manager = create_ecu_manager_with_parameter_metadata();
 
         // Try to get metadata for a non-existent service
-        let result = ecu_manager.get_service_parameter_metadata("NonExistentService");
+        let result = ecu_manager.get_request_parameter_metadata("NonExistentService");
         assert!(result.is_err());
 
         // Should return NotFound error for non-existent service
@@ -7753,13 +8242,13 @@ mod tests {
     }
 
     #[test]
-    fn test_get_service_parameter_metadata_extracts_coded_const_did_value() {
+    fn test_get_request_parameter_metadata_extracts_coded_const_did_value() {
         use cda_interfaces::ParameterTypeMetadata;
 
         let ecu_manager = create_ecu_manager_with_parameter_metadata();
 
         // Get parameter metadata
-        let result = ecu_manager.get_service_parameter_metadata("RDBI_TestService");
+        let result = ecu_manager.get_request_parameter_metadata("RDBI_TestService");
         assert!(result.is_ok());
 
         let metadata = result.unwrap();
@@ -7784,6 +8273,256 @@ mod tests {
         } else {
             panic!("Expected CODED-CONST parameter type");
         }
+    }
+
+    /// Verifies that `get_request_parameter_metadata` resolves `coded_value` for a
+    /// PHYS-CONST parameter backed by a `NormalDOP` with an Identical `CompuMethod`.
+    #[test]
+    fn test_get_request_parameter_metadata_phys_const_coded_value_resolved() {
+        use cda_interfaces::ParameterTypeMetadata;
+
+        let (ecu_manager, _dc, _sid) = create_ecu_manager_with_phys_const_normal_dop_service();
+
+        let result = ecu_manager.get_request_parameter_metadata("TestPhysConstNormalService");
+        assert!(result.is_ok());
+
+        let metadata = result.unwrap();
+
+        let did_param = metadata
+            .iter()
+            .find(|m| m.name == "DID")
+            .expect("DID parameter should be present");
+
+        if let ParameterTypeMetadata::PhysConst {
+            phys_constant_value,
+            coded_value,
+        } = &did_param.param_type
+        {
+            assert_eq!(phys_constant_value, "61840");
+            // Identical CompuMethod: phys string parses directly to coded integer
+            assert_eq!(
+                *coded_value,
+                Some(61840u64),
+                "PHYS-CONST with Identical CompuMethod must resolve coded_value"
+            );
+        } else {
+            panic!(
+                "Expected PhysConst parameter type for DID, got {:?}",
+                did_param.param_type
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_response_parameter_metadata_service_not_found() {
+        let (ecu_manager, _dc, _sid) = create_ecu_manager_with_phys_const_normal_dop_service();
+
+        let result = ecu_manager.get_response_parameter_metadata("NonExistentService");
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DiagServiceError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_get_response_parameter_metadata_empty_for_no_pos_response() {
+        let (ecu_manager, _dc, _sid, _) = create_ecu_manager_with_struct_service(1);
+
+        // TestStructService has no positive-response definition
+        let result = ecu_manager.get_response_parameter_metadata("TestStructService");
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    /// Covers `CodedConst` (SID), `PhysConst` (DID), and `Value` (data) response parameters.
+    ///
+    /// Fixture layout (`pos_response` of `TestPhysConstNormalService`):
+    ///   byte 0: `sid`       – CODED-CONST (1 byte)
+    ///   byte 1: `DID`       – PHYS-CONST  (u16, `coded_value` = None in response metadata)
+    ///   byte 3: `data_param`– VALUE        (u8, 1 byte)
+    #[test]
+    fn test_get_response_parameter_metadata_phys_const_and_value_params() {
+        use cda_interfaces::ParameterTypeMetadata;
+
+        let (ecu_manager, _dc, _sid) = create_ecu_manager_with_phys_const_normal_dop_service();
+
+        let result = ecu_manager.get_response_parameter_metadata("TestPhysConstNormalService");
+        assert!(result.is_ok());
+
+        let metadata = result.unwrap();
+        assert_eq!(metadata.len(), 3, "Expected sid, DID, data_param");
+
+        // SID: CODED-CONST at byte 0
+        let sid_param = metadata
+            .iter()
+            .find(|m| m.name == "sid")
+            .expect("sid param should be present");
+        assert!(matches!(
+            sid_param.param_type,
+            ParameterTypeMetadata::CodedConst { .. }
+        ));
+        assert_eq!(sid_param.byte_position, 0);
+        assert_eq!(sid_param.byte_size, Some(1)); // 8 bits
+
+        // DID: PHYS-CONST at byte 1; response metadata does not resolve coded_value
+        let did_param = metadata
+            .iter()
+            .find(|m| m.name == "DID")
+            .expect("DID param should be present");
+        if let ParameterTypeMetadata::PhysConst {
+            phys_constant_value,
+            coded_value,
+        } = &did_param.param_type
+        {
+            assert_eq!(phys_constant_value, "61840");
+            assert!(
+                coded_value.is_none(),
+                "get_response_parameter_metadata does not resolve PhysConst coded_value"
+            );
+        } else {
+            panic!(
+                "Expected PhysConst type for DID, got {:?}",
+                did_param.param_type
+            );
+        }
+        assert_eq!(did_param.byte_position, 1);
+        assert!(did_param.byte_size.is_none());
+
+        // data_param: VALUE at byte 3, u8 = 1 byte
+        let data_param = metadata
+            .iter()
+            .find(|m| m.name == "data_param")
+            .expect("data_param should be present");
+        assert!(matches!(
+            data_param.param_type,
+            ParameterTypeMetadata::Value { .. }
+        ));
+        assert_eq!(data_param.byte_position, 3);
+        assert_eq!(data_param.byte_size, Some(1)); // u8 = 8 bits
+    }
+
+    /// Verifies MUX expansion: each case's inner parameters appear as
+    /// `"case_name/param_name"` entries, and each case produces a
+    /// `"__mux_case__/case_name"` marker.
+    ///
+    /// Fixture layout (`pos_response` of `TestMuxService`):
+    ///   byte 0: `test_service_pos_sid` – CODED-CONST (1 byte, SID = 0x22)
+    ///   byte 2: `mux_1_param`          – MUX DOP (expanded into case entries)
+    ///     switch key: u16 at offset 0 within mux (size = 2 bytes)
+    ///     case 1 abs pos = mux(2) + key(2) + `inner_offset`
+    ///       `mux_1_case_1_param_1`: f32 → byte 4, size 4
+    ///       `mux_1_case_1_param_2`: u8  → byte 8, size 1
+    ///       marker __`mux_case`__/`mux_1_case_1`: byte 4, size = structure (7)
+    ///     case 2 abs pos = 2 + 2 + `inner_offset`
+    ///       `mux_1_case_2_param_1`: i16  → byte 5, size 2
+    ///       `mux_1_case_2_param_2`: ascii 32 bits → byte 8, size 4
+    ///       marker __`mux_case`__/`mux_1_case_2`: byte 4, size = structure (7)
+    ///     case 3: no structure → produces no entries
+    #[test]
+    fn test_get_response_parameter_metadata_mux_expansion() {
+        use cda_interfaces::ParameterTypeMetadata;
+
+        let (ecu_manager, _, _) = create_ecu_manager_with_mux_service(None, None, None);
+
+        let result = ecu_manager.get_response_parameter_metadata("TestMuxService");
+        assert!(result.is_ok());
+
+        let metadata = result.unwrap();
+        // SID (1) + case-1 (2 inner + 1 marker) + case-2 (2 inner + 1 marker) = 7
+        assert_eq!(
+            metadata.len(),
+            7,
+            "Expected SID + case-1 entries (2+marker) + case-2 entries (2+marker)"
+        );
+
+        // SID coded-const is preserved unchanged
+        let sid_param = metadata
+            .iter()
+            .find(|m| m.name == "test_service_pos_sid")
+            .expect("test_service_pos_sid should be present");
+        assert!(matches!(
+            sid_param.param_type,
+            ParameterTypeMetadata::CodedConst { .. }
+        ));
+        assert_eq!(sid_param.byte_position, 0);
+
+        // Case 1 inner params (mux byte_pos=2, switch_key_size=2)
+        let c1p1 = metadata
+            .iter()
+            .find(|m| m.name == "mux_1_case_1/mux_1_case_1_param_1")
+            .expect("mux_1_case_1/mux_1_case_1_param_1 should be present");
+        assert!(matches!(
+            c1p1.param_type,
+            ParameterTypeMetadata::Value { .. }
+        ));
+        // mux_byte_pos(2) + switch_key_size(2) + inner_byte_pos(0)
+        assert_eq!(c1p1.byte_position, 4);
+        assert_eq!(c1p1.byte_size, Some(4)); // f32 = 32 bits / 8
+
+        let c1p2 = metadata
+            .iter()
+            .find(|m| m.name == "mux_1_case_1/mux_1_case_1_param_2")
+            .expect("mux_1_case_1/mux_1_case_1_param_2 should be present");
+        assert!(matches!(
+            c1p2.param_type,
+            ParameterTypeMetadata::Value { .. }
+        ));
+        // mux_byte_pos(2) + switch_key_size(2) + inner_byte_pos(4)
+        assert_eq!(c1p2.byte_position, 8);
+        assert_eq!(c1p2.byte_size, Some(1)); // u8 = 8 bits / 8
+
+        let marker_1 = metadata
+            .iter()
+            .find(|m| m.name == "__mux_case__/mux_1_case_1")
+            .expect("__mux_case__/mux_1_case_1 marker should be present");
+        assert!(matches!(
+            marker_1.param_type,
+            ParameterTypeMetadata::CodedConst { .. }
+        ));
+        assert_eq!(marker_1.byte_position, 4); // mux_byte_pos(2) + switch_key_size(2)
+        assert_eq!(marker_1.byte_size, Some(7)); // structure byte_size
+
+        // Case 2 inner params
+        let c2p1 = metadata
+            .iter()
+            .find(|m| m.name == "mux_1_case_2/mux_1_case_2_param_1")
+            .expect("mux_1_case_2/mux_1_case_2_param_1 should be present");
+        assert!(matches!(
+            c2p1.param_type,
+            ParameterTypeMetadata::Value { .. }
+        ));
+        // mux_byte_pos(2) + switch_key_size(2) + inner_byte_pos(1)
+        assert_eq!(c2p1.byte_position, 5);
+        assert_eq!(c2p1.byte_size, Some(2)); // i16 = 16 bits / 8
+
+        let c2p2 = metadata
+            .iter()
+            .find(|m| m.name == "mux_1_case_2/mux_1_case_2_param_2")
+            .expect("mux_1_case_2/mux_1_case_2_param_2 should be present");
+        assert!(matches!(
+            c2p2.param_type,
+            ParameterTypeMetadata::Value { .. }
+        ));
+        // mux_byte_pos(2) + switch_key_size(2) + inner_byte_pos(4)
+        assert_eq!(c2p2.byte_position, 8);
+        assert_eq!(c2p2.byte_size, Some(4)); // ascii 32 bits / 8
+
+        let marker_2 = metadata
+            .iter()
+            .find(|m| m.name == "__mux_case__/mux_1_case_2")
+            .expect("__mux_case__/mux_1_case_2 marker should be present");
+        assert!(matches!(
+            marker_2.param_type,
+            ParameterTypeMetadata::CodedConst { .. }
+        ));
+        assert_eq!(marker_2.byte_position, 4); // mux_byte_pos(2) + switch_key_size(2)
+        assert_eq!(marker_2.byte_size, Some(7)); // structure byte_size
+
+        // Case 3 has no structure — must produce no entries at all
+        assert!(
+            metadata
+                .iter()
+                .all(|m| !m.name.starts_with("mux_1_case_3/")),
+            "mux_1_case_3 has no structure and must not produce entries"
+        );
     }
 
     #[tokio::test]
@@ -7867,7 +8606,9 @@ mod tests {
 
         let payload = create_payload(response_data.clone());
 
-        let result = ecu_manager.convert_from_uds(&dc, &payload, true).await;
+        let result = ecu_manager
+            .convert_from_uds(&dc, &payload, true, None)
+            .await;
 
         assert!(result.is_ok());
         let mapped = result.unwrap();
@@ -7896,7 +8637,9 @@ mod tests {
 
         let payload = create_payload(response_data.clone());
 
-        let result = ecu_manager.convert_from_uds(&dc, &payload, true).await;
+        let result = ecu_manager
+            .convert_from_uds(&dc, &payload, true, None)
+            .await;
 
         assert!(result.is_ok());
         let mapped = result.unwrap();
@@ -7935,7 +8678,7 @@ mod tests {
             UdsPayloadData::ParameterMap(serde_json::from_value(json_payload).unwrap());
 
         let result = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         assert!(result.is_ok());
@@ -7977,7 +8720,7 @@ mod tests {
             UdsPayloadData::ParameterMap(serde_json::from_value(json_payload).unwrap());
 
         let result = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         assert!(result.is_ok());
@@ -8009,7 +8752,7 @@ mod tests {
     async fn test_phys_const_structure_dop_roundtrip() {
         let (ecu_manager, dc, sid) = create_ecu_manager_with_phys_const_structure_dop_service();
 
-        // Step 1: Encode JSON → UDS
+        // Step 1: Encode JSON -> UDS
         let json_payload = json!({
             "DID": 61840,
             "DREC": {
@@ -8022,7 +8765,7 @@ mod tests {
             UdsPayloadData::ParameterMap(serde_json::from_value(json_payload).unwrap());
 
         let encode_result = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
         assert!(encode_result.is_ok());
         let mut service_payload = encode_result.unwrap();
@@ -8032,9 +8775,9 @@ mod tests {
             *byte = sid;
         }
 
-        // Step 3: Decode UDS → mapped data
+        // Step 3: Decode UDS -> mapped data
         let decode_result = ecu_manager
-            .convert_from_uds(&dc, &service_payload, true)
+            .convert_from_uds(&dc, &service_payload, true, None)
             .await;
 
         assert!(decode_result.is_ok());
@@ -8173,7 +8916,7 @@ mod tests {
         let payload_data = UdsPayloadData::Raw(vec![service_ids::WRITE_DATA_BY_IDENTIFIER]);
 
         let result = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         assert!(
@@ -8201,7 +8944,7 @@ mod tests {
 
         // This should succeed because the ECU is in a precondition state
         let result = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         assert!(
@@ -8230,12 +8973,53 @@ mod tests {
 
         // This should fail because Extended is neither in preconditions nor a transition source
         let result = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         assert!(
             result.is_err(),
             "Service should NOT be allowed from invalid security state"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_functional_group_service_skips_precondition_check() {
+        let (ecu_manager, dc, sid) = create_ecu_manager_with_preconditions_and_functional_group();
+
+        // Set ECU to LockedSecurity - does NOT satisfy the ProgrammingSecurity precondition.
+        {
+            let mut ecu_states = ecu_manager.ecu_service_states.write().await;
+            ecu_states.insert(service_ids::SESSION_CONTROL, "DefaultSession".to_string());
+            ecu_states.insert(service_ids::SECURITY_ACCESS, "LockedSecurity".to_string());
+        }
+
+        // Variant path (functional_group_name = None) must FAIL the precondition.
+        let variant_result = ecu_manager
+            .create_uds_payload(
+                &dc,
+                &skip_sec_plugin!(),
+                Some(UdsPayloadData::Raw(vec![sid])),
+                None,
+            )
+            .await;
+        assert!(
+            variant_result.is_err(),
+            "Variant service should be rejected when preconditions are not met"
+        );
+
+        // Functional group path must SUCCEED - preconditions are not checked.
+        let fg_result = ecu_manager
+            .create_uds_payload(
+                &dc,
+                &skip_sec_plugin!(),
+                Some(UdsPayloadData::Raw(vec![sid])),
+                Some("TestFunctionalGroup"),
+            )
+            .await;
+        assert!(
+            fg_result.is_ok(),
+            "Functional group service should skip precondition check. Error: {:?}",
+            fg_result.err()
         );
     }
 
@@ -8252,7 +9036,7 @@ mod tests {
         );
 
         let result = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await
             .unwrap();
 
@@ -8268,7 +9052,7 @@ mod tests {
         );
 
         let result = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await;
 
         assert!(result.is_err(), "Missing LENGTH-KEY input must fail");
@@ -8283,7 +9067,7 @@ mod tests {
         );
 
         let result = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await
             .unwrap();
 
@@ -8299,7 +9083,7 @@ mod tests {
         );
 
         let result = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await
             .unwrap();
 
@@ -8345,7 +9129,7 @@ mod tests {
             serde_json::from_value(json!({"len_key": 3, "var_data": "0xAA 0xBB 0xCC"})).unwrap(),
         );
         let encoded = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await
             .unwrap();
 
@@ -8353,7 +9137,7 @@ mod tests {
 
         let response_bytes = vec![pos_sid, 0x03, 0xAA, 0xBB, 0xCC];
         let decoded = ecu_manager
-            .convert_from_uds(&dc, &create_payload(response_bytes), true)
+            .convert_from_uds(&dc, &create_payload(response_bytes), true, None)
             .await
             .unwrap();
 
@@ -8381,7 +9165,7 @@ mod tests {
         );
 
         let encoded = ecu_manager
-            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data))
+            .create_uds_payload(&dc, &skip_sec_plugin!(), Some(payload_data), None)
             .await
             .unwrap();
 
@@ -8393,7 +9177,7 @@ mod tests {
 
         let response_bytes = vec![pos_sid, 0x03, 0xAA, 0xBB, 0xCC, 0x01, 0xF4];
         let decoded = ecu_manager
-            .convert_from_uds(&dc, &create_payload(response_bytes), true)
+            .convert_from_uds(&dc, &create_payload(response_bytes), true, None)
             .await
             .unwrap();
 
@@ -8571,7 +9355,6 @@ mod tests {
     #[test]
     fn test_lookup_service_by_request_prefix_routine_control() {
         const SERVICE_ID: u8 = 0x31;
-        const SUBFUNCTION: u8 = 0x03;
         const SERVICE_NAME: &str = "Test";
 
         fn assert_success(result: Result<Vec<DiagComm>, DiagServiceError>) {
@@ -8593,18 +9376,23 @@ mod tests {
         let ecu_manager = create_ecu_manager_with_routine_control_service();
 
         // Lookup with complete prefix (all 4 bytes)
-        let full_prefix = vec![SERVICE_ID, SUBFUNCTION, 0x0A, 0x5C];
+        let full_prefix = vec![
+            SERVICE_ID,
+            subfunction_ids::routine::REQUEST_RESULTS,
+            0x0A,
+            0x5C,
+        ];
         let result = ecu_manager.lookup_diagcomms_by_request_prefix(&full_prefix);
         assert_success(result);
 
         // Lookup with partial request
         // (first 3 bytes - SID + subfunction + first byte of routine ID)
-        let partial_prefix = vec![SERVICE_ID, SUBFUNCTION, 0x0A];
+        let partial_prefix = vec![SERVICE_ID, subfunction_ids::routine::REQUEST_RESULTS, 0x0A];
         let result = ecu_manager.lookup_diagcomms_by_request_prefix(&partial_prefix);
         assert_success(result);
 
         // Lookup with wrong subfunction
-        let wrong_subfunction = vec![SERVICE_ID, 0x02, 0x0A, 0x5C];
+        let wrong_subfunction = vec![SERVICE_ID, subfunction_ids::routine::STOP, 0x0A, 0x5C];
         let result = ecu_manager.lookup_diagcomms_by_request_prefix(&wrong_subfunction);
         assert!(
             result.is_err(),
@@ -8620,6 +9408,578 @@ mod tests {
             }
             other => panic!("Expected NotFound error, got: {other:?}"),
         }
+    }
+
+    /// Build an `EcuManager` whose database contains `RoutineControl` services for a
+    /// routine named `routine_name`. `subfunctions` controls which subfunction bytes
+    /// (0x01 = Start, 0x02 = Stop, 0x03 = `RequestResults`) are included.
+    fn build_ecu_manager_with_routine_subfunctions(
+        routine_name: &str,
+        subfunctions: &[u8],
+    ) -> super::EcuManager<DefaultSecurityPluginData> {
+        let mut db_builder = EcuDataBuilder::new();
+        let protocol = db_builder.create_protocol(Protocol::DoIp.value(), None, None, None);
+
+        let mut services = vec![];
+        for &sf in subfunctions {
+            let sid_param = db_builder.create_coded_const_param(
+                "SID_RQ",
+                &service_ids::ROUTINE_CONTROL.to_string(),
+                0,
+                0,
+                8,
+                DataType::UInt32,
+            );
+            let sf_param = db_builder.create_coded_const_param(
+                "RoutineControlType",
+                &sf.to_string(),
+                1,
+                0,
+                8,
+                DataType::UInt32,
+            );
+            let request = db_builder.create_request(Some(vec![sid_param, sf_param]), None);
+            let diag_comm = db_builder.create_diag_comm(DiagCommParams {
+                short_name: routine_name,
+                diag_class_type: DiagClassType::START_COMM,
+                protocols: Some(vec![protocol]),
+                ..Default::default()
+            });
+            services.push(new_diag_service!(
+                db_builder,
+                diag_comm,
+                request,
+                vec![],
+                vec![]
+            ));
+        }
+
+        let db = finish_db!(db_builder, protocol, services);
+        new_ecu_manager(db)
+    }
+
+    /// Build an `EcuManager` with a functional group `fg_name` that contains `RoutineControl`
+    /// services for `routine_name` with the given `subfunctions`.
+    fn build_ecu_manager_with_fg_routine(
+        fg_name: &str,
+        routine_name: &str,
+        subfunctions: &[u8],
+    ) -> super::EcuManager<DefaultSecurityPluginData> {
+        let mut db_builder = EcuDataBuilder::new();
+        let protocol = db_builder.create_protocol(Protocol::DoIp.value(), None, None, None);
+
+        let mut services = vec![];
+        for &sf in subfunctions {
+            let sid_param = db_builder.create_coded_const_param(
+                "SID_RQ",
+                &service_ids::ROUTINE_CONTROL.to_string(),
+                0,
+                0,
+                8,
+                DataType::UInt32,
+            );
+            let sf_param = db_builder.create_coded_const_param(
+                "RoutineControlType",
+                &sf.to_string(),
+                1,
+                0,
+                8,
+                DataType::UInt32,
+            );
+            let request = db_builder.create_request(Some(vec![sid_param, sf_param]), None);
+            let diag_comm = db_builder.create_diag_comm(DiagCommParams {
+                short_name: routine_name,
+                diag_class_type: DiagClassType::START_COMM,
+                protocols: Some(vec![protocol]),
+                ..Default::default()
+            });
+            services.push(new_diag_service!(
+                db_builder,
+                diag_comm,
+                request,
+                vec![],
+                vec![]
+            ));
+        }
+
+        let fg_diag_layer = db_builder.create_diag_layer(DiagLayerParams {
+            short_name: fg_name,
+            diag_services: if services.is_empty() {
+                None
+            } else {
+                Some(services)
+            },
+            ..Default::default()
+        });
+        let fg = db_builder.create_functional_group(fg_diag_layer, None);
+        let db = finish_db_with_functional_groups!(db_builder, protocol, vec![], vec![fg]);
+        new_ecu_manager(db)
+    }
+
+    /// An ECU DB with only a Start (0x01) service for `"MyRoutine"` should produce
+    /// one `ComponentOperationsInfo` with `has_stop = false` and
+    /// `has_request_results = false`.
+    #[test]
+    fn test_get_components_operations_info_start_only() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "MyRoutine",
+            &[subfunction_ids::routine::START],
+        );
+
+        let result = ecu_manager.get_components_operations_info(&skip_sec_plugin!());
+
+        assert_eq!(result.len(), 1, "Expected exactly one operation");
+        let op = result.first().expect("Expected at least one operation");
+        assert_eq!(op.id, "MyRoutine");
+        assert!(!op.has_stop, "Expected has_stop = false");
+        assert!(
+            !op.has_request_results,
+            "Expected has_request_results = false"
+        );
+    }
+
+    /// An ECU DB with Start (0x01), Stop (0x02), and `RequestResults` (0x03) services
+    /// all named `"MyRoutine"` should produce one `ComponentOperationsInfo` with both
+    /// `has_stop = true` and `has_request_results = true`.
+    #[test]
+    fn test_get_components_operations_info_with_stop_and_request_results() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "MyRoutine",
+            &[
+                subfunction_ids::routine::START,
+                subfunction_ids::routine::STOP,
+                subfunction_ids::routine::REQUEST_RESULTS,
+            ],
+        );
+
+        let result = ecu_manager.get_components_operations_info(&skip_sec_plugin!());
+
+        assert_eq!(result.len(), 1, "Expected exactly one operation");
+        let op = result.first().expect("Expected at least one operation");
+        assert_eq!(op.id, "MyRoutine");
+        assert!(op.has_stop, "Expected has_stop = true");
+        assert!(
+            op.has_request_results,
+            "Expected has_request_results = true"
+        );
+    }
+
+    /// An ECU DB with multiple distinct routines; only the ones with a Start
+    /// subfunction should appear in the result, each with the correct flags.
+    #[test]
+    fn test_get_components_operations_info_multiple_routines() {
+        let mut db_builder = EcuDataBuilder::new();
+        let protocol = db_builder.create_protocol(Protocol::DoIp.value(), None, None, None);
+
+        let mut services = vec![];
+        for (name, sfs) in [
+            (
+                "RoutineA",
+                &[
+                    subfunction_ids::routine::START,
+                    subfunction_ids::routine::STOP,
+                ][..],
+            ),
+            ("RoutineB", &[subfunction_ids::routine::START][..]),
+        ] {
+            for &sf in sfs {
+                let sid_param = db_builder.create_coded_const_param(
+                    "SID_RQ",
+                    &service_ids::ROUTINE_CONTROL.to_string(),
+                    0,
+                    0,
+                    8,
+                    DataType::UInt32,
+                );
+                let sf_param = db_builder.create_coded_const_param(
+                    "RoutineControlType",
+                    &sf.to_string(),
+                    1,
+                    0,
+                    8,
+                    DataType::UInt32,
+                );
+                let request = db_builder.create_request(Some(vec![sid_param, sf_param]), None);
+                let diag_comm = db_builder.create_diag_comm(DiagCommParams {
+                    short_name: name,
+                    diag_class_type: DiagClassType::START_COMM,
+                    protocols: Some(vec![protocol]),
+                    ..Default::default()
+                });
+                services.push(new_diag_service!(
+                    db_builder,
+                    diag_comm,
+                    request,
+                    vec![],
+                    vec![]
+                ));
+            }
+        }
+
+        let db = finish_db!(db_builder, protocol, services);
+        let ecu_manager = new_ecu_manager(db);
+
+        let mut result = ecu_manager.get_components_operations_info(&skip_sec_plugin!());
+        result.sort_by(|a, b| a.id.cmp(&b.id));
+
+        assert_eq!(result.len(), 2);
+
+        let a = result.first().expect("Expected RoutineA");
+        assert_eq!(a.id, "RoutineA");
+        assert!(a.has_stop);
+        assert!(!a.has_request_results);
+
+        let b = result.get(1).expect("Expected RoutineB");
+        assert_eq!(b.id, "RoutineB");
+        assert!(!b.has_stop);
+        assert!(!b.has_request_results);
+    }
+
+    /// A DB with no `RoutineControl` services should return an empty list.
+    #[test]
+    fn test_get_components_operations_info_empty_when_no_routine_control() {
+        let mut db_builder = EcuDataBuilder::new();
+        let protocol = db_builder.create_protocol(Protocol::DoIp.value(), None, None, None);
+        let read_request =
+            create_sid_only_request!(db_builder, service_ids::READ_DATA_BY_IDENTIFIER);
+        let read_diag_comm = new_diag_comm!(db_builder, "SomeData", protocol);
+        let service = new_diag_service!(db_builder, read_diag_comm, read_request, vec![], vec![]);
+        let db = finish_db!(db_builder, protocol, vec![service]);
+        let ecu_manager = new_ecu_manager(db);
+
+        let result = ecu_manager.get_components_operations_info(&skip_sec_plugin!());
+        assert!(
+            result.is_empty(),
+            "Expected no operations for non-routine-control DB"
+        );
+    }
+
+    /// `get_routine_subfunctions` detects Stop and `RequestResults` when both are present.
+    #[test]
+    fn test_get_routine_subfunctions_detects_stop_and_request_results() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "Routine1",
+            &[
+                subfunction_ids::routine::START,
+                subfunction_ids::routine::STOP,
+                subfunction_ids::routine::REQUEST_RESULTS,
+            ],
+        );
+
+        let subs = ecu_manager
+            .get_routine_subfunctions("Routine1", &skip_sec_plugin!())
+            .expect("Expected Ok for known routine");
+        assert!(subs.has_stop, "Expected has_stop = true");
+        assert!(
+            subs.has_request_results,
+            "Expected has_request_results = true"
+        );
+    }
+
+    /// `get_routine_subfunctions` returns `false` for both flags when only Start exists.
+    #[test]
+    fn test_get_routine_subfunctions_no_stop_no_request_results() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "Routine1",
+            &[subfunction_ids::routine::START],
+        );
+
+        let subs = ecu_manager
+            .get_routine_subfunctions("Routine1", &skip_sec_plugin!())
+            .expect("Expected Ok for known routine");
+        assert!(!subs.has_stop, "Expected has_stop = false");
+        assert!(
+            !subs.has_request_results,
+            "Expected has_request_results = false"
+        );
+    }
+
+    /// `get_routine_subfunctions` uses case-insensitive name matching.
+    #[test]
+    fn test_get_routine_subfunctions_case_insensitive() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "MyRoutine",
+            &[
+                subfunction_ids::routine::START,
+                subfunction_ids::routine::STOP,
+            ],
+        );
+
+        let subs = ecu_manager
+            .get_routine_subfunctions("myroutine", &skip_sec_plugin!())
+            .expect("Expected Ok (case-insensitive match)");
+        assert!(
+            subs.has_stop,
+            "Expected has_stop = true (case-insensitive match)"
+        );
+    }
+
+    /// `get_routine_subfunctions` returns `NotFound` when the Start service is absent.
+    #[test]
+    fn test_get_routine_subfunctions_returns_not_found_for_unknown_service() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "Routine1",
+            &[subfunction_ids::routine::START],
+        );
+
+        let result =
+            ecu_manager.get_routine_subfunctions("NonExistentRoutine", &skip_sec_plugin!());
+        assert!(
+            matches!(result, Err(DiagServiceError::NotFound(_))),
+            "Expected NotFound for unknown service, got: {result:?}"
+        );
+    }
+
+    /// A functional group containing a `RoutineControl` Start service should be
+    /// returned by `get_functional_group_operations_info`.
+    #[test]
+    fn test_get_functional_group_operations_info_returns_start_service() {
+        let ecu_manager = build_ecu_manager_with_fg_routine(
+            "TestFG",
+            "FgRoutine",
+            &[subfunction_ids::routine::START],
+        );
+
+        let result = ecu_manager
+            .get_functional_group_operations_info(&skip_sec_plugin!(), "TestFG")
+            .expect("Expected successful lookup");
+
+        assert_eq!(result.len(), 1, "Expected exactly one FG operation");
+        let op = result.first().expect("Expected at least one FG operation");
+        assert_eq!(op.id, "FgRoutine");
+        assert!(!op.has_stop);
+        assert!(!op.has_request_results);
+    }
+
+    /// A functional group whose `RoutineControl` Start service also has Stop and
+    /// `RequestResults` should reflect that in the flags.
+    #[test]
+    fn test_get_functional_group_operations_info_with_stop_and_request_results() {
+        let mut db_builder = EcuDataBuilder::new();
+        let protocol = db_builder.create_protocol(Protocol::DoIp.value(), None, None, None);
+
+        let mut fg_services = vec![];
+        for &sf in &[
+            subfunction_ids::routine::START,
+            subfunction_ids::routine::STOP,
+            subfunction_ids::routine::REQUEST_RESULTS,
+        ] {
+            let sid_p = db_builder.create_coded_const_param(
+                "SID_RQ",
+                &service_ids::ROUTINE_CONTROL.to_string(),
+                0,
+                0,
+                8,
+                DataType::UInt32,
+            );
+            let sf_p = db_builder.create_coded_const_param(
+                "RoutineControlType",
+                &sf.to_string(),
+                1,
+                0,
+                8,
+                DataType::UInt32,
+            );
+            let req = db_builder.create_request(Some(vec![sid_p, sf_p]), None);
+            let dc = db_builder.create_diag_comm(DiagCommParams {
+                short_name: "FgRoutine",
+                diag_class_type: DiagClassType::START_COMM,
+                protocols: Some(vec![protocol]),
+                ..Default::default()
+            });
+            fg_services.push(new_diag_service!(db_builder, dc, req, vec![], vec![]));
+        }
+
+        let fg_diag_layer = db_builder.create_diag_layer(DiagLayerParams {
+            short_name: "TestFG",
+            diag_services: Some(fg_services),
+            ..Default::default()
+        });
+        let fg = db_builder.create_functional_group(fg_diag_layer, None);
+        let db = finish_db_with_functional_groups!(db_builder, protocol, vec![], vec![fg]);
+        let ecu_manager = new_ecu_manager(db);
+
+        let result = ecu_manager
+            .get_functional_group_operations_info(&skip_sec_plugin!(), "TestFG")
+            .expect("Expected successful lookup");
+
+        assert_eq!(result.len(), 1);
+        let op = result.first().expect("Expected at least one FG operation");
+        assert_eq!(op.id, "FgRoutine");
+        assert!(op.has_stop);
+        assert!(op.has_request_results);
+    }
+
+    /// Querying a functional group that does not exist should return a `NotFound` error.
+    #[test]
+    fn test_get_functional_group_operations_info_unknown_group() {
+        let ecu_manager = build_ecu_manager_with_fg_routine(
+            "SomeFG",
+            "SomeRoutine",
+            &[subfunction_ids::routine::START],
+        );
+
+        let result =
+            ecu_manager.get_functional_group_operations_info(&skip_sec_plugin!(), "NonExistent");
+        assert!(
+            matches!(result, Err(DiagServiceError::NotFound(_))),
+            "Expected NotFound error for unknown group"
+        );
+    }
+
+    /// `lookup_diag_service` with `subfunction_id = Some(REQUEST_RESULTS)` locates a DB
+    /// service whose `short_name` starts with the base routine name and whose
+    /// `request_sub_function_id` equals `0x03`.
+    #[tokio::test]
+    async fn test_lookup_diag_service_request_results_via_subfunction_id() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "MyRoutine_RequestResults",
+            &[subfunction_ids::routine::REQUEST_RESULTS],
+        );
+
+        let diag_comm = DiagComm {
+            name: "MyRoutine".to_owned(),
+            type_: DiagCommType::Operations,
+            lookup_name: None,
+            subfunction_id: Some(subfunction_ids::routine::REQUEST_RESULTS),
+        };
+
+        let result = ecu_manager
+            .lookup_diag_service(&diag_comm, None, None)
+            .await;
+        assert!(
+            result.is_ok(),
+            "Expected lookup_diag_service to find RequestResults service, got: {result:?}"
+        );
+    }
+
+    /// `lookup_diag_service` with `subfunction_id = Some(STOP)` locates a DB service
+    /// whose `short_name` starts with the base routine name and whose
+    /// `request_sub_function_id` equals `0x02`.
+    #[tokio::test]
+    async fn test_lookup_diag_service_stop_via_subfunction_id() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "MyRoutine_Stop",
+            &[subfunction_ids::routine::STOP],
+        );
+
+        let diag_comm = DiagComm {
+            name: "MyRoutine".to_owned(),
+            type_: DiagCommType::Operations,
+            lookup_name: None,
+            subfunction_id: Some(subfunction_ids::routine::STOP),
+        };
+
+        let result = ecu_manager
+            .lookup_diag_service(&diag_comm, None, None)
+            .await;
+        assert!(
+            result.is_ok(),
+            "Expected lookup_diag_service to find Stop service, got: {result:?}"
+        );
+    }
+
+    /// `lookup_diag_service` with `subfunction_id = Some(REQUEST_RESULTS)` returns
+    /// `NotFound` when no matching service exists in the DB.
+    #[tokio::test]
+    async fn test_lookup_diag_service_request_results_not_found() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "MyRoutine_Start",
+            &[subfunction_ids::routine::START],
+        );
+
+        let diag_comm = DiagComm {
+            name: "MyRoutine".to_owned(),
+            type_: DiagCommType::Operations,
+            lookup_name: None,
+            subfunction_id: Some(subfunction_ids::routine::REQUEST_RESULTS),
+        };
+
+        let result = ecu_manager
+            .lookup_diag_service(&diag_comm, None, None)
+            .await;
+        assert!(
+            matches!(result, Err(DiagServiceError::NotFound(_))),
+            "Expected NotFound error, got: {result:?}"
+        );
+    }
+
+    /// `lookup_diag_service` with `subfunction_id` that has the SPRMIB bit set
+    /// (e.g. `0x83` = `REQUEST_RESULTS | 0x80`) still matches a DB service whose
+    /// coded-const subfunction value is `0x03`, because the default mask (`0x7F`)
+    /// strips the suppress-positive-response bit before comparing.
+    #[tokio::test]
+    async fn test_lookup_diag_service_matches_with_sprmib_set() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "MyRoutine_RequestResults",
+            &[subfunction_ids::routine::REQUEST_RESULTS],
+        );
+
+        let diag_comm = DiagComm {
+            name: "MyRoutine".to_owned(),
+            type_: DiagCommType::Operations,
+            lookup_name: None,
+            subfunction_id: Some(subfunction_ids::routine::REQUEST_RESULTS | 0x80),
+        };
+
+        let result = ecu_manager
+            .lookup_diag_service(&diag_comm, None, None)
+            .await;
+        assert!(
+            result.is_ok(),
+            "Expected lookup_diag_service to find RequestResults service even with SPRMIB set, got: {result:?}"
+        );
+    }
+
+    /// When an explicit `subfunction_mask` of `0xFF` (no masking) is passed,
+    /// a subfunction id with the SPRMIB bit set (`0x83`) must not match a DB
+    /// service with subfunction `0x03`.
+    #[tokio::test]
+    async fn test_lookup_diag_service_no_match_with_full_mask() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "MyRoutine_RequestResults",
+            &[subfunction_ids::routine::REQUEST_RESULTS],
+        );
+
+        let diag_comm = DiagComm {
+            name: "MyRoutine".to_owned(),
+            type_: DiagCommType::Operations,
+            lookup_name: None,
+            subfunction_id: Some(subfunction_ids::routine::REQUEST_RESULTS | 0x80),
+        };
+
+        let result = ecu_manager
+            .lookup_diag_service(&diag_comm, None, Some(0xFF))
+            .await;
+        assert!(
+            matches!(result, Err(DiagServiceError::NotFound(_))),
+            "Expected NotFound when using mask 0xFF with SPRMIB-set subfunction, got: {result:?}"
+        );
+    }
+
+    /// With the default mask, `subfunction_id = STOP` (clean, `0x02`) still
+    /// matches normally - the mask is a no-op when SPRMIB is not set.
+    #[tokio::test]
+    async fn test_lookup_diag_service_clean_subfunction_still_matches() {
+        let ecu_manager = build_ecu_manager_with_routine_subfunctions(
+            "MyRoutine_Stop",
+            &[subfunction_ids::routine::STOP],
+        );
+
+        let diag_comm = DiagComm {
+            name: "MyRoutine".to_owned(),
+            type_: DiagCommType::Operations,
+            lookup_name: None,
+            subfunction_id: Some(subfunction_ids::routine::STOP),
+        };
+
+        let result = ecu_manager
+            .lookup_diag_service(&diag_comm, None, None)
+            .await;
+        assert!(
+            result.is_ok(),
+            "Expected clean subfunction to still match with default mask, got: {result:?}"
+        );
     }
 
     #[tokio::test]
@@ -8645,6 +10005,7 @@ mod tests {
                     0x03, 0x09,
                 ]),
                 true,
+                None,
             )
             .await;
         assert!(

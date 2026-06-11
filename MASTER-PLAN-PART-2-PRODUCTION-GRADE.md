@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Revision | Part II, Draft 1.14 |
+| Revision | Part II, Draft 1.21 |
 | Status | **DRAFT** — pending OEM answers to open questions in §II.9 |
 | Audience | AI worker or human engineer landing cold; assumes familiarity with [MASTER-PLAN.md](MASTER-PLAN.md) Parts 0–13. |
 | Relation | Extends [MASTER-PLAN.md](MASTER-PLAN.md). Part I gets Taktflow to a bench-validated, conformance-tested, documented reference stack (M10). Part II gets it into a customer vehicle at production. |
@@ -307,7 +307,7 @@ Each PROD-* below carries **Role / Inputs / Outputs / Constraints / Verification
 
 ### II.6.15 PROD-15 Upstream tracking + merge cadence
 
-**Role.** Define how Taktflow keeps in sync with Eclipse OpenSOVD upstream — which has continued to develop since the initial vendoring. Today there is **no git remote** to upstream; our `origin` is a personal GitHub. Upstream has 9 open PRs on classic-diagnostic-adapter alone, plus architectural changes (async operations, security plugin modularity).
+**Role.** Define how Taktflow keeps in sync with Eclipse OpenSOVD upstream — which has continued to develop since the initial vendoring. Today there is **no git remote** to upstream; our `origin` is a personal GitHub. The 2026-05-01 upstream check found material drift: `opensovd-core/main` now carries the initial upstream implementation, `classic-diagnostic-adapter` has merged security / API / async work, `odx-converter` has active MDD-fidelity PRs, and `inc_diagnostics` is active again.
 
 **Outputs.** ADR defining the merge policy (continuous / periodic / frozen-fork); upstream remote added as `upstream` in the Taktflow repo; cadence for reviewing and cherry-picking; tracking issue per upstream PR that lands in Taktflow; inverse tracking for local patches that could flow upstream (if we ever choose to).
 
@@ -315,14 +315,37 @@ Each PROD-* below carries **Role / Inputs / Outputs / Constraints / Verification
 
 **Verification.** Monthly upstream-tracking report lands; no surprise divergence at release time.
 
-**Cadence — per-workstream.** Default cadence is monthly. Two workstreams are set to **quarterly** review based on observed upstream activity:
+**Cadence — per-workstream.** Default cadence is monthly. As of the 2026-05-01 check:
 
 | Workstream | Cadence | Basis |
 |---|---|---|
-| Diagnostic Library Rust API (feeds PROD-17) | quarterly | Upstream design meetings on 2026-03-24 and 2026-03-31 recorded as skipped in public minutes; no published design update since PR #78 was closed on 2026-04-13 in favour of [eclipse-score/inc_diagnostics#1](https://github.com/eclipse-score/inc_diagnostics/pull/1). |
-| UDS2SOVD ↔ ServiceApps communication design (feeds PROD-20) | quarterly | Same two meetings (2026-03-24, 2026-03-31) had this finalisation item on agenda; no published outcome. [uds2sovd-proxy](https://github.com/eclipse-opensovd/uds2sovd-proxy) repository has had no source commits since 2025-10-14 initial scaffold. |
+| Diagnostic Library Rust API (feeds PROD-17) | monthly | [eclipse-score/inc_diagnostics#1](https://github.com/eclipse-score/inc_diagnostics/pull/1) was updated on 2026-04-24 after the earlier quarterly downgrade. The absorb-only posture still holds, but watch cadence returns to monthly. |
+| UDS2SOVD ↔ ServiceApps communication design (feeds PROD-20) | quarterly | [opensovd#63](https://github.com/eclipse-opensovd/opensovd/pull/63) remains open draft with no update since 2026-02-03. [uds2sovd-proxy](https://github.com/eclipse-opensovd/uds2sovd-proxy) moved on 2026-04-23 only for CI workflow updates, not source/design. |
 
 Cadence returns to monthly automatically on the next observed upstream activity in either workstream (a merged PR, a design-doc update, or a resumed meeting minute).
+
+**Latest report.** [`docs/upstream/eclipse-opensovd-status-2026-06-11.md`](docs/upstream/eclipse-opensovd-status-2026-06-11.md) is the current upstream snapshot (previous: [`2026-05-01`](docs/upstream/eclipse-opensovd-status-2026-05-01.md)). `Q-PROD-11b` subtree delta reports landed for [`opensovd`](docs/upstream/deltas/opensovd.md), [`classic-diagnostic-adapter`](docs/upstream/deltas/classic-diagnostic-adapter.md), and [`uds2sovd-proxy`](docs/upstream/deltas/uds2sovd-proxy.md). `Q-PROD-11` is answered by the upstream-main side-by-side report at [`docs/upstream/deltas/opensovd-core-main-side-by-side.md`](docs/upstream/deltas/opensovd-core-main-side-by-side.md).
+
+**Merge note (2026-05-01).** CDA upstream PRs `#287`, `#267`, and `#273` are
+now merged locally. The local tree has the mbedtls Ed25519 OID fix,
+request/response parameter metadata, richer `ParameterTypeMetadata`, async SOVD
+operation execution resources, functional-group operation support, the
+operation/version integration-test additions, and the generated MDD fixture
+updates from upstream `d781c242`. The UDS2SOVD proxy call site is updated to the
+new request-metadata API. Open upstream CDA PRs `#256` and `#282` remain watch
+only.
+
+**Check note (2026-06-11).** Monthly check executed; no upstream code merged.
+Findings: `opensovd-core/main` advanced 31 commits to `3f58f4c` (client
+version discovery, repeated data-filter parsing fix, CORS wildcard+credentials
+fail-fast, rustls-pemfile RUSTSEC-2025-0134 swap) with ready-now cherry-pick
+candidates for PROD-12/PROD-19 and gateway hardening; CDA drifted ~57 commits
+past the 2026-05-01 local merge base `d781c242` (head `53f8032`) including a
+correctness/security subset that should be the next dedicated merge slice;
+odx-converter landed both watched PRs `#34`/`#35` (PROD-13 review due);
+`inc_diagnostics` stays absorb-only with a new C++ API PR `#4`. The `Q-PROD-11`
+keep-standalone decision is reaffirmed. Details in
+[`docs/upstream/eclipse-opensovd-status-2026-06-11.md`](docs/upstream/eclipse-opensovd-status-2026-06-11.md).
 
 ### II.6.16 PROD-16 Fault-lib feature parity (debounce / enabling conditions / aging / IPC retry)
 
@@ -370,7 +393,7 @@ Cadence returns to monthly automatically on the next observed upstream activity 
 
 **Outputs.**
 
-- **Quarterly watch report** — one-line status per review cycle, filed under `docs/upstream/inc_diagnostics-status.md`. Fields: last upstream push date; last design update date; incubation stage; any new published ADRs; whether the two revisit triggers below have fired. Cadence is set in PROD-15 (quarterly) and returns to monthly on any observed upstream activity.
+- **Watch report** — one-line status per review cycle, filed under [`docs/upstream/inc_diagnostics-status.md`](docs/upstream/inc_diagnostics-status.md). Fields: last upstream push date; last design update date; incubation stage; any new published ADRs; whether the revisit triggers below have fired. Cadence is set in PROD-15; as of 2026-05-01 it is monthly because upstream PR activity resumed.
 - **Revisit-trigger log.** A running note in the same file recording trigger evaluations. Three defined triggers:
   1. **Upstream graduates** — `inc_diagnostics` exits incubation (Eclipse project status changes from "Incubation" to "Active" or equivalent), or a stable release is tagged.
   2. **OEM deadline pressure** — an OEM or Tier-1 conversation explicitly requires a visible, shipping diag-lib surface within <6 months and the upstream is still pre-stable. If this fires, the library reverts to build-scope as a separate capability (candidate `PROD-17B`) with its own spec.
@@ -386,13 +409,13 @@ Cadence returns to monthly automatically on the next observed upstream activity 
 
 **Verification.**
 
-- Quarterly report filed on schedule; revisit-trigger evaluations recorded even when the answer is "no change".
-- `sovd-ml` and `sovd-extended-vehicle` route inventories remain bounded; no new hand-rolled routes added under this posture (audit at each quarterly review).
+- Watch report filed on the PROD-15 cadence; revisit-trigger evaluations recorded even when the answer is "no change".
+- `sovd-ml` and `sovd-extended-vehicle` route inventories remain bounded; no new hand-rolled routes added under this posture (audit at each watch review).
 - On absorption (when triggered): the existing PROD-6 test (`POST /sovd/v1/components/{id}/operations/ml-inference/executions`) and the PROD-14 / Part I §5.7.1 XV endpoint tests pass unchanged after migration.
 
-**Phase assignment.** **Not phase-scoped.** Tracking is continuous at quarterly cadence; absorption runs inside whichever phase the trigger fires in. If the upstream is still pre-stable at M12 (safety release + homologation exit), the absorb posture simply continues — it does not block M12.
+**Phase assignment.** **Not phase-scoped.** Tracking is continuous at the PROD-15 cadence; absorption runs inside whichever phase the trigger fires in. If the upstream is still pre-stable at M12 (safety release + homologation exit), the absorb posture simply continues — it does not block M12.
 
-**Reference.** Upstream `opensovd/docs/design/design.md` §"Diagnostic Library" (original capability reference, pre-dates the S-CORE move). Active upstream: [eclipse-score/inc_diagnostics#1](https://github.com/eclipse-score/inc_diagnostics/pull/1) (design) + `#2` (implementation). Governance move documented via closure of `eclipse-opensovd/opensovd#78` on 2026-04-13. Draft 0.4 Outputs (the original build deliverables — library crate, IPC wire format, route mount, two first-party consumers) are retired under Draft 1.0 and preserved in the revision log entry for audit. Upstream review cadence set to quarterly in PROD-15 based on observed upstream meeting activity.
+**Reference.** Upstream `opensovd/docs/design/design.md` §"Diagnostic Library" (original capability reference, pre-dates the S-CORE move). Active upstream: [eclipse-score/inc_diagnostics#1](https://github.com/eclipse-score/inc_diagnostics/pull/1) (design) + `#2` (implementation). Governance move documented via closure of `eclipse-opensovd/opensovd#78` on 2026-04-13. Draft 0.4 Outputs (the original build deliverables — library crate, IPC wire format, route mount, two first-party consumers) are retired under Draft 1.0 and preserved in the revision log entry for audit. Upstream review cadence is monthly as of 2026-05-01 because PR activity resumed after the earlier quarterly downgrade.
 
 ### II.6.18 PROD-18 Fault Library (framework-agnostic fault API for apps)
 
@@ -443,7 +466,7 @@ Cadence returns to monthly automatically on the next observed upstream activity 
 
 **Implements [ADR-0033](../docs/adr/ADR-0033-composable-transport-layers.md)** — composable transport layers for production clients and IPC. Read ADR-0033 first; this entry is the first concrete application of the pattern.
 
-**Context.** [`opensovd-core/sovd-client/`](opensovd-core/sovd-client/) today is a 28-line Phase-0 skeleton — a unit struct `Client {}` with a doc comment pledging to implement `sovd_interfaces::traits::SovdClient` in a later phase. Meanwhile, **two in-tree call sites already reach for raw `reqwest`**: `opensovd-core/sovd-gateway/src/remote.rs` wraps a `reqwest::Client` for federated routing to downstream native-SOVD ECUs, and the Phase-5 HIL integration-tests (~38 raw `reqwest` uses across 10 test files) hand-roll URLs and deserialisation. The upstream `opensovd-client` crate (on `eclipse-opensovd/opensovd-core:inc/liebherr`, see §II.11.1 name-collision note) has already shown the production-grade shape: hyper + hyper-util + tower, Unix-socket transport first-class, Tower `Layer` stack for middleware, entity navigators, no domain trait. ADR-0033 adopts that pattern for Taktflow.
+**Context.** [`opensovd-core/sovd-client/`](opensovd-core/sovd-client/) today is a 28-line Phase-0 skeleton — a unit struct `Client {}` with a doc comment pledging to implement `sovd_interfaces::traits::SovdClient` in a later phase. Meanwhile, **two in-tree call sites already reach for raw `reqwest`**: `opensovd-core/sovd-gateway/src/remote.rs` wraps a `reqwest::Client` for federated routing to downstream native-SOVD ECUs, and the Phase-5 HIL integration-tests (~38 raw `reqwest` uses across 10 test files) hand-roll URLs and deserialisation. The upstream `opensovd-client` crate pattern (first compared on `eclipse-opensovd/opensovd-core:inc/liebherr`, now tracked against upstream `main` after `opensovd-core#34`) has already shown the production-grade shape: hyper + hyper-util + tower, Unix-socket transport first-class, Tower `Layer` stack for middleware, entity navigators, no domain trait. ADR-0033 adopts that pattern for Taktflow.
 
 **Role.** Ship `sovd-client` as the single Rust SDK every in-process outbound SOVD caller uses — off-board testers (PROD-5), on-board apps (PROD-6 `sovd-ml`, PROD-14 `sovd-extended-vehicle`), the gateway's federated `remote.rs` call path, the cloud bridge (PROD-11), the Diagnostic Library IPC (PROD-17 — via a Unix-socket connector, not a separate crate), and the integration test harness. PROD-19 covers the **fault / operation / entity** surface; the HTTP / discovery / data-read surface lands in parallel per ADR-0033's layer-stack model.
 
@@ -515,15 +538,15 @@ Cadence returns to monthly automatically on the next observed upstream activity 
 - **Q-PROD-10e** — `sovd-interfaces` as a public crate. If `sovd-client` is ever published to crates.io, `sovd-interfaces` must be too. Decision deferred until OEM signals external-publication intent.
 - **Q-PROD-10f** — fate of the `SovdClient` trait in `sovd-interfaces/src/traits/client.rs`. Delete outright or retain as design documentation. Per ADR-0033 follow-up #2, either is acceptable; decision is a one-line commit message in PROD-19.1. Not a blocking question.
 
-**Reference.** **[ADR-0033](../docs/adr/ADR-0033-composable-transport-layers.md)** is the design authority for transport stack and layer composition; **[ADR-0034](../docs/adr/ADR-0034-async-first-diagnostic-runtime.md)** is the design authority for the async-first runtime choice this PROD rests on. Other references: existing `sovd-client` skeleton and `SovdClient` trait (context for trait-fate decision); upstream `opensovd-client` crate on [`eclipse-opensovd/opensovd-core:inc/liebherr`](https://github.com/eclipse-opensovd/opensovd-core/tree/inc/liebherr/opensovd-client) (pattern reference — same architectural family; absorption gated by `Q-PROD-11`); upstream `opensovd/docs/design/design.md` §"SOVD Client" (capability reference); ADR-0013 observability conventions; PROD-5 (auth scope consumer); PROD-17 (consumes the same client for IPC — scope reduction source).
+**Reference.** **[ADR-0033](../docs/adr/ADR-0033-composable-transport-layers.md)** is the design authority for transport stack and layer composition; **[ADR-0034](../docs/adr/ADR-0034-async-first-diagnostic-runtime.md)** is the design authority for the async-first runtime choice this PROD rests on. Other references: existing `sovd-client` skeleton and `SovdClient` trait (context for trait-fate decision); upstream `opensovd-client` crate pattern (first compared on [`eclipse-opensovd/opensovd-core:inc/liebherr`](https://github.com/eclipse-opensovd/opensovd-core/tree/inc/liebherr/opensovd-client), now tracked against upstream `main` after [opensovd-core#34](https://github.com/eclipse-opensovd/opensovd-core/pull/34)); upstream `opensovd/docs/design/design.md` §"SOVD Client" (capability reference); ADR-0013 observability conventions; PROD-5 (auth scope consumer); PROD-17 (consumes the same client for IPC — scope reduction source).
 
 ### II.6.20 PROD-20 UDS→SOVD ingress proxy
 
 **Role.** Implement the UDS-to-SOVD translation gateway that lets legacy UDS testers (garage tools, end-of-line fixtures, Tier-1 dev benches) reach Taktflow's SOVD surface without tester-side modifications. Tester sends UDS over DoIP; proxy resolves the addressed service via an ECU's MDD (diagnostic description); proxy issues the matching SOVD REST calls; proxy encodes the SOVD response back into a UDS reply. This is approach **(a)** in the three-approach bridging model (see §II.11.2-era ideas doc); approach (b) is [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/) — shipping; approach (c) is PROD-17 — now in absorb-only posture.
 
-**Build is unavoidable — no upstream or S-CORE equivalent.** Unlike PROD-17, there is no live upstream workstream producing this. `eclipse-opensovd/uds2sovd-proxy` has been at "initial commit scaffold" for ~6 months; `eclipse-opensovd/opensovd#63` (UDS2SOVD↔ServiceApps design) has not been updated since 2026-02-03; Eclipse S-CORE has no sibling `inc_uds2sovd` or equivalent incubation. The 2026-03-24 and 2026-03-31 UDS2SOVD weekly meetings were both recorded as skipped. **Taktflow must author PROD-20 or the capability does not exist.** This is a genuine authoring obligation, not a convergence risk.
+**Build is unavoidable — no upstream or S-CORE equivalent.** Unlike PROD-17, there is no live upstream workstream producing this. `eclipse-opensovd/uds2sovd-proxy` remains source/design-empty upstream beyond scaffold; its 2026-04-23 movement was CI-only. `eclipse-opensovd/opensovd#63` (UDS2SOVD↔ServiceApps design) has not been updated since 2026-02-03; Eclipse S-CORE has no sibling `inc_uds2sovd` or equivalent incubation. The 2026-03-24 and 2026-03-31 UDS2SOVD weekly meetings were both recorded as skipped. **Taktflow must author PROD-20 or the capability does not exist.** This is a genuine authoring obligation, not a convergence risk.
 
-**Context — the "crate already exists" misconception.** Part I originally tracked this as P10-SCA-A1 with acceptance *"Wire `uds2sovd-proxy/` into `sovd-gateway`"*, implying the crate held real code. Audit 2026-04-21 found [`uds2sovd-proxy/`](uds2sovd-proxy/) holds **zero `.rs` files** — it is byte-identical to upstream [eclipse-opensovd/uds2sovd-proxy](https://github.com/eclipse-opensovd/uds2sovd-proxy), which has sat at "initial commit README" for ~6 months with only `.gitignore` + CI boilerplate added since. Upstream's README states the intent in two paragraphs + five adjective goals ("fast", "safe", etc.) and leaves every architectural decision open: no requirements, no component decomposition, no MDD format pin, no UDS service coverage matrix, no NRC ↔ SOVD error map, no session (0x10) or security (0x27) model, no performance targets. PROD-20 therefore owns both the design and the implementation — this is a green-field build, not an integration task. Second confirmed name-collision after `opensovd-core/` and partial-absorption of `fault-lib/`; feeds `Q-PROD-11b` audit.
+**Context — the "crate already exists" misconception.** Part I originally tracked this as P10-SCA-A1 with acceptance *"Wire `uds2sovd-proxy/` into `sovd-gateway`"*, implying the crate held real code. Audit 2026-04-21 found [`uds2sovd-proxy/`](uds2sovd-proxy/) held **zero product `.rs` files** at that time and was byte-identical to upstream [eclipse-opensovd/uds2sovd-proxy](https://github.com/eclipse-opensovd/uds2sovd-proxy), which still has only scaffold plus CI as of 2026-05-01. Upstream's README states the intent in two paragraphs + five adjective goals ("fast", "safe", etc.) and leaves every architectural decision open: no requirements, no component decomposition, no MDD format pin, no UDS service coverage matrix, no NRC ↔ SOVD error map, no session (0x10) or security (0x27) model, no performance targets. PROD-20 therefore owned both the design and the implementation — green-field build, not integration. The local Taktflow proxy is now implemented and closed through `PROD-20.5`, while upstream remains scaffold/CI-only.
 
 **Inputs.** Upstream README at `uds2sovd-proxy/README.md` as a north-star sentence (not a design); existing [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/) UDS/DoIP stack (reverse-direction code we can crib from for UDS parsing, ISO-TP segmentation, DoIP flow control); [`opensovd-core/sovd-client/`](opensovd-core/sovd-client/) outbound SOVD caller (PROD-19) for the south-face SOVD calls; MDD artefacts produced by [`odx-converter/`](odx-converter/) (PROD-13); ADR-0008 ODX→MDD pipeline; ADR-0020 SOVD wire errors (for the reply-encoding side of NRC mapping).
 
@@ -556,7 +579,7 @@ Cadence returns to monthly automatically on the next observed upstream activity 
 
 **Estimate.** 5–8 engineer-weeks end-to-end (2–3 weeks design ADR, 3–5 weeks implementation + test + bench fixture). Calendar 3–5 months at solo + interrupted cadence. Audit 2026-04-21 is the basis; prior Part-I estimate under P10-SCA-A1 assumed the crate was wired-able in ~1 week and was wrong.
 
-**Reference.** Upstream README at `uds2sovd-proxy/README.md` (north-star sentence only); upstream PR #63 on [eclipse-opensovd/opensovd](https://github.com/eclipse-opensovd/opensovd/pull/63) (PlantUML-only, no body, open since 2025-11-28 — design-in-flight, watch don't absorb); approach (b) shipping sibling [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/); approach (c) in-design sibling [PROD-17](#ii-6-17-prod-17-diagnostic-library-framework-agnostic-app-registration); supersedes Part I `P10-SCA-A1`. Upstream review cadence for this workstream is set to quarterly in PROD-15 based on observed meeting activity (no published outcome on the UDS2SOVD↔ServiceApps finalisation item from the 2026-03-24 and 2026-03-31 meetings; upstream repository has had no source commits since the 2025-10-14 initial scaffold).
+**Reference.** Upstream README at `uds2sovd-proxy/README.md` (north-star sentence only); upstream PR #63 on [eclipse-opensovd/opensovd](https://github.com/eclipse-opensovd/opensovd/pull/63) (PlantUML-only, no body, open since 2025-11-28 — design-in-flight, watch don't absorb); approach (b) shipping sibling [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/); approach (c) in-design sibling [PROD-17](#ii-6-17-prod-17-diagnostic-library-framework-agnostic-app-registration); supersedes Part I `P10-SCA-A1`. Upstream review cadence for this workstream remains quarterly in PROD-15 because the 2026-04-23 upstream proxy movement was CI-only and PR #63 is still unchanged.
 
 Completion note (2026-04-23): `PROD-20.1` is closed by
 [`docs/adr/ADR-0040-uds2sovd-proxy-design.md`](docs/adr/ADR-0040-uds2sovd-proxy-design.md).
@@ -606,6 +629,21 @@ leaf name but cannot convert it as a service. Verification:
 `cargo test --manifest-path uds2sovd-proxy/Cargo.toml` and
 `cargo test --manifest-path opensovd-core/Cargo.toml -p integration-tests --test prod20_uds_ingress_proxy`
 are green.
+
+Completion note (2026-05-01): `PROD-20.5` is closed by the replayable
+Tier-1-facing bench fixture under
+[`test/integration/uds2sovd/`](test/integration/uds2sovd/). The bundle
+contains the raw UDS-over-DoIP transcript, tester logical-address profile,
+CVC MDD target mapping, expected SOVD calls, perf gates, and recorded
+session witness. The automated replay at
+[`opensovd-core/integration-tests/tests/prod20_uds2sovd_bench_fixture.rs`](opensovd-core/integration-tests/tests/prod20_uds2sovd_bench_fixture.rs)
+builds the real `uds2sovd-proxy` binary, starts it against the checked-in
+CVC MDD, drives the transcript over DoIP, asserts each UDS response and
+southbound SOVD path, verifies `uds2sovd:` correlation propagation, and
+checks ADR-0040 timing gates. Verification green:
+`cargo test --manifest-path uds2sovd-proxy/Cargo.toml` and
+`cargo test --manifest-path opensovd-core/Cargo.toml -p integration-tests --test prod20_uds2sovd_bench_fixture -- --nocapture`
+(`startup=505.659 ms`, `steady_state_p95=3.473 ms`).
 
 ### II.6.21 PROD-21 OEM pilot playbook finalization
 
@@ -758,9 +796,9 @@ round-trip, or QM/T1 partition freeze is claimed without the hardware and
 integration window in hand. The deferral does not close `P12`, does not
 claim M11, and does not turn P13 green. While those target-HPC rows are
 deferred, only non-HPC capability work that explicitly says it does not
-block M11 may continue in parallel. As of 2026-04-24, that continuation
-thread has closed `PROD-20.1` through `PROD-20.4`; the next proxy
-deliverable is `PROD-20.5`.
+block M11 may continue in parallel. As of 2026-05-01, that continuation
+thread has closed `PROD-20.1` through `PROD-20.5`; no further `PROD-20`
+proxy deliverable is explicitly named.
 
 Supersession note (2026-04-23): the legacy reserved-ID sentence that
 still appears below is stale. The populated `P12-HPC-*` table above is
@@ -816,11 +854,11 @@ Each open question is a blocker on one or more capability specs and/or execution
 | Q-PROD-5 | **Tester-over-HTTP scopes — which of {OEM engineering, dealer, authorized workshop, 3rd-party OBD, public API} are in scope?** 3rd-party OBD brings regulatory obligations (e.g., EU right-to-repair / Euro 7 RDE data access). | PROD-5, PROD-9 |
 | Q-PROD-6 | **Cloud bridge pattern — reverse tunnel (vehicle-initiated), broker with per-VIN mTLS, private APN, or federated with OEM backend's existing VPN?** Affects attack surface and the R155 evidence pack. | PROD-11, P13 step table |
 | Q-PROD-7 | **ODX authoring tool target — Softing DTS.venice, Vector CANdelaStudio, ETAS OpenSOVD stack, or internal?** Defines the upstream boundary for PROD-13. | PROD-13, P13 step table |
-| Q-PROD-8 | **Upstream tracking strategy — continuous upstream merge (git subtree), periodic re-vendor, mirror-fork with drift automation, or frozen fork?** The monolith is believed to vendor seven of the Eclipse OpenSOVD active repos (§II.11.1 — six presumed, one confirmed); `opensovd-core/` is a name collision, not a vendor (Taktflow-authored stack). No `upstream` remote on any presumed-vendored subtree and no automation flagging drift. Vendoring of the six unaudited dirs is `Q-PROD-11b`; opensovd-core-specific posture is `Q-PROD-11`. | PROD-15, new ADR |
+| Q-PROD-8 | **Upstream tracking strategy — continuous upstream merge (git subtree), periodic re-vendor, mirror-fork with drift automation, or frozen fork?** The monolith carries seven Eclipse OpenSOVD-shaped top-level repos (§II.11.1). `opensovd/`, `fault-lib/`, `classic-diagnostic-adapter/`, and `uds2sovd-proxy/` are now audited as vendored/upstream-shaped subtrees; `classic-diagnostic-adapter/` and `uds2sovd-proxy/` carry local product divergence, while `opensovd/` is synced to upstream `2f7b1c0606f4`. `opensovd-core/` is a name collision, not a vendor (Taktflow-authored stack). No `upstream` remote on any vendored subtree and no automation flagging drift. The remaining subtree audit is `Q-PROD-11b`; opensovd-core-specific posture is `Q-PROD-11`. | PROD-15, new ADR |
 | Q-PROD-9 | **ODX-converter production posture — keep the vendored Kotlin/JVM [`odx-converter/`](odx-converter/) on the CI side only (offline MDD compile, JVM never ships to vehicle), ship the JVM into the production deployment boundary, or port to Rust to drop the JVM dep?** Upstream tool is pre-1.0 but actively developed. | PROD-13, P13 step table |
-| Q-PROD-11 | **Upstream opensovd-core (`inc/liebherr` branch) posture — absorb the `inc/liebherr` crates as a second vendored subtree, cherry-pick individual crate patterns (e.g. `opensovd-client` shape for PROD-19, `opensovd-providers` for PROD-17 / PROD-8), treat as reference-only and keep the Taktflow `sovd-*` stack standalone, or wait until upstream decides its own merge strategy into `main`?** Community has agreed on moving forward with that codebase (2026-04-21 signal) but not on how. Taktflow's `opensovd-core/` is the Taktflow-authored `sovd-*` stack (§II.11.1); upstream's is a separate T1-contributor-authored codebase under the same repo name. | PROD-15, PROD-17, PROD-19, §II.11.2 tracking |
+| Q-PROD-11 | **Answered 2026-05-01 by [`docs/upstream/deltas/opensovd-core-main-side-by-side.md`](docs/upstream/deltas/opensovd-core-main-side-by-side.md): keep Taktflow `opensovd-core/` standalone; do not absorb upstream `main` as a second vendored subtree.** Cherry-pick individual patterns instead: topology/data-provider boundaries for PROD-8/PROD-12, hyper/tower client and Unix connector shape for PROD-19, generic authn/authz and Rego option for PROD-5, and Unix socket/systemd socket-activation patterns for P12/P13. Upstream `main` remains a reference watched under PROD-15. | PROD-15, PROD-5, PROD-8, PROD-12, PROD-17, PROD-19, §II.11.2 tracking |
 | Q-PROD-10f | **Fate of the `SovdClient` trait** in [`opensovd-core/sovd-interfaces/src/traits/client.rs`](opensovd-core/sovd-interfaces/src/traits/client.rs) — delete outright or retain as design-only documentation (`#[allow(dead_code)]` + module-level comment pointing at ADR-0033). Per ADR-0033 no production code implements this trait; decision is a one-line commit message in PROD-19.1, not a plan blocker. | PROD-19.1 commit |
-| Q-PROD-11b | **Audit of the other six presumed-vendored directories (`opensovd/`, `classic-diagnostic-adapter/`, `odx-converter/`, `uds2sovd-proxy/`, `cpp-bindings/`, `dlt-tracing-lib/`) — are they genuinely vendored snapshots of their upstream repos, or are any of them (like `opensovd-core/`) Taktflow-authored codebases under a name-colliding directory?** Only `fault-lib/` has been verified to date; the other six inherit the "vendored" label from earlier plan text without tree-level confirmation. Answer drives whether "we already own the code" framing for PROD-13 / PROD-14 / Part I §5.1.5 holds or needs the same correction `opensovd-core/` just received. | §II.11.1 table, PROD-13, PROD-14, Part I §5.1.5 |
+| Q-PROD-11b | **Audit of the remaining presumed-vendored directories (`opensovd/`, `odx-converter/`, `cpp-bindings/`, `dlt-tracing-lib/`) — are they genuinely vendored snapshots of their upstream repos, or are any of them (like `opensovd-core/`) Taktflow-authored codebases under a name-colliding directory?** Resolved so far: `opensovd/` is a vendored governance/design snapshot and is synced to upstream `2f7b1c0606f4`; `fault-lib/` is vendored; `classic-diagnostic-adapter/` is vendored/upstream-shaped with local patches; `uds2sovd-proxy/` is a vendored upstream scaffold with a Taktflow product implementation overlaid. Remaining audits: `odx-converter/`, `cpp-bindings/`, and `dlt-tracing-lib/`. Answer drives whether "we already own the code" framing for PROD-13 / PROD-14 / Part I §5.1.5 holds or needs further correction. | §II.11.1 table, PROD-13, PROD-14, Part I §5.1.5 |
 
 Answers are captured at `docs/plan/part2-open-questions-answers.md` as they arrive.
 
@@ -901,50 +939,53 @@ Taktflow collapses most of the Eclipse OpenSOVD component set into top-level dir
 
 | Taktflow path | Upstream repo | Relationship | Lang |
 |---|---|---|---|
-| [`opensovd/`](opensovd/) | [eclipse-opensovd/opensovd](https://github.com/eclipse-opensovd/opensovd) (governance, ADRs, MVP scope) | presumed vendored snapshot (not yet audited vs. fork) | — |
-| [`opensovd-core/`](opensovd-core/) | [eclipse-opensovd/opensovd-core](https://github.com/eclipse-opensovd/opensovd-core) | **not vendored — name collision (confirmed 2026-04-21).** Taktflow's `opensovd-core/` is the Taktflow-authored `sovd-*` stack (`sovd-server`, `sovd-gateway`, `sovd-dfm`, `sovd-interfaces`, `sovd-client`, `sovd-main`, `sovd-ml`, `sovd-extended-vehicle`, `sovd-covesa`, `sovd-db`). The **upstream reference implementation** is a T1-supplier-contributed codebase on the `inc/liebherr` branch (crates `opensovd-server`, `opensovd-client`, `opensovd-core`, `opensovd-models`, `opensovd-providers`, `opensovd-mocks`, `opensovd-cli`, `opensovd-extra`), present in the fork at `<external-opensovd-fork>/opensovd-core/` but not absorbed into Taktflow. | Rust (both, independently) |
-| [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/) | [eclipse-opensovd/classic-diagnostic-adapter](https://github.com/eclipse-opensovd/classic-diagnostic-adapter) | presumed vendored snapshot (not yet audited vs. fork) | Rust |
+| [`opensovd/`](opensovd/) | [eclipse-opensovd/opensovd](https://github.com/eclipse-opensovd/opensovd) (governance, ADRs, MVP scope) | **vendored governance/design snapshot (confirmed and synced 2026-05-01 to upstream `2f7b1c0606f4`)**; see [`docs/upstream/deltas/opensovd.md`](docs/upstream/deltas/opensovd.md) | — |
+| [`opensovd-core/`](opensovd-core/) | [eclipse-opensovd/opensovd-core](https://github.com/eclipse-opensovd/opensovd-core) | **not vendored — name collision (confirmed 2026-04-21).** Taktflow's `opensovd-core/` is the Taktflow-authored `sovd-*` stack (`sovd-server`, `sovd-gateway`, `sovd-dfm`, `sovd-interfaces`, `sovd-client`, `sovd-main`, `sovd-ml`, `sovd-extended-vehicle`, `sovd-covesa`, `sovd-db`). The independent upstream implementation is now on upstream `main` after `opensovd-core#34` (2026-04-28); it is not absorbed into Taktflow. | Rust (both, independently) |
+| [`classic-diagnostic-adapter/`](classic-diagnostic-adapter/) | [eclipse-opensovd/classic-diagnostic-adapter](https://github.com/eclipse-opensovd/classic-diagnostic-adapter) | **vendored/upstream-shaped subtree with local patches (confirmed 2026-05-01)**; see [`docs/upstream/deltas/classic-diagnostic-adapter.md`](docs/upstream/deltas/classic-diagnostic-adapter.md) | Rust |
 | [`odx-converter/`](odx-converter/) | [eclipse-opensovd/odx-converter](https://github.com/eclipse-opensovd/odx-converter) (PDX → MDD, pre-1.0) | presumed vendored snapshot (not yet audited vs. fork) | Kotlin / JVM |
 | [`fault-lib/`](fault-lib/) | [eclipse-opensovd/fault-lib](https://github.com/eclipse-opensovd/fault-lib) | **vendored snapshot (confirmed 2026-04-21 — tree shapes match; src files diverge with local edits)** | Rust |
-| [`uds2sovd-proxy/`](uds2sovd-proxy/) | [eclipse-opensovd/uds2sovd-proxy](https://github.com/eclipse-opensovd/uds2sovd-proxy) | presumed vendored snapshot (not yet audited vs. fork) | — |
+| [`uds2sovd-proxy/`](uds2sovd-proxy/) | [eclipse-opensovd/uds2sovd-proxy](https://github.com/eclipse-opensovd/uds2sovd-proxy) | **vendored upstream scaffold with Taktflow product implementation overlaid (confirmed 2026-05-01)**; see [`docs/upstream/deltas/uds2sovd-proxy.md`](docs/upstream/deltas/uds2sovd-proxy.md) | Rust |
 | [`cpp-bindings/`](cpp-bindings/) | [eclipse-opensovd/cpp-bindings](https://github.com/eclipse-opensovd/cpp-bindings) (C++ SOVD core APIs) | presumed vendored snapshot (not yet audited vs. fork) | C++ |
 | [`dlt-tracing-lib/`](dlt-tracing-lib/) | [eclipse-opensovd/dlt-tracing-lib](https://github.com/eclipse-opensovd/dlt-tracing-lib) | presumed vendored snapshot (not yet audited vs. fork) | Rust |
 
-**Audit status.** Only `opensovd-core/` (name-collision, confirmed) and `fault-lib/` (vendored, confirmed) have been checked against the fork. The other six rows labelled "presumed vendored" inherit that claim from earlier plan text and have not been verified at the tree or file level. A second name collision in that group is possible but not expected; audit is tracked as `Q-PROD-11b` (§II.9).
+**Audit status.** Checked so far: `opensovd-core/` (name-collision, confirmed), `opensovd/` (vendored governance/design snapshot, confirmed and synced), `fault-lib/` (vendored, confirmed), `classic-diagnostic-adapter/` (vendored/upstream-shaped with local patches, confirmed), and `uds2sovd-proxy/` (vendored scaffold with local product implementation overlaid, confirmed). The remaining three rows labelled "presumed vendored" (`odx-converter/`, `cpp-bindings/`, `dlt-tracing-lib/`) inherit that claim from earlier plan text and have not been verified at the tree or file level. A second name collision in that group is possible but not expected; audit is tracked as `Q-PROD-11b` (§II.9).
 
 Plus Taktflow-specific top-level trees — [`dashboard/`](dashboard/), [`gateway/`](gateway/) (CAN→DoIP proxy), [`docs/`](docs/), [`scripts/`](scripts/), [`external/`](external/), [`work/`](work/).
 
 **Git relationship.** `origin` is `nhuvaoanh123/taktflow-opensovd`. There is **no `upstream` remote** to any `eclipse-opensovd/*` repo. Each vendored directory is a snapshot copy — edits land locally without a git-level link back to its upstream.
 
-**Convention.** When this plan, an ADR, or a commit message says "opensovd-core" without qualification, it means the Taktflow-authored `sovd-*` stack at [`opensovd-core/`](opensovd-core/). The upstream reference is written "upstream opensovd-core (`inc/liebherr` branch)" or "`eclipse-opensovd/opensovd-core:inc/liebherr`".
+**Convention.** When this plan, an ADR, or a commit message says "opensovd-core" without qualification, it means the Taktflow-authored `sovd-*` stack at [`opensovd-core/`](opensovd-core/). The upstream reference is written "upstream opensovd-core" or `eclipse-opensovd/opensovd-core`; older notes that say `inc/liebherr` refer to the pre-2026-04-28 branch source for the implementation that is now represented on upstream `main`.
 
 **Consequence for production.**
-- For the seven presumed-vendored directories (`opensovd/`, `classic-diagnostic-adapter/`, `odx-converter/`, `fault-lib/`, `uds2sovd-proxy/`, `cpp-bindings/`, `dlt-tracing-lib/`), the working assumption is that every PROD-* capability that touches them ships from the monolith because we own the vendored copy. The production question is then "is our copy current enough, and are our local patches upstreamable or frozen". This assumption is **only confirmed for `fault-lib/`**; for the other six it awaits audit under `Q-PROD-11b`. If audit surfaces another name-collision like `opensovd-core/`, the affected PROD-* framing shifts (in particular PROD-14 leans on `cpp-bindings/` and Part I §5.1.5 leans on `classic-diagnostic-adapter/`).
-- For `opensovd-core/`, the statement "we already own the code" is true for our own `sovd-*` stack but **not** for upstream's `inc/liebherr`-branch implementation. Any PROD-* capability that wants to draw on upstream's concrete crates (e.g. `opensovd-providers`, `opensovd-models`, `opensovd-mocks` patterns; the `opensovd-client` HTTP client shape for PROD-19) needs a separate absorb / reimplement / ignore decision.
+- For the seven OpenSOVD-shaped directories (`opensovd/`, `classic-diagnostic-adapter/`, `odx-converter/`, `fault-lib/`, `uds2sovd-proxy/`, `cpp-bindings/`, `dlt-tracing-lib/`), the working assumption is that every PROD-* capability that touches them ships from the monolith because we own the local copy. The production question is then "is our copy current enough, and are our local patches upstreamable or frozen". This assumption is confirmed for `opensovd/`, `fault-lib/`, `classic-diagnostic-adapter/`, and `uds2sovd-proxy/`; for the remaining three it awaits audit under `Q-PROD-11b`. If audit surfaces another name-collision like `opensovd-core/`, the affected PROD-* framing shifts.
+- For `opensovd-core/`, the statement "we already own the code" is true for our own `sovd-*` stack but **not** for upstream's independent implementation now on upstream `main`. Any PROD-* capability that wants to draw on upstream's concrete crates (e.g. `opensovd-providers`, `opensovd-models`, `opensovd-mocks` patterns; the `opensovd-client` HTTP client shape for PROD-19) needs a separate absorb / reimplement / ignore decision.
 
-**Upstream governance signal on opensovd-core (2026-04-21).** The OpenSOVD community has agreed to move forward with the `inc/liebherr`-branch codebase as the upstream reference implementation, but the merge strategy into upstream `main` is still open (merge-into-main vs. replace-main vs. keep-on-branch). Tracked as `Q-PROD-11` (below).
+**Upstream governance signal on opensovd-core (updated 2026-05-01).** The OpenSOVD community has moved the initial upstream implementation into `eclipse-opensovd/opensovd-core/main` via [opensovd-core#34](https://github.com/eclipse-opensovd/opensovd-core/pull/34), merged 2026-04-28. The old "wait until upstream decides how to merge `inc/liebherr`" posture is obsolete. `Q-PROD-11` is now answered by [`docs/upstream/deltas/opensovd-core-main-side-by-side.md`](docs/upstream/deltas/opensovd-core-main-side-by-side.md): keep the local `sovd-*` stack standalone and cherry-pick upstream patterns into named PROD work.
 
-**Local divergences** on disk as of 2026-04-20: 132 uncommitted lines in [`classic-diagnostic-adapter/cda-comm-doip/`](classic-diagnostic-adapter/cda-comm-doip/) (`config.rs`, `connections.rs`, `ecu_connection.rs`, `lib.rs`) plus modifications under [`opensovd-core/deploy/`](opensovd-core/deploy/) and [`opensovd-core/xtask/src/main.rs`](opensovd-core/xtask/src/main.rs). The `opensovd-core/` edits are Taktflow-authored (not divergence against upstream, since upstream is a different codebase); the CDA edits are true divergence against a vendored snapshot and stay flagged in Part I §5.1.5.
+**Local divergences** on disk as of 2026-05-01: CDA has 84 changed common tracked paths plus 4 local-only tracked paths against upstream `main`; see [`docs/upstream/deltas/classic-diagnostic-adapter.md`](docs/upstream/deltas/classic-diagnostic-adapter.md). UDS2SOVD has 8 changed common tracked paths plus 9 local-only product paths against upstream `main`; see [`docs/upstream/deltas/uds2sovd-proxy.md`](docs/upstream/deltas/uds2sovd-proxy.md). The `opensovd-core/` tree remains Taktflow-authored and is not counted as vendored divergence; its upstream comparison is tracked separately by `Q-PROD-11`.
 
 ### II.11.2 Upstream activity since the last vendoring (delta we don't have)
 
 The monolith was snapshotted at some past commit per directory. Upstream has continued — what follows is what the monolith is *likely behind on* at the vendored path.
 
 **opensovd (governance, [`opensovd/`](opensovd/)):**
-- 2026-04-20 — ADR: Rust linting & formatting proposal (#80) — **absorbed 2026-04-21** as [`docs/adr/ADR-0032-rust-codestyle.md`](docs/adr/ADR-0032-rust-codestyle.md). Adopts the upstream CDA pedantic ruleset verbatim (5 explicit deny/warn rules + rustfmt config); encoded in workspace-level `Cargo.toml` rather than a separate cicd-workflows repo (monolith convention). Rollout is not-a-flag-day: new violations block PRs, historical ones get tracked `#[allow]` comments. Follow-up Q-PROD-10 still pending on whether any Taktflow-specific lints apply beyond upstream's five.
-- 2026-04-14 — design doc: diagnostic library component (#94) — **absorbed 2026-04-21** into §II.6.17 PROD-17 (library capability) and §II.5.1 (entity hierarchy the library feeds). Upstream design.md remains the capability reference; our adoption commits to the pattern, not the API shape.
+- 2026-04-20 — ADR: Rust linting & formatting proposal (#80) — **absorbed 2026-04-21** as [`docs/adr/ADR-0032-rust-codestyle.md`](docs/adr/ADR-0032-rust-codestyle.md) and **synced into the vendored `opensovd/` subtree 2026-05-01** as [`opensovd/docs/decisions/0001-rust-codestyle-rules.md`](opensovd/docs/decisions/0001-rust-codestyle-rules.md). Adopts the upstream CDA pedantic ruleset verbatim (5 explicit deny/warn rules + rustfmt config); encoded in workspace-level `Cargo.toml` rather than a separate cicd-workflows repo (monolith convention). Rollout is not-a-flag-day: new violations block PRs, historical ones get tracked `#[allow]` comments. Follow-up Q-PROD-10 still pending on whether any Taktflow-specific lints apply beyond upstream's five.
+- 2026-04-14 — design doc: diagnostic library component (#94) — **absorbed 2026-04-21** into §II.6.17 PROD-17 (library capability) and §II.5.1 (entity hierarchy the library feeds), then **synced into the vendored `opensovd/` subtree 2026-05-01** by updating [`opensovd/docs/design/design.md`](opensovd/docs/design/design.md) and the high-level design SVG. Upstream design.md remains the capability reference; our adoption commits to the pattern, not the API shape.
 - 2025-11-25 — MVP Scope for OpenSOVD (#53)
 
-**opensovd-core (upstream [`eclipse-opensovd/opensovd-core`](https://github.com/eclipse-opensovd/opensovd-core)) — not vendored into Taktflow (see §II.11.1 naming collision). Fetched in the fork at `<external-opensovd-fork>/opensovd-core/`:**
-- 2026-02/03 — **`inc/liebherr` branch, initial import (#25) + aarch64 CI (#28)**, ~19.9k lines, 157 files, contributed by a T1 supplier. Real upstream implementation lives on this branch; upstream `main` is a stub (one "Initial commit" placeholder). Community has agreed (2026-04-21 signal, per `Q-PROD-11`) to move forward with this codebase as the upstream reference; merge strategy into upstream `main` is still open. Candidate idea sources for Taktflow: concrete `opensovd-client` crate shape (PROD-19 reference), `opensovd-providers` / `opensovd-models` pattern (PROD-17 / PROD-8 alignment check), `opensovd-mocks` test harness pattern (integration-tests bench). **Side-by-side compare 2026-04-21 (opensovd-client ↔ sovd-client):** upstream crate uses hyper + hyper-util + tower, first-class Unix-socket transport, entity-navigator API, no domain trait; covers entity listing + data reads + §II.5.1 relation traversal (`hosts`, `belongs_to`); **does not** cover fault or operation surfaces. Taktflow's `sovd-client` is still a 28-line skeleton but has a `SovdClient` trait defining fault + operation methods. The two are complementary, not overlapping. **Pattern absorbed 2026-04-21 as [`docs/adr/ADR-0033`](docs/adr/ADR-0033-composable-transport-layers.md)** (composable transport layers for production clients and IPC — hyper+tower, layer stack, entity navigators, no domain trait). PROD-19 rewritten against ADR-0033 the same day; upstream crate absorption itself remains deferred (Q-PROD-11).
+**opensovd-core (upstream [`eclipse-opensovd/opensovd-core`](https://github.com/eclipse-opensovd/opensovd-core)) — not vendored into Taktflow (see §II.11.1 naming collision):**
+- 2026-02/03 — **`inc/liebherr` branch, initial import (#25) + aarch64 CI (#28)**, ~19.9k lines, 157 files, contributed by a T1 supplier. Candidate idea sources for Taktflow: concrete `opensovd-client` crate shape (PROD-19 reference), `opensovd-providers` / `opensovd-models` pattern (PROD-17 / PROD-8 alignment check), `opensovd-mocks` test harness pattern (integration-tests bench). **Side-by-side compare 2026-04-21 (opensovd-client ↔ sovd-client):** upstream crate uses hyper + hyper-util + tower, first-class Unix-socket transport, entity-navigator API, no domain trait; covers entity listing + data reads + §II.5.1 relation traversal (`hosts`, `belongs_to`); **does not** cover fault or operation surfaces. Taktflow's `sovd-client` is still a 28-line skeleton but has a `SovdClient` trait defining fault + operation methods. The two are complementary, not overlapping. **Pattern absorbed 2026-04-21 as [`docs/adr/ADR-0033`](docs/adr/ADR-0033-composable-transport-layers.md)** (composable transport layers for production clients and IPC — hyper+tower, layer stack, entity navigators, no domain trait). PROD-19 rewritten against ADR-0033 the same day.
+- 2026-04-28/29 — upstream `main` is no longer a stub. [opensovd-core#34](https://github.com/eclipse-opensovd/opensovd-core/pull/34) merged the initial OpenSOVD Core implementation, then `#35` and `#37` updated dependencies/CI. Upstream `main` head observed 2026-05-01: `93a030abc110`. The 2026-05-01 side-by-side report answered `Q-PROD-11`: no second vendored subtree; keep Taktflow `opensovd-core/` standalone and cherry-pick upstream patterns through named PROD work. See [`docs/upstream/deltas/opensovd-core-main-side-by-side.md`](docs/upstream/deltas/opensovd-core-main-side-by-side.md).
 
-**classic-diagnostic-adapter (`classic-diagnostic-adapter/`) — 9 open PRs upstream, notable:**
-- **#273** async operations (architectural, API change, 32 comments) — directly relevant to PROD-5 and PROD-14; architectural decision whether to pull in or diverge
-- **#282** diag-kernel thread-base offset through structure DOP decoding (architectural)
-- **#256** security plugin in separate crate (architectural, 34+ days open) — directly relevant to PROD-5 tester-over-HTTP scopes
-- **#287** mbedtls ed25519 OID fix (security fix — should be pulled in)
-- **#267** cda-core `get_response_parameter_metadata` + PhysConst coded-value fix (API addition)
-- **#289**, **#265** DLT logging docs and architecture
+**classic-diagnostic-adapter (`classic-diagnostic-adapter/`) — audited 2026-05-01, see [`docs/upstream/deltas/classic-diagnostic-adapter.md`](docs/upstream/deltas/classic-diagnostic-adapter.md):**
+- **#287** mbedtls ed25519 OID fix - merged upstream 2026-04-21 and merged locally 2026-05-01.
+- **#267** cda-core `get_response_parameter_metadata` + PhysConst coded-value fix - merged upstream 2026-04-27 and merged locally 2026-05-01.
+- **#273** async operations - merged upstream 2026-04-27 and merged locally 2026-05-01 from upstream `main` head `d781c2422493`, with local metadata/catalog/bench conflicts resolved.
+- **#256** security plugin in separate crate — still open, directly relevant to PROD-5 tester-over-HTTP scopes.
+- **#282** diag-kernel thread-base offset through structure DOP decoding — still open, relevant to PROD-13/ODX fidelity.
+
+**uds2sovd-proxy (`uds2sovd-proxy/`) — audited 2026-05-01, see [`docs/upstream/deltas/uds2sovd-proxy.md`](docs/upstream/deltas/uds2sovd-proxy.md):**
+- Upstream `main` head `f6467e205620` is a CI workflow update from 2026-04-23. No upstream source/design change alters the `PROD-20` conclusion. Local Taktflow code is a product implementation overlaid on the upstream scaffold, so `PROD-20.1` through `PROD-20.5` stay closed.
 
 **odx-converter (`odx-converter/`) — already in the monolith as Kotlin + Gradle.** The production question for PROD-13 is not "adopt or re-implement" but "keep JVM in the production deployment boundary, or port to Rust to drop the JVM dep". Framed in `Q-PROD-9`.
 
@@ -955,11 +996,12 @@ The monolith was snapshotted at some past commit per directory. Upstream has con
 ### II.11.3 Immediate upstream actions (independent of `Q-PROD-8` outcome)
 
 1. Add `upstream` git remotes per vendored directory, scoped read-only — let `git fetch upstream` work for each subtree so delta reviews are trivial.
-2. Produce a per-subtree delta report: local tree vs. upstream `main` for each of the seven presumed-vendored directories (excluding `opensovd-core/`, which is Taktflow-authored and has no upstream-vendored twin — see §II.11.1). The first step of each report is a tree-shape audit that also resolves `Q-PROD-11b` for that directory; if audit shows the directory is in fact another name-collision rather than a vendored snapshot, the delta report degenerates to "not applicable — see §II.11.1 note". Output under `docs/upstream/deltas/<subtree>.md`. `opensovd-core/` gets its own side-by-side report against `upstream/inc/liebherr` under `Q-PROD-11`, separately.
-3. Triage `classic-diagnostic-adapter` upstream PRs for PROD impact: #287 (security fix, pull in), #256 (security plugin modularity, PROD-5 relevance), #273 (async ops, PROD-14 relevance), #267 (API addition).
+2. Produce a per-subtree delta report: local tree vs. upstream `main` for each OpenSOVD-shaped directory (excluding `opensovd-core/`, which is Taktflow-authored and has no upstream-vendored twin — see §II.11.1). The first step of each report is a tree-shape audit that also resolves `Q-PROD-11b` for that directory; if audit shows the directory is in fact another name-collision rather than a vendored snapshot, the delta report degenerates to "not applicable — see §II.11.1 note". Output under `docs/upstream/deltas/<subtree>.md`. `opensovd-core/` got its separate side-by-side report against upstream `main` on 2026-05-01 and answered `Q-PROD-11`; `Q-PROD-11b` reports landed 2026-05-01 for `opensovd/`, `classic-diagnostic-adapter/`, and `uds2sovd-proxy/`.
+3. Triage `classic-diagnostic-adapter` upstream PRs for PROD impact: #287, #267, and #273 are merged locally 2026-05-01; #256 (security plugin modularity, PROD-5 relevance) and #282 (structure DOP base offset, PROD-13 relevance) stay on watch while open.
 4. Reconcile Part I §5.1.5 text ("no inline edits") with reality (132 uncommitted lines in `cda-comm-doip/`) after step 2 finishes and authorship is known.
 
-All four are read-only / diagnostic actions; user approval recommended before any upstream merge or local-patch cleanup.
+These actions are diagnostic by default; any future upstream merge or local-patch
+cleanup should land with a dedicated merge note like the 2026-05-01 CDA sync.
 
 ### II.11.4 Monitoring rule — daily fork sync
 
@@ -997,11 +1039,115 @@ Carried forward from research §II.10, prioritized as **M (mandatory for product
 | 16 | Fault-lib feature parity (debounce / enabling / aging / retry) | eclipse-opensovd fault-lib PR #7 | M | PROD-16 |
 | 17 | UDS→SOVD ingress proxy (legacy-tester bridge) | eclipse-opensovd uds2sovd-proxy (scaffold) | M | PROD-20 |
 
-**Net read.** Taktflow is credibly ahead on AI/ML and Extended Vehicle design intent, at parity on OTA/security architecture, behind on transport / full-resource / auto-conformance / silicon breadth / evidence. Items 1–9 are must-ship for OEM release credibility against ETAS / Vector / EB / DSA. Items 10–15 are where Taktflow can plant a differentiation flag. Item 16 closes a gap against upstream's own in-flight implementation — treated as idea source, not dependency (see §II.6.16). Item 17 replaces a stale Part-I task (P10-SCA-A1) after 2026-04-21 audit found both our vendored [`uds2sovd-proxy/`](uds2sovd-proxy/) and upstream are empty scaffolds — the work is green-field build, not integration, justifying a full Part-II capability spec (see §II.6.20).
+**Net read.** Taktflow is credibly ahead on AI/ML and Extended Vehicle design intent, at parity on OTA/security architecture, behind on transport / full-resource / auto-conformance / silicon breadth / evidence. Items 1–9 are must-ship for OEM release credibility against ETAS / Vector / EB / DSA. Items 10–15 are where Taktflow can plant a differentiation flag. Item 16 closes a gap against upstream's own in-flight implementation — treated as idea source, not dependency (see §II.6.16). Item 17 replaces a stale Part-I task (P10-SCA-A1) after 2026-04-21 audit found both our vendored [`uds2sovd-proxy/`](uds2sovd-proxy/) and upstream were empty scaffolds at that time. As of 2026-05-01, Taktflow has filled the local proxy through `PROD-20.1` through `PROD-20.5`; upstream remains scaffold/CI-only.
 
 ---
 
 ## II.13 Revision Log
+
+- **2026-06-11, Draft 1.21** - executed the `PROD-15` monthly upstream check
+  and consolidation review. Added
+  [`docs/upstream/eclipse-opensovd-status-2026-06-11.md`](docs/upstream/eclipse-opensovd-status-2026-06-11.md)
+  and refreshed
+  [`docs/upstream/inc_diagnostics-status.md`](docs/upstream/inc_diagnostics-status.md)
+  (overdue 2026-06-01 check; new C++ API PR `#4`; absorb-only holds).
+  No upstream code merged. Reaffirmed the `Q-PROD-11` keep-standalone
+  decision; identified ready-now opensovd-core cherry-picks (type-safe data
+  filter for PROD-12, client version discovery + pluggable models for
+  PROD-19, CORS wildcard+credentials fail-fast for gateway hardening) and a
+  CDA correctness/security merge slice target at upstream `53f8032`. Flagged
+  that the 2026-05-01 CDA merge work remains uncommitted in the control-PC
+  mirror working tree and must be committed or merged back to the primary
+  workstation before the next absorption pass.
+
+- **2026-05-01, Draft 1.20** - completed the `Q-PROD-11b`
+  audit/sync for the vendored governance/design subtree
+  [`opensovd/`](opensovd/) against upstream
+  `eclipse-opensovd/opensovd/main` head `2f7b1c0606f4`. Added
+  [`docs/upstream/deltas/opensovd.md`](docs/upstream/deltas/opensovd.md),
+  confirmed the subtree is genuinely vendored, and pulled the safe upstream
+  docs/design drift locally: accepted Rust codestyle decision
+  [`opensovd/docs/decisions/0001-rust-codestyle-rules.md`](opensovd/docs/decisions/0001-rust-codestyle-rules.md),
+  updated Diagnostic Library/entity-hierarchy design text, and the regenerated
+  high-level design SVG. Open upstream `opensovd` PRs `#46`, `#63`, and `#75`
+  remain watch-only until merged.
+
+- **2026-05-01, Draft 1.19** - completed the `Q-PROD-11`
+  side-by-side audit against upstream `eclipse-opensovd/opensovd-core/main`
+  head `93a030abc110` and captured it at
+  [`docs/upstream/deltas/opensovd-core-main-side-by-side.md`](docs/upstream/deltas/opensovd-core-main-side-by-side.md).
+  Decision: keep Taktflow `opensovd-core/` standalone, do not absorb upstream
+  `main` as a second vendored subtree, and cherry-pick useful upstream patterns
+  through named PROD work instead: topology/data-provider boundaries for
+  PROD-8/PROD-12, hyper/tower client and Unix connector shape for PROD-19,
+  generic authn/authz plus Rego option for PROD-5, and Unix
+  socket/systemd-activation patterns for P12/P13. No code changed for this
+  audit deliverable.
+
+- **2026-05-01, Draft 1.18** - pulled down and locally merged the next CDA
+  upstream sync slice from upstream `main` head `d781c2422493`, including
+  [classic-diagnostic-adapter#273](https://github.com/eclipse-opensovd/classic-diagnostic-adapter/pull/273)
+  async operations plus the latest version-endpoint/documentation fixture
+  additions. Conflict resolution preserved Taktflow downstream catalog routing
+  and the phase-5 UDS2SOVD bench tests while absorbing upstream SOVD operation
+  execution resources, functional-group operations, generated MDD fixtures, ECU
+  simulator routine recording support, and ODX routine helpers. Verification
+  green: `cargo test -p cda-core operations --lib`,
+  `cargo test -p cda-core get_routine_subfunctions --lib`,
+  `cargo test -p cda-core lookup_diag_service --lib`,
+  `cargo test -p cda-core phase5_sc_faultmem --lib`,
+  `cargo check -p cda-sovd -p sovd-interfaces`,
+  `cargo check -p opensovd-cda --no-default-features --features health`,
+  `cargo test --manifest-path uds2sovd-proxy/Cargo.toml`, and
+  `cargo test --manifest-path opensovd-core/Cargo.toml -p integration-tests --test prod20_uds2sovd_bench_fixture -- --nocapture`
+  (`startup=504.0156 ms`, `steady_state_p95=2.6189 ms`). Full CDA default
+  workspace check is blocked on this Windows host by missing OpenSSL development
+  libraries for the default `openssl` feature, not by a Rust compile error.
+
+- **2026-05-01, Draft 1.17** - pulled down and locally merged the clean
+  high-priority CDA upstream drift from the 2026-05-01 report. Applied
+  [classic-diagnostic-adapter#287](https://github.com/eclipse-opensovd/classic-diagnostic-adapter/pull/287)
+  (mbedtls Ed25519 OID fix) and
+  [classic-diagnostic-adapter#267](https://github.com/eclipse-opensovd/classic-diagnostic-adapter/pull/267)
+  (request/response parameter metadata, PhysConst coded-value handling,
+  `param_metadata` helper module). Updated `uds2sovd-proxy` to call
+  `get_request_parameter_metadata` and to handle the richer upstream
+  `ParameterTypeMetadata` shape. Verification green:
+  `cargo check --manifest-path uds2sovd-proxy/Cargo.toml`,
+  `cargo test --manifest-path classic-diagnostic-adapter/Cargo.toml -p cda-core param_metadata --lib`,
+  `cargo test --manifest-path uds2sovd-proxy/Cargo.toml`, and
+  `cargo test --manifest-path opensovd-core/Cargo.toml -p integration-tests --test prod20_uds2sovd_bench_fixture -- --nocapture`
+  (`startup=505.9698 ms`, `steady_state_p95=2.4152 ms`). CDA `#273`
+  remains queued as a dedicated async-operations merge because it collides
+  across operation APIs, generated MDD fixtures, and integration harness files.
+
+- **2026-05-01, Draft 1.16** - executed the `PROD-15` upstream
+  refresh requested before continuing. Added
+  [`docs/upstream/eclipse-opensovd-status-2026-05-01.md`](docs/upstream/eclipse-opensovd-status-2026-05-01.md),
+  [`docs/upstream/inc_diagnostics-status.md`](docs/upstream/inc_diagnostics-status.md),
+  and first `Q-PROD-11b` delta reports for
+  [`classic-diagnostic-adapter`](docs/upstream/deltas/classic-diagnostic-adapter.md)
+  and [`uds2sovd-proxy`](docs/upstream/deltas/uds2sovd-proxy.md).
+  Findings: upstream `opensovd-core/main` now contains the initial
+  implementation via `opensovd-core#34`, so `Q-PROD-11` shifts from
+  "wait for merge strategy" to side-by-side audit against upstream `main`;
+  CDA has high-priority merged security/API/async drift; UDS2SOVD upstream
+  remains source/design-empty beyond CI updates; `inc_diagnostics` watch
+  cadence returns to monthly because PR activity resumed.
+
+- **2026-05-01, Draft 1.15** - closed `PROD-20.5` by adding the
+  replayable UDS-to-SOVD conformance bench fixture under
+  [`test/integration/uds2sovd/`](test/integration/uds2sovd/) and the
+  automated replay test at
+  [`opensovd-core/integration-tests/tests/prod20_uds2sovd_bench_fixture.rs`](opensovd-core/integration-tests/tests/prod20_uds2sovd_bench_fixture.rs).
+  The fixture records the Tier-1-facing raw UDS-over-DoIP request/response
+  transcript, expected SOVD calls, logical-address profile, CVC MDD mapping,
+  and perf gates from ADR-0040. Verification green:
+  `cargo test --manifest-path uds2sovd-proxy/Cargo.toml` and
+  `cargo test --manifest-path opensovd-core/Cargo.toml -p integration-tests --test prod20_uds2sovd_bench_fixture -- --nocapture`
+  with `startup=505.659 ms` and `steady_state_p95=3.473 ms`. This closes
+  the planned `PROD-20.1` through `PROD-20.5` continuation thread while
+  leaving deferred target-HPC rows `P12-HPC-04` through `P12-HPC-06` open.
 
 - **2026-04-24, Draft 1.14** - closed `PROD-20.4` by adding the
   synthetic UDS-over-DoIP ingress integration suite at

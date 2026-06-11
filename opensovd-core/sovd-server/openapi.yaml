@@ -7,6 +7,108 @@ info:
     identifier: Apache-2.0
   version: 0.1.0
 paths:
+  /sovd/covesa/vss/{vss_path}:
+    get:
+      tags:
+      - covesa-semantic
+      summary: |-
+        `GET /sovd/covesa/vss/{vss_path}` - translate one mapped VSS read
+        into the underlying SOVD endpoint.
+      description: |-
+        # Errors
+
+        Returns 404 if the VSS path is not mapped or if the resolved
+        component is not registered. Contract-loading failures are surfaced as
+        500s because they indicate a broken checked-in semantic catalog.
+      operationId: readCovesaVssPath
+      parameters:
+      - name: vss_path
+        in: path
+        description: Dotted VSS path, e.g. Vehicle.OBD.DTCList
+        required: true
+        schema:
+          type: string
+      - name: component-id
+        in: query
+        description: Optional component-id override for per-component mappings
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Translated VSS read result
+        '404':
+          description: VSS path or resolved component not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '500':
+          description: Semantic contract load failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+    post:
+      tags:
+      - covesa-semantic
+      summary: |-
+        `POST /sovd/covesa/vss/{vss_path}` - translate one whitelisted VSS
+        actuator write into the underlying SOVD operation-start path.
+      description: |-
+        # Errors
+
+        Returns 404 if the VSS path is unknown or the resolved component does
+        not exist. Non-whitelisted or non-write mappings are rejected with a
+        400.
+      operationId: writeCovesaVssPath
+      parameters:
+      - name: vss_path
+        in: path
+        description: Dotted VSS actuator path
+        required: true
+        schema:
+          type: string
+      - name: component-id
+        in: query
+        description: Optional component-id override for per-component mappings
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: 'null'
+              - $ref: '#/components/schemas/StartExecutionRequest'
+      responses:
+        '202':
+          description: Whitelisted actuator write translated to an async operation start
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartExecutionAsyncResponse'
+        '204':
+          description: Whitelisted actuator write translated to a clear-all-fault request
+        '400':
+          description: Path is not a whitelisted actuator mapping
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '404':
+          description: VSS path or resolved component not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '500':
+          description: Semantic contract load failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
   /sovd/v1/audit:
     get:
       tags:
@@ -198,7 +300,8 @@ paths:
       - data-access
       summary: |-
         `GET /sovd/v1/components/{component_id}/data` — list the
-        data-metadata catalog.
+        data-metadata catalog, optionally filtered by category, group, or
+        tags.
       description: |-
         # Errors
 
@@ -213,6 +316,36 @@ paths:
         required: true
         schema:
           type: string
+      - name: categories
+        in: query
+        description: |-
+          Keep values whose `category` matches any listed category.
+          Ignored when `groups` is also supplied.
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      - name: groups
+        in: query
+        description: |-
+          Keep values belonging to any listed group. Takes precedence
+          over `categories`.
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+      - name: tags
+        in: query
+        description: |-
+          Keep values carrying at least one listed tag; combined with the
+          scope filter.
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
       responses:
         '200':
           description: Data-metadata catalog
@@ -514,6 +647,263 @@ paths:
                 $ref: '#/components/schemas/ExecutionStatusResponse'
         '404':
           description: Execution not found
+  /sovd/v1/extended/vehicle/:
+    get:
+      tags:
+      - extended-vehicle
+      summary: |-
+        `GET /sovd/v1/extended/vehicle/` - list the exposed Extended Vehicle
+        items for this deployment.
+      operationId: getExtendedVehicleCatalog
+      responses:
+        '200':
+          description: Extended Vehicle catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtendedVehicleCatalog'
+        '500':
+          description: Extended Vehicle config could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+  /sovd/v1/extended/vehicle/energy:
+    get:
+      tags:
+      - extended-vehicle
+      summary: '`GET /sovd/v1/extended/vehicle/energy` - return pilot EV energy data.'
+      operationId: getExtendedVehicleEnergy
+      responses:
+        '200':
+          description: Current energy state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnergyState'
+        '404':
+          description: Energy is disabled or source data is missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '500':
+          description: Extended Vehicle config could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+  /sovd/v1/extended/vehicle/fault-log:
+    get:
+      tags:
+      - extended-vehicle
+      summary: |-
+        `GET /sovd/v1/extended/vehicle/fault-log` - aggregated confirmed DTCs
+        across all components, with optional `since` lower-bound filtering.
+      operationId: getExtendedVehicleFaultLog
+      parameters:
+      - name: since
+        in: query
+        description: RFC3339 lower bound for observed fault-log timestamps
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Extended Vehicle fault-log list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FaultLogList'
+        '400':
+          description: The `since` query parameter was not valid RFC3339
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '404':
+          description: Fault log is disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '500':
+          description: Extended Vehicle config could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+  /sovd/v1/extended/vehicle/fault-log/{log_id}:
+    get:
+      tags:
+      - extended-vehicle
+      summary: |-
+        `GET /sovd/v1/extended/vehicle/fault-log/{log_id}` - drill into one
+        Extended Vehicle fault-log entry.
+      operationId: getExtendedVehicleFaultLogById
+      parameters:
+      - name: log_id
+        in: path
+        description: Extended Vehicle fault-log identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Extended Vehicle fault-log detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FaultLogDetail'
+        '404':
+          description: Fault-log entry not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '500':
+          description: Extended Vehicle config could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+  /sovd/v1/extended/vehicle/state:
+    get:
+      tags:
+      - extended-vehicle
+      summary: |-
+        `GET /sovd/v1/extended/vehicle/state` - return the current aggregated
+        vehicle state.
+      operationId: getExtendedVehicleState
+      responses:
+        '200':
+          description: Aggregated Extended Vehicle state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleState'
+        '404':
+          description: State is disabled or source data is missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '500':
+          description: Extended Vehicle config could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+  /sovd/v1/extended/vehicle/subscriptions:
+    get:
+      tags:
+      - extended-vehicle
+      summary: |-
+        `GET /sovd/v1/extended/vehicle/subscriptions` - list active
+        Extended Vehicle subscriptions.
+      operationId: listExtendedVehicleSubscriptions
+      responses:
+        '200':
+          description: Active Extended Vehicle subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsList'
+        '500':
+          description: Extended Vehicle config could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+    post:
+      tags:
+      - extended-vehicle
+      summary: |-
+        `POST /sovd/v1/extended/vehicle/subscriptions` - create a new
+        Extended Vehicle subscription.
+      operationId: createExtendedVehicleSubscription
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubscriptionRequest'
+        required: true
+      responses:
+        '201':
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtendedVehicleSubscription'
+        '400':
+          description: Requested data item is not subscribable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '404':
+          description: Requested data item is not exposed by this deployment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '500':
+          description: Extended Vehicle config could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+  /sovd/v1/extended/vehicle/subscriptions/{id}:
+    delete:
+      tags:
+      - extended-vehicle
+      summary: |-
+        `DELETE /sovd/v1/extended/vehicle/subscriptions/{id}` - terminate one
+        Extended Vehicle subscription.
+      operationId: deleteExtendedVehicleSubscription
+      parameters:
+      - name: id
+        in: path
+        description: Extended Vehicle subscription identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Subscription deleted
+        '404':
+          description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+  /sovd/v1/extended/vehicle/vehicle-info:
+    get:
+      tags:
+      - extended-vehicle
+      summary: |-
+        `GET /sovd/v1/extended/vehicle/vehicle-info` - return static
+        vehicle-identification fields.
+      operationId: getExtendedVehicleInfo
+      responses:
+        '200':
+          description: Static Extended Vehicle metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleInfo'
+        '404':
+          description: Vehicle info is disabled or source data is missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+        '500':
+          description: Extended Vehicle config could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
   /sovd/v1/gateway/backends:
     get:
       tags:
@@ -787,6 +1177,35 @@ components:
       - freeze
       - reset
       - status
+    CatalogEntry:
+      type: object
+      required:
+      - id
+      - href
+      - kind
+      - subscribable
+      properties:
+        href:
+          type: string
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/CatalogEntryKind'
+        subscribable:
+          type: boolean
+    CatalogEntryKind:
+      type: string
+      enum:
+      - data
+      - control
+    CreateSubscriptionRequest:
+      type: object
+      required:
+      - data_item
+      properties:
+        data_item:
+          type: string
+      additionalProperties: false
     DataCategoryInformation:
       type: object
       description: |-
@@ -927,6 +1346,33 @@ components:
           description: All entities in the collection.
         schema:
           description: Optional embedded JSON Schema describing the response shape.
+    EnergyState:
+      type: object
+      required:
+      - vehicle_id
+      - soc_percent
+      - soh_percent
+      - estimated_range_km
+      - observed_at
+      properties:
+        battery_voltage_v:
+          type:
+          - number
+          - 'null'
+          format: double
+        estimated_range_km:
+          type: integer
+          format: int64
+        observed_at:
+          type: string
+        soc_percent:
+          type: integer
+          format: int64
+        soh_percent:
+          type: integer
+          format: int64
+        vehicle_id:
+          type: string
     EntityCapabilities:
       type: object
       description: |-
@@ -1122,6 +1568,43 @@ components:
           items:
             type: string
           description: All currently existing execution identifiers.
+    ExtendedVehicleCatalog:
+      type: object
+      required:
+      - vehicle_id
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogEntry'
+        vehicle_id:
+          type: string
+    ExtendedVehicleSubscription:
+      type: object
+      required:
+      - id
+      - data_item
+      - topic
+      - status_topic
+      - created_at
+      - expires_at
+      - retention_policy
+      properties:
+        created_at:
+          type: string
+        data_item:
+          type: string
+        expires_at:
+          type: string
+        id:
+          type: string
+        retention_policy:
+          $ref: '#/components/schemas/SubscriptionRetention'
+        status_topic:
+          type: string
+        topic:
+          type: string
     Fault:
       type: object
       description: |-
@@ -1253,6 +1736,79 @@ components:
             Status-key matches. Each entry is `(key, value)`. Entries are
             OR-combined: a fault matches if **any** entry matches its status
             object.
+    FaultLogDetail:
+      type: object
+      required:
+      - item
+      - status
+      - source_fault_path
+      properties:
+        item:
+          $ref: '#/components/schemas/FaultLogEntry'
+        scope:
+          type:
+          - string
+          - 'null'
+        severity:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        source_fault_path:
+          type: string
+        status:
+          $ref: '#/components/schemas/FaultStatus'
+    FaultLogEntry:
+      type: object
+      required:
+      - log_id
+      - component_id
+      - dtc
+      - fault_name
+      - lifecycle_state
+      - observed_at
+      - href
+      properties:
+        component_id:
+          type: string
+        dtc:
+          type: string
+        fault_name:
+          type: string
+        href:
+          type: string
+        lifecycle_state:
+          type: string
+        log_id:
+          type: string
+        observed_at:
+          type: string
+    FaultLogList:
+      type: object
+      required:
+      - vehicle_id
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FaultLogEntry'
+        since:
+          type:
+          - string
+          - 'null'
+        vehicle_id:
+          type: string
+    FaultStatus:
+      type: object
+      required:
+      - aggregated_status
+      - confirmed_dtc
+      properties:
+        aggregated_status:
+          type: string
+        confirmed_dtc:
+          type: boolean
     GenericError:
       type: object
       description: |-
@@ -1696,6 +2252,32 @@ components:
           description: Operation response parameters. Open `object` per spec.
     String:
       type: string
+    SubscriptionRetention:
+      type: object
+      required:
+      - subscription_ttl_seconds
+      - heartbeat_seconds
+      properties:
+        heartbeat_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+        subscription_ttl_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+    SubscriptionsList:
+      type: object
+      required:
+      - vehicle_id
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtendedVehicleSubscription'
+        vehicle_id:
+          type: string
     ValueGroup:
       type: object
       description: |-
@@ -1776,9 +2358,48 @@ components:
           - string
           - 'null'
           description: Identifier for translating `name`.
+    VehicleInfo:
+      type: object
+      required:
+      - vehicle_id
+      - vin
+      - model_category
+      - powertrain_class
+      properties:
+        model_category:
+          type: string
+        powertrain_class:
+          type: string
+        vehicle_id:
+          type: string
+        vin:
+          type: string
+    VehicleState:
+      type: object
+      required:
+      - vehicle_id
+      - ignition_class
+      - motion_state
+      - high_voltage_active
+      - observed_at
+      properties:
+        high_voltage_active:
+          type: boolean
+        ignition_class:
+          type: string
+        motion_state:
+          type: string
+        observed_at:
+          type: string
+        vehicle_id:
+          type: string
 tags:
 - name: discovery
   description: Entity discovery endpoints
+- name: covesa-semantic
+  description: COVESA VSS semantic adapter endpoints
+- name: extended-vehicle
+  description: ISO-20078-shaped Extended Vehicle adapter endpoints
 - name: bulk-data
   description: Binary OTA transfer endpoints
 - name: fault-handling

@@ -17,7 +17,7 @@ Requires=docker.service
 Type=simple
 ExecStartPre=-/usr/bin/docker rm -f ecu-sim
 # Host networking is required so DoIP VAM broadcasts originate from the Pi's
-# real network interface (not the 172.17.0.2 docker bridge address) and reach
+# real network interface (not the Docker bridge address) and reach
 # the dev machine on the same /24.
 #
 # The Pi has two interfaces: eth0 (203.0.113.0/24 — wired, not shared with the

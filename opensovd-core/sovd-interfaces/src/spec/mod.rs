@@ -19,7 +19,7 @@
 //! inline) schema from the ASAM SOVD v1.1.0-rc1 `OpenAPI` YAML tree, which we
 //! ingest read-only at:
 //!
-//! `H:/eclipse-opensovd/external/asam-public/ISO_17978-3_openapi/openapi-specification-1.1.0-rc1/`
+//! `external/asam-public/ISO_17978-3_openapi/openapi-specification-1.1.0-rc1/`
 //!
 //! See [`docs/openapi-audit-2026-04-14.md`](../../../docs/openapi-audit-2026-04-14.md)
 //! for the full audit, schema list, and license analysis.

@@ -14,7 +14,7 @@
 #
 # Prerequisites on the Pi:
 #   - Docker Engine installed and running
-#   - Current user (taktflow-pi) has passwordless sudo for systemctl
+#   - Current user (<pi-user>) has passwordless sudo for systemctl
 #
 # This script runs from the dev machine. It rsyncs the ecu-sim source, runs
 # `docker build` on the Pi (aarch64 — we do NOT build the amd64 image here),

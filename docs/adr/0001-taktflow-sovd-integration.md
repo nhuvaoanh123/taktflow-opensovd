@@ -24,7 +24,7 @@ C/C++ and only paying the Rust learning cost on the laptop / Raspberry Pi side.
 1. **Build `opensovd-core` from scratch in our fork**, mirroring the upstream
    CDA repository's house style (rustfmt, clippy, deny, toolchain pin) so any
    eventual upstream PR has zero stylistic friction. The workspace lives at
-   `H:\taktflow-opensovd\opensovd-core\` and is laid out as eight crates:
+   `opensovd-core\` and is laid out as eight crates:
    `sovd-interfaces`, `sovd-dfm`, `sovd-db`, `sovd-server`, `sovd-gateway`,
    `sovd-tracing`, `sovd-main`, `integration-tests`.
 
@@ -69,8 +69,8 @@ C/C++ and only paying the Rust learning cost on the laptop / Raspberry Pi side.
 
 ## References
 
-- `H:\taktflow-opensovd\MASTER-PLAN.md`
-- `H:\taktflow-opensovd\WORKING-LINES.md` (Phase 0, LINE A and LINE B)
-- `H:\taktflow-opensovd\TASKS.md` (T0.R.5, T0.R.7, T0.R.8, T0.S.2, T0.Ops.1-3)
+- `MASTER-PLAN.md`
+- `WORKING-LINES.md` (Phase 0, LINE A and LINE B)
+- `TASKS.md` (T0.R.5, T0.R.7, T0.R.8, T0.S.2, T0.Ops.1-3)
 - ADR-001 (upstream): Fault library as S-CORE interface
-- `H:\taktflow-opensovd\classic-diagnostic-adapter\` — house-style reference
+- `classic-diagnostic-adapter\` — house-style reference

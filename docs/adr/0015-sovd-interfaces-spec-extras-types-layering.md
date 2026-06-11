@@ -35,7 +35,7 @@ model from ADR-0006.
 ### `crate::spec` — ISO 17978-3 SOVD wire types
 
 - Every type in this module derives from a named schema in the ISO 17978-3
-  OpenAPI YAML at `H:\taktflow-opensovd\external\asam-public\ISO_17978-3_openapi\`
+  OpenAPI YAML at `external\asam-public\ISO_17978-3_openapi\`
 - Each type has a header doc comment with three lines:
   1. The OpenAPI schema name being ported
   2. The YAML file path (relative to the OpenAPI root) where the schema
@@ -150,7 +150,7 @@ model from ADR-0006.
 
 - ADR-0006 Fork + track upstream + extras on top
 - ADR-0007 Build-first contribute-later
-- `H:\taktflow-opensovd\opensovd-core\docs\openapi-audit-2026-04-14.md`
+- `opensovd-core\docs\openapi-audit-2026-04-14.md`
 - OpenAPI spec: `external/asam-public/ISO_17978-3_openapi/openapi-specification-1.1.0-rc1/sovd-api.yaml`
 - Commit `217f16b` (wave 1 spec port)
 - Commit `d614285` (trait refactor to spec types)

@@ -209,7 +209,7 @@ mod tests {
     fn forwarded_for_uses_first_ip() {
         let headers = HeaderMap::from_iter([(
             X_FORWARDED_FOR.parse().expect("header name"),
-            HeaderValue::from_static("198.51.100.10, 10.0.0.5"),
+            HeaderValue::from_static("198.51.100.10, 203.0.113.5"),
         )]);
         assert_eq!(forwarded_for(&headers).as_deref(), Some("198.51.100.10"));
     }

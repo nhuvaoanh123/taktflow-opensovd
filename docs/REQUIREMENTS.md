@@ -61,7 +61,7 @@ Out of scope: see §8.
 ### 1.4 Revision control
 
 This document is version-controlled in the Taktflow fork under
-`H:\taktflow-opensovd\docs\REQUIREMENTS.md`. Changes happen via internal review
+`docs\REQUIREMENTS.md`. Changes happen via internal review
 only during Phases 0..3 (per MASTER-PLAN §C.1). Upstream contribution of this
 doc, or a derivative of it, is a Phase 6 decision.
 

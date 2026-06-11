@@ -19,9 +19,11 @@
 #     side of an upstream or eclipse-opensovd remote
 #
 # Usage:
-#   bash scripts/disable-upstream-push.sh
+#   ECLIPSE_FORKS_ROOT=/path/to/eclipse-opensovd-forks bash scripts/disable-upstream-push.sh
 
 set -e
+
+FORKS_ROOT="${ECLIPSE_FORKS_ROOT:?Set ECLIPSE_FORKS_ROOT to the directory holding the eclipse-opensovd fork clones}"
 
 DISABLED="DISABLED_NO_PUSH_TO_ECLIPSE_SDV_UPSTREAM"
 DISABLED_REF="DISABLED_NO_PUSH_TO_ECLIPSE_SDV_REFERENCE"
@@ -30,22 +32,22 @@ DISABLED_REF="DISABLED_NO_PUSH_TO_ECLIPSE_SDV_REFERENCE"
 # push URL is changed; fetch URL stays so `git fetch upstream` still
 # pulls upstream commits for ADR-0006 tracking.
 FORK_REPOS=(
-  "H:/eclipse-opensovd/classic-diagnostic-adapter"
-  "H:/eclipse-opensovd/cpp-bindings"
-  "H:/eclipse-opensovd/dlt-tracing-lib"
-  "H:/eclipse-opensovd/fault-lib"
-  "H:/eclipse-opensovd/odx-converter"
-  "H:/eclipse-opensovd/opensovd"
-  "H:/eclipse-opensovd/opensovd-core"
-  "H:/eclipse-opensovd/uds2sovd-proxy"
+  "$FORKS_ROOT/classic-diagnostic-adapter"
+  "$FORKS_ROOT/cpp-bindings"
+  "$FORKS_ROOT/dlt-tracing-lib"
+  "$FORKS_ROOT/fault-lib"
+  "$FORKS_ROOT/odx-converter"
+  "$FORKS_ROOT/opensovd"
+  "$FORKS_ROOT/opensovd-core"
+  "$FORKS_ROOT/uds2sovd-proxy"
 )
 
 # Reference-only clones where `origin` points directly at eclipse-opensovd/*.
 # These were cloned without a fork and must never be pushed to — the
 # origin push URL is disabled.
 REF_REPOS=(
-  "H:/eclipse-opensovd/external/cicd-workflows"
-  "H:/eclipse-opensovd/external/website"
+  "$FORKS_ROOT/external/cicd-workflows"
+  "$FORKS_ROOT/external/website"
 )
 
 echo "=== Disabling push URLs on fork repos (upstream -> DISABLED) ==="

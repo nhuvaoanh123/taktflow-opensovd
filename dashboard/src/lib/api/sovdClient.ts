@@ -1055,9 +1055,9 @@ export const CANNED_SESSION: SessionInfo = {
 };
 
 export const CANNED_BACKENDS: GatewayBackend[] = [
-	{ id: 'cvc-doip', address: '192.168.100.10:13400', protocol: 'doip', reachable: true, latencyMs: 4 },
-	{ id: 'sc-uds', address: '192.168.100.11:13400', protocol: 'uds', reachable: true, latencyMs: 6 },
-	{ id: 'bcm-uds', address: '192.168.100.12:13400', protocol: 'uds', reachable: false, latencyMs: 0 }
+	{ id: 'cvc-doip', address: '192.0.2.10:13400', protocol: 'doip', reachable: true, latencyMs: 4 },
+	{ id: 'sc-uds', address: '192.0.2.11:13400', protocol: 'uds', reachable: true, latencyMs: 6 },
+	{ id: 'bcm-uds', address: '192.0.2.12:13400', protocol: 'uds', reachable: false, latencyMs: 0 }
 ];
 
 export const CANNED_AUDIT: AuditEntry[] = [

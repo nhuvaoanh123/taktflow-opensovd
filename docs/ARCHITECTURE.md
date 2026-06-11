@@ -13,12 +13,12 @@ SPDX-License-Identifier: Apache-2.0
 - Template: arc42 v8 (section numbering per arc42)
 
 Cross-references used throughout:
-- MP = `H:\taktflow-opensovd\MASTER-PLAN.md`
-- REQ = `H:\taktflow-opensovd\docs\REQUIREMENTS.md`
-- UD = `H:\taktflow-opensovd\opensovd\docs\design\design.md` (upstream design)
-- UMVP = `H:\taktflow-opensovd\opensovd\docs\design\mvp.md` (upstream MVP)
-- ADR-SCORE = `H:\taktflow-opensovd\opensovd\docs\design\adr\001-adr-score-interface.md`
-- CORE-ARCH = `H:\taktflow-opensovd\opensovd-core\ARCHITECTURE.md`
+- MP = `MASTER-PLAN.md`
+- REQ = `docs\REQUIREMENTS.md`
+- UD = `opensovd\docs\design\design.md` (upstream design)
+- UMVP = `opensovd\docs\design\mvp.md` (upstream MVP)
+- ADR-SCORE = `opensovd\docs\design\adr\001-adr-score-interface.md`
+- CORE-ARCH = `opensovd-core\ARCHITECTURE.md`
 
 > **Scope qualifier (2026-04-20).** This document describes the *target*
 > architecture OpenSOVD is designed to fit into, including ASIL allocations
@@ -903,7 +903,7 @@ must go through a new ADR and a HARA delta (SR-1.1).
 
 ## 9. Architecture Decisions
 
-The ADR index lives at `H:\taktflow-opensovd\docs\adr\`. Key decisions for
+The ADR index lives at `docs\adr\`. Key decisions for
 this project (some ADRs are to-be-written as of Rev 1.0):
 
 | ADR | Title | Status | Owner |

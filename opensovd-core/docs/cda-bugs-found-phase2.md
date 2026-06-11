@@ -14,7 +14,7 @@ nothing here goes upstream until we have a reason to ship it.
 **What we tried:**
 
 ```sh
-cd H:/eclipse-opensovd/classic-diagnostic-adapter
+cd <eclipse-opensovd-forks>/classic-diagnostic-adapter
 cargo build --release -p opensovd-cda
 ```
 
@@ -38,7 +38,7 @@ neither that install nor Administrator rights to put one there.
    The `openssl-src` crate requires Perl to run `./Configure`. Git Bash's
    bundled Perl is missing the `Locale::Maketext::Simple` / `ExtUtils::MakeMaker`
    modules. We built a wrapper `.cmd` that injects a user-copied msys2
-   core_perl tree via `-I H:\tmp\perl5lib` and pointed `OPENSSL_SRC_PERL`
+   core_perl tree via `-I <tmp>\perl5lib` and pointed `OPENSSL_SRC_PERL`
    at it. That got past the module loader, but `./Configure` for
    `VC-WIN64A` then rejects the wrapped perl binary with:
 

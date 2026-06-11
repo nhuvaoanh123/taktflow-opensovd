@@ -15,7 +15,7 @@ shape the design:
    Observer value on the HIL bench is high enough to justify pulling
    cloud integration forward into Phase 5.
 2. Taktflow already operates a production-grade cloud pipeline at
-   `H:/taktflow-embedded-production/gateway/cloud_connector/` and
+   `<taktflow-embedded>/gateway/cloud_connector/` and
    `gateway/ws_bridge/`. Building a parallel pipeline for SOVD would
    duplicate work and fragment operations.
 
@@ -112,7 +112,7 @@ Deliverables:
 
 1. Run `scripts/aws-iot-setup.sh` with a SOVD-specific device identity:
    - `DEVICE_ID=taktflow-sovd-hil-001` (not the embedded-production
-     `taktflow-pi-001` — keeping identities separate preserves data
+     `<embedded-production-thing-id>` — keeping identities separate preserves data
      attribution and avoids cert rotation coupling).
    - Provisions: IoT Thing, X.509 cert triple, Timestream database
      `taktflow-sovd-telemetry`, IoT Rule forwarding `vehicle/#` to
@@ -275,7 +275,7 @@ point browser at `http://<pi-ip>:8080/` and the SPA:
 
 - **BENCH_ID / DEVICE_ID registry.** Stage 2 introduces
   `taktflow-sovd-hil-001`, separate from embedded-production's
-  `taktflow-pi-001`. Multi-bench future work (several HIL rigs) needs a
+  `<embedded-production-thing-id>`. Multi-bench future work (several HIL rigs) needs a
   registry but Stage 1 and Stage 2 both work with a single device ID.
 
 ## Resolved Decisions (user directive 2026-04-17)

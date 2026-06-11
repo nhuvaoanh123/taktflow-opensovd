@@ -24,7 +24,7 @@
 //!
 //! [`SovdDb`]: sovd_interfaces::traits::sovd_db::SovdDb
 
-// TODO(phase-4): once `H:\taktflow-eclipsesdv-testing\score-score\` is
+// TODO(phase-4): once `<taktflow-eclipsesdv-testing>/score-score/` is
 // checked out on the dev machine, add a path dependency on
 // `score-persistency` behind the `score` feature and wire the methods
 // below to its KVS API.

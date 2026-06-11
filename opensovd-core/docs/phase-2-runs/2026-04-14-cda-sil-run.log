@@ -5,7 +5,7 @@
 [launch] starting CDA
   binary: /h/eclipse-opensovd/opensovd-core/../classic-diagnostic-adapter/target/release/opensovd-cda.exe
   config: /h/eclipse-opensovd/opensovd-core/deploy/sil/opensovd-cda.toml
-Loading configuration from H:/eclipse-opensovd/opensovd-core/deploy/sil/opensovd-cda.toml
+Loading configuration from <eclipse-opensovd-forks>/opensovd-core/deploy/sil/opensovd-cda.toml
 [2m15:47:50.232[0m [32mINFO[0m[2m in [0m[1mevent cda-main\src\main.rs:99[0m[2m msg: [0mStarting CDA - version 0.1.0
 [2m15:47:50.234[0m [32mINFO[0m[2m in [0m[1mevent cda-main\src\lib.rs:298[0m[2m msg: [0mLoading databases [3mchunk_size[0m[2m=[0m1
 [2m    in [0mopensovd_cda_lib::[1mload_databases[0m

@@ -179,7 +179,7 @@ over phases.
 
 ## References
 
-- Upstream ADR: [`H:\eclipse-opensovd\opensovd\docs\decisions\0001-rust-codestyle-rules.md`](../../../../eclipse-opensovd/opensovd/docs/decisions/0001-rust-codestyle-rules.md) (capability reference only).
+- Upstream ADR: [`opensovd/docs/decisions/0001-rust-codestyle-rules.md`](../../opensovd/docs/decisions/0001-rust-codestyle-rules.md) (capability reference only).
 - Upstream CDA `CODESTYLE.md`:
   [`classic-diagnostic-adapter/CODESTYLE.md`](../../classic-diagnostic-adapter/CODESTYLE.md) (vendored).
 - Upstream CDA `Cargo.toml` lint section:

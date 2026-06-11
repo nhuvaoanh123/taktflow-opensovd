@@ -181,7 +181,7 @@ Python stdlib only; wraps `isotpsend` / `isotprecv` via `subprocess`).
 | 10 | `0x22 0xF1 0xA2` | `0x62 F1 A2 DE AD BE EF` | Witness-id read-back matches manifest |
 
 **Status.** First live-hardware pass on 2026-04-23. Captured in
-`H:\handoff\taktflow-opensovd\cvc-ota-hardening\2026-04-22-five-item-hardening-handoff.yaml`.
+`<handoff-archive>\taktflow-opensovd\cvc-ota-hardening\2026-04-22-five-item-hardening-handoff.yaml`.
 Known firmware fix needed to enable multi-frame RX: `send_flow_control`
 now returns STmin=5 ms — the DCAN RX path has a single mailbox and the
 1 ms polling loop in `wait_for_consecutive_frame` cannot keep up with

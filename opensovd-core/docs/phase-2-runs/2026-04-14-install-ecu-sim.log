@@ -715,9 +715,9 @@ Created symlink /etc/systemd/system/multi-user.target.wants/ecu-sim.service → 
      CGroup: /system.slice/ecu-sim.service
              └─11162 /usr/bin/docker run --rm --name ecu-sim -p 13400:13400 taktflow/cda-ecu-sim:latest
 
-Apr 14 17:27:51 taktflow-pi systemd[1]: Starting ecu-sim.service - Taktflow CDA ECU Simulator (upstream Kotlin)...
-Apr 14 17:27:51 taktflow-pi docker[11148]: Error response from daemon: No such container: ecu-sim
-Apr 14 17:27:51 taktflow-pi systemd[1]: Started ecu-sim.service - Taktflow CDA ECU Simulator (upstream Kotlin).
+Apr 14 17:27:51 <pi-host> systemd[1]: Starting ecu-sim.service - Taktflow CDA ECU Simulator (upstream Kotlin)...
+Apr 14 17:27:51 <pi-host> docker[11148]: Error response from daemon: No such container: ecu-sim
+Apr 14 17:27:51 <pi-host> systemd[1]: Started ecu-sim.service - Taktflow CDA ECU Simulator (upstream Kotlin).
 ecu-sim container not yet running
 
 done — ecu-sim should be listening on bench-pi@192.0.2.10:13400

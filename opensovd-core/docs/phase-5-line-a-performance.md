@@ -20,7 +20,7 @@ the Raspberry Pi bench host at `192.0.2.10`.
 - Sample size: 500 sequential requests
 
 This run happened after repairing the Pi deploy so
-`/opt/taktflow/sovd-main` is writable by the `taktflow-pi` service
+`/opt/taktflow/sovd-main` is writable by the `<pi-user>` service
 user and after pinning `backend.sqlite_path` to
 `/opt/taktflow/sovd-main/dfm.db` in `deploy/pi/opensovd-pi.toml`.
 

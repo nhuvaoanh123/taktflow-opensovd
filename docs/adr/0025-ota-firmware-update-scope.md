@@ -121,7 +121,7 @@ as implicit Phase 6 work.
 
 ## What we reuse
 
-Investigation of `H:/taktflow-embedded-production/` (2026-04-17, bounded
+Investigation of `<taktflow-embedded>/` (2026-04-17, bounded
 survey) found that the Taktflow production firmware repo has **no
 firmware-signing chain today**. The only signing-adjacent artifacts are
 for TLS mutual auth to AWS IoT Core:
@@ -274,7 +274,7 @@ SR-6.5.
 - **Decision.** **CMS (RFC 5652) envelopes over X.509.**
 - **Rationale.** Reuses the TLS certificate chain already provisioned
   per-device for AWS IoT Core mTLS (see `scripts/aws-iot-setup.sh` in
-  `H:/taktflow-embedded-production/`). Device identity and
+  `<taktflow-embedded>/`). Device identity and
   code-signing trust anchor share the same X.509 PKI root — one root,
   two certificate purposes — which avoids standing up a second PKI
   and aligns with the automotive norm for signed manifests. The

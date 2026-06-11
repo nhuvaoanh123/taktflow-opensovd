@@ -9,7 +9,7 @@ This is the documentation index for the Taktflow fork of Eclipse OpenSOVD.
 Use this file to locate the right document for the question you are asking.
 
 All paths are relative to the repository root
-`H:\taktflow-opensovd\` unless otherwise noted.
+the repository root unless otherwise noted.
 
 ## Start here
 

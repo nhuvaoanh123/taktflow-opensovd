@@ -36,7 +36,7 @@ crypto feature — proof the team is already building S-CORE-aligned work, but
 not a consumer of this ADR.
 
 This ADR was deferred during Phase 0 because we hadn't confirmed S-CORE's
-scope. The audit on 2026-04-14 against `H:\taktflow-eclipsesdv-testing\`
+scope. The audit on 2026-04-14 against `<taktflow-eclipsesdv-testing>/`
 closed that question: S-CORE intends to *implement* SOVD, not compete with
 it, and every primitive we chose has a drop-in S-CORE counterpart.
 
@@ -173,11 +173,11 @@ introspection helpers. These are add-ons, not backends of a shared trait.
 
 ## References
 
-- `H:\taktflow-eclipsesdv-testing\score-score\docs\features\diagnostics\index.rst`
+- `<taktflow-eclipsesdv-testing>/score-score\docs\features\diagnostics\index.rst`
   — S-CORE draft SOVD integration spec
-- `H:\taktflow-eclipsesdv-testing\README.md` — S-CORE module status table
+- `<taktflow-eclipsesdv-testing>/README.md` — S-CORE module status table
   (ASIL levels per module)
-- `H:\scorehsm\README-scorehsm.md` — unrelated but proves Taktflow is
+- `<scorehsm>/README-scorehsm.md` — unrelated but proves Taktflow is
   already building S-CORE-aligned work
 - ADR-0002 Fault Library as C shim on embedded, Rust on Pi
 - ADR-0003 SQLite for DFM persistence (sqlx + WAL)

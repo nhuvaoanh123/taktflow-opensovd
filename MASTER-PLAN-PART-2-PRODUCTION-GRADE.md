@@ -887,7 +887,7 @@ Resolved 2026-04-23 in that ledger:
 
 ## II.10 Competitive Landscape (Research, 2026-04-20)
 
-Source: landscape research captured at [H:/handoff/taktflow-opensovd/competitive-research/2026-04-20-sovd-landscape-research-handoff.yaml](H:/handoff/taktflow-opensovd/competitive-research/2026-04-20-sovd-landscape-research-handoff.yaml) and inlined below. Re-run in ~3 months — the space is moving fast.
+Source: landscape research captured at `<handoff-archive>/taktflow-opensovd/competitive-research/2026-04-20-sovd-landscape-research-handoff.yaml` and inlined below. Re-run in ~3 months — the space is moving fast.
 
 ### II.10.1 Vendor-by-vendor
 

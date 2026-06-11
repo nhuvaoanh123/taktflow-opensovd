@@ -91,5 +91,5 @@ Build a `can_to_doip_proxy` Rust crate deployed on the Pi. Shape:
   proxy path)
 - REQUIREMENTS.md FR-5.2 (DoIP reachability to physical ECUs)
 - Upstream reference: CDA in
-  `H:\taktflow-opensovd\classic-diagnostic-adapter\` uses DoIP as its only
+  `classic-diagnostic-adapter\` uses DoIP as its only
   transport — unchanged by this decision

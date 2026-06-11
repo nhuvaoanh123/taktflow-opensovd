@@ -259,8 +259,8 @@ pub fn stop_ecu_sim() {
     }
 }
 
-/// Convert a Windows-style path (`H:\foo\bar`) to the MSYS / git-bash
-/// POSIX convention (`/h/foo/bar`) so it can be passed to `bash` as a
+/// Convert a Windows-style path (`D:\foo\bar`) to the MSYS / git-bash
+/// POSIX convention (`/d/foo/bar`) so it can be passed to `bash` as a
 /// regular argument without backslash-escape loss.
 fn to_posix_path(windows_path: &str) -> String {
     let mut out = String::with_capacity(windows_path.len().saturating_add(2));

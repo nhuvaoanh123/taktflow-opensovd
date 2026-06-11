@@ -33,8 +33,8 @@ cargo test (Windows dev box)
 
 - Pi ecu-sim: `sudo systemctl reset-failed ecu-sim && sudo systemctl start ecu-sim`
   → active, DoIP Local Address `wlan0:13400`.
-- CDA: `CDA_CONFIG_FILE=H:/eclipse-opensovd/opensovd-core/deploy/sil/opensovd-cda.toml
-  H:/eclipse-opensovd/classic-diagnostic-adapter/target/release/opensovd-cda.exe`
+- CDA: `CDA_CONFIG_FILE=<eclipse-opensovd-forks>/opensovd-core/deploy/sil/opensovd-cda.toml
+  <eclipse-opensovd-forks>/classic-diagnostic-adapter/target/release/opensovd-cda.exe`
   (background), listening on `127.0.0.1:20002`.
 - Test invocation:
   `TAKTFLOW_BENCH=1 cargo test -p integration-tests --test phase4_sovd_gateway_cda_ecusim_bench -- --nocapture`

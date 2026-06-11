@@ -22,7 +22,7 @@ wrk -t2 -c16 -d60s --latency http://127.0.0.1:21002/sovd/v1/components
   - start: `2026-04-20T21:02:38+02:00`
   - end: `2026-04-20T21:03:38+02:00`
 - Raw artifact:
-  - `H:\handoff\taktflow-opensovd\hil-proof-and-demo\artifacts\p5-hil-11-perf-20260420-210237-raw.txt`
+  - `<handoff-archive>\taktflow-opensovd\hil-proof-and-demo\artifacts\p5-hil-11-perf-20260420-210237-raw.txt`
 
 ## Latency Results
 

@@ -55,6 +55,7 @@ use sovd_interfaces::spec::{
         ExecutionsList, OperationDescription, OperationDetails, OperationsList, ProximityChallenge,
         StartExecutionAsyncResponse, StartExecutionRequest, StartExecutionSyncResponse,
     },
+    version::{SovdServerInfo, VersionInfo},
 };
 use utoipa::PartialSchema;
 
@@ -310,4 +311,16 @@ fn snapshot_mode_details() {
 #[test]
 fn snapshot_control_states() {
     check_snapshot::<ControlStates>("ControlStates");
+}
+
+// ---- version --------------------------------------------------------------
+
+#[test]
+fn snapshot_version_info() {
+    check_snapshot::<VersionInfo>("VersionInfo");
+}
+
+#[test]
+fn snapshot_sovd_server_info() {
+    check_snapshot::<SovdServerInfo>("SovdServerInfo");
 }

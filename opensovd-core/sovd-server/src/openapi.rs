@@ -25,7 +25,7 @@
 use utoipa::OpenApi;
 
 use crate::routes::{
-    bulk_data, components, covesa, data, extended_vehicle, faults, observer, operations,
+    bulk_data, components, covesa, data, extended_vehicle, faults, observer, operations, version,
 };
 
 /// Assembled `OpenAPI` document. Derive-built so the doc is in sync with
@@ -62,6 +62,7 @@ use crate::routes::{
         operations::execution_status,
         data::list_data,
         data::read_data,
+        version::version_info,
     ),
     components(schemas(
         sovd_interfaces::spec::component::DiscoveredEntities,
@@ -106,6 +107,8 @@ use crate::routes::{
         sovd_interfaces::spec::data::SovdReadValue,
         sovd_interfaces::spec::error::GenericError,
         sovd_interfaces::spec::error::DataError,
+        sovd_interfaces::spec::version::VersionInfo,
+        sovd_interfaces::spec::version::SovdServerInfo,
         sovd_extended_vehicle::CatalogEntryKind,
         sovd_extended_vehicle::CatalogEntry,
         sovd_extended_vehicle::ExtendedVehicleCatalog,

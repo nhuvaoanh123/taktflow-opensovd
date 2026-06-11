@@ -58,3 +58,4 @@ pub mod error;
 pub mod fault;
 pub mod mode;
 pub mod operation;
+pub mod version;

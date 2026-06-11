@@ -50,6 +50,7 @@ pub mod faults;
 pub mod health;
 pub mod observer;
 pub mod operations;
+pub mod version;
 
 /// Dev-only `GET /sovd/v1/openapi.json` — returns the generated `OpenAPI`
 /// document as JSON. Gated behind `cfg(debug_assertions)` so release
@@ -61,6 +62,7 @@ pub async fn openapi_json() -> axum::Json<utoipa::openapi::OpenApi> {
 
 fn base_router() -> Router<Arc<InMemoryServer>> {
     let router = Router::new()
+        .route("/version-info", get(version::version_info))
         .route("/sovd/v1/health", get(health::health))
         .route("/sovd/v1/session", get(observer::session))
         .route("/sovd/v1/audit", get(observer::audit))

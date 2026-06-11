@@ -41,6 +41,7 @@ use sovd_interfaces::{
             ExecutionStatusResponse, OperationsList, StartExecutionAsyncResponse,
             StartExecutionRequest,
         },
+        version::{SovdServerInfo, VersionInfo},
     },
     types::bulk_data::ContentRange,
 };
@@ -69,6 +70,8 @@ pub enum SdkError {
     },
     #[error("unexpected HTTP status {status}: {body}")]
     UnexpectedStatus { status: StatusCode, body: String },
+    #[error("no advertised SOVD version matched the selection predicate")]
+    NoMatchingVersion,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -240,6 +243,41 @@ impl SovdClient {
     #[must_use]
     pub fn correlation_headers(&self) -> &CorrelationHeaders {
         &self.correlation_headers
+    }
+
+    /// Fetch the unversioned `GET /version-info` discovery resource.
+    pub async fn version_info(&self) -> Result<VersionInfo> {
+        self.get_json("/version-info", Option::<&()>::None).await
+    }
+
+    /// Discover the advertised API versions and return a new client
+    /// rebased onto the first instance matching `pred`.
+    ///
+    /// The returned client keeps this client's transport policy (HTTP
+    /// pool, bearer token, timeout, retry, correlation headers) and
+    /// resolves the advertised `base_uri` against the current base URL,
+    /// so both relative (`/sovd/v1`) and absolute advertisements work.
+    /// Mirrors upstream `opensovd-client` discovery (`3f58f4c`),
+    /// implemented natively on the reqwest transport per ADR-0033.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SdkError::NoMatchingVersion`] if no advertised
+    /// instance matches `pred`.
+    pub async fn select_version(
+        &self,
+        mut pred: impl FnMut(&SovdServerInfo) -> bool,
+    ) -> Result<Self> {
+        let info = self.version_info().await?;
+        let advertised = info
+            .sovd_info
+            .into_iter()
+            .find(|s| pred(s))
+            .ok_or(SdkError::NoMatchingVersion)?;
+        Ok(Self {
+            base_url: self.base_url.join(&advertised.base_uri)?,
+            ..self.clone()
+        })
     }
 
     pub async fn health(&self) -> Result<HealthStatus> {

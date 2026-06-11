@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "description": "One advertised SOVD API instance.",
+  "required": [
+    "version",
+    "base_uri"
+  ],
+  "properties": {
+    "base_uri": {
+      "type": "string",
+      "description": "URI reference where this version is mounted, e.g. `\"/sovd/v1\"`.\nMay be absolute when the server advertises a different host."
+    },
+    "vendor_info": {
+      "description": "Optional vendor-specific metadata (free-form JSON object)."
+    },
+    "version": {
+      "type": "string",
+      "description": "API version identifier, e.g. `\"v1\"`."
+    }
+  }
+}

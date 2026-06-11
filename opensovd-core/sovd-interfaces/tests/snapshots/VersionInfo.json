@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "description": "Response body for the unversioned `GET /version-info` endpoint.",
+  "required": [
+    "sovd_info"
+  ],
+  "properties": {
+    "sovd_info": {
+      "type": "array",
+      "items": {
+        "$ref": "#/components/schemas/SovdServerInfo"
+      },
+      "description": "All SOVD API instances this server advertises."
+    }
+  }
+}

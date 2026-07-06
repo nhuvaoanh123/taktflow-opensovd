@@ -4,9 +4,11 @@ Open-source **SOVD diagnostic stack** implementing the ASAM SOVD v1.1
 OpenAPI (ISO 17978-3) -- from REST API to physical ECU, tested on real
 automotive hardware.
 
-Built by [Taktflow](https://github.com/Taktflow-Systems). Targeting upstream
-contribution to [Eclipse OpenSOVD](https://github.com/eclipse-opensovd) and
-integration with [Eclipse S-CORE](https://projects.eclipse.org/projects/automotive.score).
+Built by [Taktflow](https://github.com/Taktflow-Systems) as an OEM-owned
+reference stack. Tracks [Eclipse OpenSOVD](https://github.com/eclipse-opensovd)
+and [Eclipse S-CORE](https://projects.eclipse.org/projects/automotive.score)
+as capability references and absorbs their designs downstream -- no upstream
+code contribution (see MASTER-PLAN.md §1.3).
 
 ## Goal
 
@@ -58,12 +60,23 @@ scales to arbitrary ECU counts without code change.
 - **Spec-locked API surface.** OpenAPI schema is snapshot-tested against ASAM
   SOVD v1.1 (ISO 17978-3).
   `cargo xtask openapi-dump --check` gates every PR.
-- **Build first, contribute later.** No upstream PRs during early phases. When we
-  upstream, we upstream finished, tested, working systems.
+- **Track upstream, absorb designs, stay downstream.** Vendored upstream
+  subtrees are re-synced in verified passes; upstream design work is absorbed
+  as named work items (PROD-15..17). Upstream code contribution was dropped
+  2026-04-20 (MASTER-PLAN.md §10.4 D-01).
 
 ## Current status
 
-**Phase 5 -- Hardware-in-the-Loop** (April 2026)
+**Part II -- Production Grade** (Part I complete April 2026)
+
+Part I phases P0-P11 (milestones M1-M10: scaffolding through physical
+3-ECU HIL, hardening, semantic/COVESA + extended vehicle, edge ML,
+ISO 21434 case, pluggable backends, conformance suites) are complete --
+see [MASTER-PLAN.md](MASTER-PLAN.md) §7/§13. Active work follows
+[MASTER-PLAN-PART-2-PRODUCTION-GRADE.md](MASTER-PLAN-PART-2-PRODUCTION-GRADE.md):
+UDS2SOVD ingress proxy (PROD-20) delivered, SOVD spec data filters
+(PROD-12) and typed client version discovery (PROD-19) landed, HPC port
+(PROD-1) and monthly upstream tracking (PROD-15) ongoing.
 
 | Component | State |
 |-----------|-------|
@@ -76,11 +89,13 @@ scales to arbitrary ECU counts without code change.
 | Embedded UDS (STM32) | CVC SingleFrame F191 round-trip proven live on real hardware |
 | OpenAPI contract | Snapshot-locked to ASAM SOVD v1.1 OpenAPI (ISO 17978-3), xtask regeneration |
 
-Previous phases delivered: upstream code-style alignment (Phase 0), workspace
-scaffolding + CDA integration (Phase 1-2), DFM + diagnostic DB + gateway
-routing (Phase 3-4), OpenAPI contract tests, Pi full-stack deploy (Phase 5 D1).
+Phase-by-phase delivery history lives in MASTER-PLAN.md §13 (Phase
+Completion Record and Achievements Log).
 
 ## Testing
+
+Counts are the Part-I Phase-5 snapshot (April 2026); all gates still run
+on every push.
 
 | Layer | What | Count |
 |-------|------|-------|
@@ -189,41 +204,44 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 
 ## Repository map
 
-### Core (~86k LoC Rust, ~4.2k LoC Kotlin)
+### Core (~118k LoC Rust, ~14k LoC Kotlin)
 
 | Directory | Language | Lines | Description |
 |-----------|----------|-------|-------------|
-| `opensovd-core/` | Rust | ~11k | SOVD Server, Gateway, DFM, Diagnostic DB -- 16 workspace crates |
-| `classic-diagnostic-adapter/` | Rust | ~68k | SOVD-to-UDS/DoIP bridge for legacy ECUs (upstream fork, 14 crates) |
+| `opensovd-core/` | Rust | ~40k | SOVD Server, Gateway, DFM, Diagnostic DB, semantic/XV/ML adapters -- 23 workspace crates |
+| `classic-diagnostic-adapter/` | Rust | ~75k | SOVD-to-UDS/DoIP bridge for legacy ECUs (vendored upstream subtree) |
 | `fault-lib/` | Rust | ~600 | Framework-agnostic fault reporting API, `#![forbid(unsafe_code)]` |
 | `dlt-tracing-lib/` | Rust | ~1.9k | Rust `tracing` subscriber for COVESA DLT daemon (FFI + safe wrapper) |
-| `odx-converter/` | Kotlin | ~4.2k | ODX (.pdx) to MDD binary format converter with plugin API |
+| `odx-converter/` | Kotlin | ~14k | ODX (.pdx) to MDD binary format converter with plugin API (vendored upstream subtree) |
 
 ### opensovd-core workspace detail
 
 | Crate | Purpose |
 |-------|---------|
-| `sovd-interfaces` | Trait + type contracts (SovdBackend, FaultSink, OperationCycle). Zero I/O. |
+| `sovd-interfaces` | Trait + type contracts: spec DTOs (snapshot-locked to ASAM SOVD v1.1), extras, Server/Gateway/Backend/Client/FaultSink traits. Zero I/O. |
 | `sovd-server` | Axum HTTP server, routes to backend impls, OpenAPI generation via utoipa |
 | `sovd-gateway` | Federated routing across local + remote SOVD hosts, parallel fan-out |
-| `sovd-dfm` | Diagnostic Fault Manager -- holds DB + fault sink + operation cycle |
-| `sovd-db-sqlite` | SQLite persistence, WAL journaling, auto-migration |
-| `sovd-db-score` | S-CORE key-value backend (placeholder) |
-| `fault-sink-unix` | Unix socket / Windows named pipe IPC, postcard wire format |
-| `fault-sink-lola` | S-CORE LoLa shared-memory transport (placeholder) |
-| `opcycle-taktflow` | In-process operation cycle state machine, tokio watch fan-out |
-| `opcycle-score-lifecycle` | S-CORE lifecycle subscriber (placeholder) |
+| `backend-adapter` | Host-scoped backend compatibility seam over the gateway (P10 pluggable backends) |
+| `sovd-dfm` | Diagnostic Fault Manager -- pluggable persistence, fault sink, operation cycle (ADR-0016) |
+| `sovd-db`, `sovd-db-sqlite`, `sovd-db-score` | Persistence: shared layer, SQLite (WAL, auto-migration) default, S-CORE key-value backend |
+| `fault-sink-unix`, `fault-sink-lola`, `fault-sink-mqtt` | Fault ingestion transports: Unix socket/named pipe (postcard), S-CORE LoLa shared memory, MQTT ring-buffer publisher (ADR-0024) |
+| `opcycle-taktflow`, `opcycle-score-lifecycle` | Operation-cycle state machines: in-process default, S-CORE lifecycle subscriber |
+| `sovd-covesa` | COVESA VSS semantic adapter -- pinned VSS release + YAML mapping onto SOVD endpoints (ADR-0026) |
+| `sovd-extended-vehicle` | ISO 20078-shaped Extended Vehicle REST/MQTT contracts (ADR-0027) |
+| `sovd-ml` | Edge ML fault prediction -- signed ONNX model layout, verify-before-load (ADR-0028/0029) |
+| `sovd-client-rust` | Typed Rust SDK for `/sovd/v1/*` incl. version discovery; `sovd-client` is its compatibility re-export shim |
+| `sovd-tracing` | Shared tracing bootstrap: fmt/journal, COVESA DLT, OTLP export |
+| `ws-bridge` | MQTT-to-WebSocket relay (ADR-0024 Stage 1) |
 | `sovd-main` | Entry point binary, wires backends from TOML config |
-| `sovd-client` | HTTP client (skeleton) |
 | `xtask` | `cargo xtask openapi-dump [--check]` for OpenAPI YAML regeneration |
 | `integration-tests` | End-to-end HIL and contract tests |
 
-### Planned
+### Adjacent
 
 | Directory | Language | Description |
 |-----------|----------|-------------|
-| `uds2sovd-proxy/` | Rust | UDS/DoIP to SOVD REST proxy -- scaffolded, implementation pending |
-| `cpp-bindings/` | C++ | C++ API bindings -- planned |
+| `uds2sovd-proxy/` | Rust | UDS/DoIP-to-SOVD REST ingress proxy -- implemented (PROD-20, closed 2026-05) |
+| `cpp-bindings/` | C++ | C++ API bindings -- vendored upstream stub (upstream has not started) |
 
 ### Reference (read-only)
 
@@ -249,7 +267,7 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 | `docs/DEVELOPER-GUIDE.md` | Build prerequisites, toolchain setup, run and test instructions |
 | `docs/DEPLOYMENT-GUIDE.md` | SIL / HIL / production topology, configuration, rollback |
 | `docs/GLOSSARY.md` | Domain terms: SOVD, UDS, DTC, DoIP, ASIL, DFM, and more |
-| `docs/adr/` | 23 Architecture Decision Records (ADR-0001 through ADR-0023) |
+| `docs/adr/` | Architecture Decision Records ADR-0001..ADR-0040 (ADR-0007 archived 2026-04-20) |
 | `.github/CONTRIBUTING.md` | How to contribute, PR process, commit conventions |
 | `.github/CODE_OF_CONDUCT.md` | Eclipse Community Code of Conduct |
 | `.github/CHANGELOG.md` | Release history by phase |
@@ -257,17 +275,24 @@ rsyncs to Pi, installs systemd units, and verifies with a health check.
 
 ## Relationship to upstream
 
-Taktflow implementation of the Eclipse OpenSOVD architecture. `opensovd-core/`
-(SOVD Server, Gateway, DFM, Diagnostic DB) is Taktflow-owned — upstream
+Taktflow implementation of the Eclipse OpenSOVD architecture, developed
+downstream. `opensovd-core/` (SOVD Server, Gateway, DFM, Diagnostic DB) is
+Taktflow-authored; upstream
 [eclipse-opensovd/opensovd-core](https://github.com/eclipse-opensovd/opensovd-core)
-is an empty stub, so we built it ourselves. `classic-diagnostic-adapter/` is
-vendored verbatim from upstream and used as-is for the SOVD→UDS/DoIP bridge.
-Individual crates can be split out via `git subtree split` for upstream
-contribution when the team decides to contribute.
+gained its own reference implementation on 2026-04-28 (Liebherr
+contribution) and is tracked as a pattern source, not vendored (Q-PROD-11).
+`classic-diagnostic-adapter/`, `odx-converter/`, `fault-lib/`,
+`dlt-tracing-lib/`, `cpp-bindings/`, `uds2sovd-proxy/` (scaffold), and
+`opensovd/` (specs/governance) are vendored upstream subtrees, re-synced in
+verified absorption passes. Drift is reviewed monthly under PROD-15 --
+reports live in [docs/upstream/](docs/upstream/). Upstream code
+contribution was dropped 2026-04-20 (MASTER-PLAN.md §1.3; ADR-0007
+archived).
 
 OpenSOVD is the designated diagnostic layer for
-[Eclipse S-CORE](https://projects.eclipse.org/projects/automotive.score) v1.0
-(target: end of 2026).
+[Eclipse S-CORE](https://projects.eclipse.org/projects/automotive.score);
+the upstream S-CORE integration workstream (opensovd#108, DR-008-Int) is
+tracked downstream under PROD-17 and Part I §5.4.4.
 
 ## License
 

@@ -24,6 +24,18 @@ plugins {
 
 val odxSchema = file("$projectDir/src/main/resources/schema/odx_2_2_0.xsd")
 
+// Downstream patch (Taktflow, ADR-0008 Phase 2 — see ../DOWNSTREAM-PATCHES.md):
+// fall back to the committed clean-room community ODX schema when no ASAM/ISO 22901-1
+// schema has been provided. Dropping a real odx_2_2_0.xsd into schema/ flips the
+// selection back to the ASAM schema without further edits.
+val communityOdxSchema = file("$projectDir/src/main/resources/schema/community/odx-community-2_2_0.xsd")
+val selectedOdxSchemaInclude =
+    if (odxSchema.exists()) {
+        "odx_2_2_0.xsd"
+    } else {
+        "community/odx-community-2_2_0.xsd"
+    }
+
 dependencies {
     implementation(project(":database"))
     implementation(project(":converter-plugin-api"))
@@ -38,7 +50,7 @@ dependencies {
     implementation(libs.protobuf.java)
     implementation(libs.kotlinx.serialization.json)
 
-    if (!odxSchema.exists()) {
+    if (!odxSchema.exists() && !communityOdxSchema.exists()) {
         // You need to provide your own schema as src/main/resources/schema/odx_2_2_0.xsd
         //
         // Alternatively it might be possible to provide the class files
@@ -46,7 +58,7 @@ dependencies {
         // the schema.odx package, and provide them as a library,
         // including them with a statement like
         // implementation(file("lib/odx-schema-2.2.0.jar"))
-        error("ODX schema not found at $odxSchema, aborting build")
+        error("ODX schema not found at $odxSchema (community fallback also missing at $communityOdxSchema), aborting build")
     }
 
     xjcPlugins(libs.jaxb2.basics)
@@ -68,6 +80,10 @@ tasks.test {
 
 xjc {
     xsdDir.set(file("src/main/resources/schema"))
+    // Downstream patch (see ../DOWNSTREAM-PATCHES.md): compile exactly the selected schema.
+    // Without this the plugin scans schema/ recursively and fails on duplicate global
+    // definitions once additional schemas exist under schema/community/.
+    includes.set(listOf(selectedOdxSchemaInclude))
     defaultPackage.set("schema.odx")
     useJakarta.set(true)
     options.add("-Xequals")

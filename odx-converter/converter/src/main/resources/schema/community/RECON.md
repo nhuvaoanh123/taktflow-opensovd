@@ -8,6 +8,46 @@ This file is the T1 recon output from task
 concrete set of real-world ODX PDX archives. It is the authoritative scope
 target for the community XSD.
 
+## Phase-2 provenance (2026-07-06)
+
+The codegen-complete `odx-community-2_2_0.xsd` (ADR-0008 Phase 2) was
+authored exclusively from the clean-room source list fixed in
+`docs/plan/adr-0008-phase2-community-xsd-plan.md`:
+
+1. **Converter Kotlin source** (`converter/src/main/kotlin/`, Apache-2.0)
+   — sole authority for the generated class/property/enum-constant
+   surface. Every complexType, attribute-vs-element decision, list
+   property name, primitive-vs-wrapper numeric type and boolean default
+   in the XSD is traceable to a specific Kotlin property access or
+   `when` branch; the mechanical mapping rules and the full 132-row
+   type table are in [`PHASE2-REQUIREMENTS.md`](PHASE2-REQUIREMENTS.md).
+2. **odxtools** (`external/odxtools/`, MIT) — source for real hyphenated
+   ODX element names, cardinalities, inheritance chains
+   (DOP-BASE/COMPLEX-DOP/BASIC-STRUCTURE, DIAG-LAYER/HIERARCHY-ELEMENT,
+   BASE-COMPARAM) and enum value strings (each odxtools module is cited
+   per row in PHASE2-REQUIREMENTS.md). Two deliberate divergences where
+   the converter contradicts odxtools are recorded there
+   (`READ-DYN-DEF-MESSAGE`, `CONDENSED`).
+3. **Public ASAM documents** (`external/asam-public/`) — background
+   only; no schema content was taken from them.
+4. **Instance documents** — the MIT somersault PDX (188 unique element
+   names, inventoried mechanically with ElementTree during this task)
+   and the upstream synthetic fixtures under
+   `converter/src/test/resources/synthetic-odx*/` (element/attribute
+   shapes, xsi:type discriminators, PARENT-REF subtype names).
+5. **This Phase-1 recon** — root/namespace conventions, attribute
+   inventory, xsi:type table.
+
+No ASAM/ISO 22901-1 XSD was obtained, opened, or transcribed at any
+point. Web lookups during authoring were limited to Gradle/xjc plugin
+API documentation (bjornvester xjc-gradle-plugin configuration
+surface), never ODX schema content.
+
+Phase-2 scope note: the CATALOG root (`index.xml`) needs no schema for
+the Gradle build — the converter only unmarshals `*.odx*` entries — so
+Phase 2 ships a single ODX-root XSD and drops Phase-1's separate
+`odx-cc-community.xsd` from the codegen path.
+
 ## Sources surveyed
 
 PDX archives unpacked and scanned:

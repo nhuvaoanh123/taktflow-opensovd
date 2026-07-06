@@ -1,0 +1,4 @@
+# The odx-converter repo-level .gitignore ignores *.xsd so the ASAM/ISO 22901-1
+# licensed schema can never be committed. The community schema below is
+# Taktflow-authored clean-room work (Apache-2.0) and must be tracked.
+!odx-community-2_2_0.xsd

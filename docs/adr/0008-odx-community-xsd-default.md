@@ -173,3 +173,40 @@ depend on specific class names.
    override in `build.gradle.kts` to restrict `xjc.xsdDir` to a
    single file, and begin the faithful UML reproduction needed
    for the 70+ missing class names.
+
+## Phase 2 addendum (2026-07-06) — codegen-complete community schema
+
+Status: DELIVERED. Launched by user decision 2026-07-06 after the
+PROD-13 sync to upstream `ae6e814` re-confirmed the Gradle gate is
+unsatisfiable without a schema (see Part II §II.6.15 merge note and
+[`docs/plan/adr-0008-phase2-community-xsd-plan.md`](../plan/adr-0008-phase2-community-xsd-plan.md)).
+
+Both Phase-1 "next steps" were executed as planned:
+
+1. **Faithful hierarchy reproduction.**
+   [`schema/community/odx-community-2_2_0.xsd`](../../odx-converter/converter/src/main/resources/schema/community/odx-community-2_2_0.xsd)
+   (committed this time — a narrow `.gitignore` re-include exempts it
+   from the repo-level `*.xsd` ignore) models the full type surface the
+   converter compiles against: ~190 complexTypes with `xs:extension`
+   inheritance for the abstract bases the Kotlin dispatches on, 15
+   enums with odxtools-derived value sets, no targetNamespace, plain
+   string ID/ID-REF attributes, and inline `jaxb:property`
+   customizations for the five collapsed-choice property names.
+   Per-type provenance:
+   [`schema/community/PHASE2-REQUIREMENTS.md`](../../odx-converter/converter/src/main/resources/schema/community/PHASE2-REQUIREMENTS.md).
+2. **Narrow build override.** `converter/build.gradle.kts` now prefers
+   a user-provided ASAM `odx_2_2_0.xsd` and falls back to the community
+   schema, with the xjc plugin restricted to exactly the selected file
+   (fixes the Phase-1 recursive-scan collision). Recorded as Patch 1 in
+   [`odx-converter/DOWNSTREAM-PATCHES.md`](../../odx-converter/DOWNSTREAM-PATCHES.md).
+
+Clean-room basis is unchanged from Phase 1 (converter source, MIT
+odxtools, public ASAM documents, instance files); no ASAM XSD was
+obtained or consulted. Gates: xjc codegen green (239 generated
+classes), converter compiles unmodified, the full upstream test suite
+at `ae6e814` passes (178 tests), and `somersault.pdx` converts to a
+well-formed MDD. The Phase-1 validation XSDs remain a separate,
+regenerable artifact; MDD byte-equivalence against an ASAM-schema
+build stays open under the `6b21111` MDD-regeneration follow-up and
+`Q-PROD-9` decides whether the OEM context licenses the ASAM schema
+for CI parity.

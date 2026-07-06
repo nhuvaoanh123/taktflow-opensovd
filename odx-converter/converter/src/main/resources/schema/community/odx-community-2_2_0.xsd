@@ -1,0 +1,2235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: Apache-2.0
+  SPDX-FileCopyrightText: 2026 Taktflow Systems
+
+  Community ODX 2.2 schema (codegen-complete) - ADR-0008 Phase 2.
+
+  This is a CLEAN-ROOM reimplementation of the subset of the ODX 2.2.0
+  data model required to build and run the Eclipse OpenSOVD odx-converter
+  without the ASAM/ISO 22901-1 licensed schema. It was authored ONLY from:
+
+    1. the Apache-2.0 converter source (odx-converter/converter/src/main/kotlin/),
+       which fixes the generated JAXB class/property surface,
+    2. the MIT-licensed odxtools model (external/odxtools/) for real ODX
+       element names, cardinalities, enum values and type inheritance,
+    3. publicly released ASAM ODX documents (external/asam-public/),
+    4. MIT/synthetic ODX instance documents:
+       external/odxtools/examples/somersault.pdx and
+       odx-converter/converter/src/test/resources/synthetic-odx*/,
+    5. the Phase-1 recon notes in this directory (RECON.md, PYTHON_MAPPING.md).
+
+  No ASAM XSD was obtained, opened, or transcribed. See
+  PHASE2-REQUIREMENTS.md (same directory) for the per-type provenance
+  table and docs/adr/0008-odx-community-xsd-default.md for governance.
+
+  Design notes (load-bearing):
+  - ODX instance documents use NO namespace (xsi:noNamespaceSchemaLocation),
+    hence no targetNamespace here.
+  - ID / ID-REF are plain xs:string attributes; the converter resolves
+    links itself (duplicate IDs across files are legal in ODX).
+  - Abstract bases (PARAM, DIAG-CODED-TYPE, PARENT-REF, DIAG-COMM,
+    DIAG-LAYER, DOP-BASE, ...) are modelled with xs:extension because the
+    converter dispatches on xsi:type and instanceof.
+  - Inline jaxb:property customizations pin the five collapsed-choice
+    property names the converter expects (DIAGCOMMPROXY, ROWWRAPPER,
+    DTCPROXY, DIAGVARIABLEPROXY, Rest).
+  - Only xs:int / xs:long / xs:double numeric types are used (BigInteger /
+    BigDecimal would break the converter's .toUInt() calls).
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:jaxb="https://jakarta.ee/xml/ns/jaxb"
+           jaxb:version="3.0">
+
+  <!-- ======================================================== -->
+  <!-- Root element                                             -->
+  <!-- ======================================================== -->
+
+  <xs:element name="ODX" type="ODX"/>
+
+  <xs:complexType name="ODX">
+    <xs:sequence>
+      <xs:element name="DIAG-LAYER-CONTAINER" type="DIAG-LAYER-CONTAINER" minOccurs="0"/>
+      <xs:element name="COMPARAM-SUBSET" type="COMPARAM-SUBSET" minOccurs="0"/>
+      <xs:element name="COMPARAM-SPEC" type="COMPARAM-SPEC" minOccurs="0"/>
+      <xs:element name="VEHICLE-INFO-SPEC" type="VEHICLE-INFO-SPEC" minOccurs="0"/>
+      <xs:element name="FLASH" type="FLASH" minOccurs="0"/>
+      <xs:element name="ECU-CONFIG" type="ECU-CONFIG" minOccurs="0"/>
+      <xs:element name="MULTIPLE-ECU-JOB-SPEC" type="MULTIPLE-ECU-JOB-SPEC" minOccurs="0"/>
+      <xs:element name="FUNCTION-DICTIONARY" type="FUNCTION-DICTIONARY" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="MODEL-VERSION" type="xs:string"/>
+  </xs:complexType>
+
+  <!-- Category roots other than DIAG-LAYER-CONTAINER / COMPARAM-*.
+       The converter only reads their SHORT-NAME (ODXCollection.containerKey). -->
+
+  <xs:complexType name="VEHICLE-INFO-SPEC">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="COMPANY-DATAS" type="COMPANY-DATAS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="FLASH">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="COMPANY-DATAS" type="COMPANY-DATAS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ECU-CONFIG">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="COMPANY-DATAS" type="COMPANY-DATAS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="MULTIPLE-ECU-JOB-SPEC">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="COMPANY-DATAS" type="COMPANY-DATAS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="FUNCTION-DICTIONARY">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="COMPANY-DATAS" type="COMPANY-DATAS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Enumerations                                             -->
+  <!-- ======================================================== -->
+
+  <xs:simpleType name="ADDRESSING">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="FUNCTIONAL"/>
+      <xs:enumeration value="PHYSICAL"/>
+      <xs:enumeration value="FUNCTIONAL-OR-PHYSICAL"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="TRANS-MODE">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="SEND-ONLY"/>
+      <xs:enumeration value="RECEIVE-ONLY"/>
+      <xs:enumeration value="SEND-AND-RECEIVE"/>
+      <xs:enumeration value="SEND-OR-RECEIVE"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="DIAG-CLASS-TYPE">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="STARTCOMM"/>
+      <xs:enumeration value="STOPCOMM"/>
+      <xs:enumeration value="VARIANTIDENTIFICATION"/>
+      <xs:enumeration value="READ-DYN-DEF-MESSAGE"/>
+      <xs:enumeration value="DYN-DEF-MESSAGE"/>
+      <xs:enumeration value="CLEAR-DYN-DEF-MESSAGE"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="INTERVAL-TYPE">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="OPEN"/>
+      <xs:enumeration value="CLOSED"/>
+      <xs:enumeration value="INFINITE"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="COMPU-CATEGORY">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="IDENTICAL"/>
+      <xs:enumeration value="LINEAR"/>
+      <xs:enumeration value="SCALE-LINEAR"/>
+      <xs:enumeration value="TEXTTABLE"/>
+      <xs:enumeration value="COMPUCODE"/>
+      <xs:enumeration value="TAB-INTP"/>
+      <xs:enumeration value="RAT-FUNC"/>
+      <xs:enumeration value="SCALE-RAT-FUNC"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="DATA-TYPE">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="A_INT32"/>
+      <xs:enumeration value="A_UINT32"/>
+      <xs:enumeration value="A_FLOAT32"/>
+      <xs:enumeration value="A_FLOAT64"/>
+      <xs:enumeration value="A_ASCIISTRING"/>
+      <xs:enumeration value="A_UTF8STRING"/>
+      <xs:enumeration value="A_UNICODE2STRING"/>
+      <xs:enumeration value="A_BYTEFIELD"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="PHYSICAL-DATA-TYPE">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="A_INT32"/>
+      <xs:enumeration value="A_UINT32"/>
+      <xs:enumeration value="A_FLOAT32"/>
+      <xs:enumeration value="A_FLOAT64"/>
+      <xs:enumeration value="A_BYTEFIELD"/>
+      <xs:enumeration value="A_UNICODE2STRING"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="RADIX">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="HEX"/>
+      <xs:enumeration value="DEC"/>
+      <xs:enumeration value="BIN"/>
+      <xs:enumeration value="OCT"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="TERMINATION">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="END-OF-PDU"/>
+      <xs:enumeration value="ZERO"/>
+      <xs:enumeration value="HEX-FF"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="STANDARDISATION-LEVEL">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="STANDARD"/>
+      <xs:enumeration value="OEM-SPECIFIC"/>
+      <xs:enumeration value="OPTIONAL"/>
+      <xs:enumeration value="OEM-OPTIONAL"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="USAGE">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="ECU-SOFTWARE"/>
+      <xs:enumeration value="ECU-COMM"/>
+      <xs:enumeration value="APPLICATION"/>
+      <xs:enumeration value="TESTER"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ROW-FRAGMENT">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="KEY"/>
+      <xs:enumeration value="STRUCT"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="VALID-TYPE">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="VALID"/>
+      <xs:enumeration value="NOT-VALID"/>
+      <xs:enumeration value="NOT-DEFINED"/>
+      <xs:enumeration value="NOT-AVAILABLE"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="DOCTYPE">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="FLASH"/>
+      <xs:enumeration value="CONTAINER"/>
+      <xs:enumeration value="LAYER"/>
+      <xs:enumeration value="MULTIPLE-ECU-JOB-SPEC"/>
+      <xs:enumeration value="COMPARAM-SPEC"/>
+      <xs:enumeration value="VEHICLE-INFO-SPEC"/>
+      <xs:enumeration value="COMPARAM-SUBSET"/>
+      <xs:enumeration value="ECU-CONFIG"/>
+      <xs:enumeration value="FUNCTION-DICTIONARY-SPEC"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ======================================================== -->
+  <!-- Reference and text primitives                            -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="ODXLINK">
+    <xs:attribute name="ID-REF" type="xs:string" use="required"/>
+    <xs:attribute name="DOCREF" type="xs:string"/>
+    <xs:attribute name="DOCTYPE" type="DOCTYPE"/>
+    <xs:attribute name="REVISION" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="SNREF">
+    <xs:attribute name="SHORT-NAME" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="SNPATHREF">
+    <xs:attribute name="SHORT-NAME-PATH" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="LONG-NAME">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="TI" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="TEXT">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="TI" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="DESCRIPTION" mixed="true">
+    <xs:sequence>
+      <xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="LIMIT">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="INTERVAL-TYPE" type="INTERVAL-TYPE"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Special data (SDGS)                                      -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="SD">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="SI" type="xs:string"/>
+        <xs:attribute name="TI" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="SDG-CAPTION">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="SDG">
+    <xs:sequence>
+      <xs:element name="SDG-CAPTION" type="SDG-CAPTION" minOccurs="0"/>
+      <xs:element name="SDG-CAPTION-REF" type="ODXLINK" minOccurs="0"/>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="SDG" type="SDG"/>
+        <xs:element name="SD" type="SD"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="SI" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="SDGS">
+    <xs:sequence>
+      <xs:element name="SDG" type="SDG" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Administrative / company data                            -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="ADMIN-DATA">
+    <xs:sequence>
+      <xs:element name="LANGUAGE" type="xs:string" minOccurs="0"/>
+      <xs:element name="COMPANY-DOC-INFOS" type="COMPANY-DOC-INFOS" minOccurs="0"/>
+      <xs:element name="DOC-REVISIONS" type="DOC-REVISIONS" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPANY-DOC-INFOS">
+    <xs:sequence>
+      <xs:element name="COMPANY-DOC-INFO" type="COMPANY-DOC-INFO" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPANY-DOC-INFO">
+    <xs:sequence>
+      <xs:element name="COMPANY-DATA-REF" type="ODXLINK"/>
+      <xs:element name="TEAM-MEMBER-REF" type="ODXLINK" minOccurs="0"/>
+      <xs:element name="DOC-LABEL" type="xs:string" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DOC-REVISIONS">
+    <xs:sequence>
+      <xs:element name="DOC-REVISION" type="DOC-REVISION" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DOC-REVISION">
+    <xs:sequence>
+      <xs:element name="TEAM-MEMBER-REF" type="ODXLINK" minOccurs="0"/>
+      <xs:element name="REVISION-LABEL" type="xs:string" minOccurs="0"/>
+      <xs:element name="STATE" type="xs:string" minOccurs="0"/>
+      <xs:element name="DATE" type="xs:string"/>
+      <xs:element name="TOOL" type="xs:string" minOccurs="0"/>
+      <xs:element name="COMPANY-REVISION-INFOS" type="COMPANY-REVISION-INFOS" minOccurs="0"/>
+      <xs:element name="MODIFICATIONS" type="MODIFICATIONS" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPANY-REVISION-INFOS">
+    <xs:sequence>
+      <xs:element name="COMPANY-REVISION-INFO" type="COMPANY-REVISION-INFO" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPANY-REVISION-INFO">
+    <xs:sequence>
+      <xs:element name="COMPANY-DATA-REF" type="ODXLINK"/>
+      <xs:element name="REVISION-LABEL" type="xs:string" minOccurs="0"/>
+      <xs:element name="STATE" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MODIFICATIONS">
+    <xs:sequence>
+      <xs:element name="MODIFICATION" type="MODIFICATION" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MODIFICATION">
+    <xs:sequence>
+      <xs:element name="CHANGE" type="xs:string" minOccurs="0"/>
+      <xs:element name="REASON" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPANY-DATAS">
+    <xs:sequence>
+      <xs:element name="COMPANY-DATA" type="COMPANY-DATA" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPANY-DATA">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ROLES" type="ROLES" minOccurs="0"/>
+      <xs:element name="TEAM-MEMBERS" type="TEAM-MEMBERS" minOccurs="0"/>
+      <xs:element name="COMPANY-SPECIFIC-INFO" type="COMPANY-SPECIFIC-INFO" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ROLES">
+    <xs:sequence>
+      <xs:element name="ROLE" type="xs:string" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TEAM-MEMBERS">
+    <xs:sequence>
+      <xs:element name="TEAM-MEMBER" type="TEAM-MEMBER" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TEAM-MEMBER">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ROLES" type="ROLES" minOccurs="0"/>
+      <xs:element name="DEPARTMENT" type="xs:string" minOccurs="0"/>
+      <xs:element name="ADDRESS" type="xs:string" minOccurs="0"/>
+      <xs:element name="ZIP" type="xs:string" minOccurs="0"/>
+      <xs:element name="CITY" type="xs:string" minOccurs="0"/>
+      <xs:element name="PHONE" type="xs:string" minOccurs="0"/>
+      <xs:element name="FAX" type="xs:string" minOccurs="0"/>
+      <xs:element name="EMAIL" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="COMPANY-SPECIFIC-INFO">
+    <xs:sequence>
+      <xs:element name="RELATED-DOCS" type="RELATED-DOCS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="RELATED-DOCS">
+    <xs:sequence>
+      <xs:element name="RELATED-DOC" type="RELATED-DOC" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="RELATED-DOC">
+    <xs:sequence>
+      <xs:element name="XDOC" type="XDOC" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="XDOC">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="NUMBER" type="xs:string" minOccurs="0"/>
+      <xs:element name="STATE" type="xs:string" minOccurs="0"/>
+      <xs:element name="DATE" type="xs:string" minOccurs="0"/>
+      <xs:element name="PUBLISHER" type="xs:string" minOccurs="0"/>
+      <xs:element name="URL" type="xs:string" minOccurs="0"/>
+      <xs:element name="POSITION" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Diagnostic layer container and layers                    -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="DIAG-LAYER-CONTAINER">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="COMPANY-DATAS" type="COMPANY-DATAS" minOccurs="0"/>
+      <xs:element name="ECU-SHARED-DATAS" type="ECU-SHARED-DATAS" minOccurs="0"/>
+      <xs:element name="PROTOCOLS" type="PROTOCOLS" minOccurs="0"/>
+      <xs:element name="FUNCTIONAL-GROUPS" type="FUNCTIONAL-GROUPS" minOccurs="0"/>
+      <xs:element name="BASE-VARIANTS" type="BASE-VARIANTS" minOccurs="0"/>
+      <xs:element name="ECU-VARIANTS" type="ECU-VARIANTS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ECU-SHARED-DATAS">
+    <xs:sequence>
+      <xs:element name="ECU-SHARED-DATA" type="ECU-SHARED-DATA" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PROTOCOLS">
+    <xs:sequence>
+      <xs:element name="PROTOCOL" type="PROTOCOL" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="FUNCTIONAL-GROUPS">
+    <xs:sequence>
+      <xs:element name="FUNCTIONAL-GROUP" type="FUNCTIONAL-GROUP" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="BASE-VARIANTS">
+    <xs:sequence>
+      <xs:element name="BASE-VARIANT" type="BASE-VARIANT" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ECU-VARIANTS">
+    <xs:sequence>
+      <xs:element name="ECU-VARIANT" type="ECU-VARIANT" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DIAG-LAYER" abstract="true">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="COMPANY-DATAS" type="COMPANY-DATAS" minOccurs="0"/>
+      <xs:element name="FUNCT-CLASSS" type="FUNCT-CLASSS" minOccurs="0"/>
+      <xs:element name="DIAG-DATA-DICTIONARY-SPEC" type="DIAG-DATA-DICTIONARY-SPEC" minOccurs="0"/>
+      <xs:element name="DIAG-COMMS" type="DIAG-COMMS" minOccurs="0"/>
+      <xs:element name="REQUESTS" type="REQUESTS" minOccurs="0"/>
+      <xs:element name="POS-RESPONSES" type="POS-RESPONSES" minOccurs="0"/>
+      <xs:element name="NEG-RESPONSES" type="NEG-RESPONSES" minOccurs="0"/>
+      <xs:element name="GLOBAL-NEG-RESPONSES" type="GLOBAL-NEG-RESPONSES" minOccurs="0"/>
+      <xs:element name="STATE-CHARTS" type="STATE-CHARTS" minOccurs="0"/>
+      <xs:element name="ADDITIONAL-AUDIENCES" type="ADDITIONAL-AUDIENCES" minOccurs="0"/>
+      <xs:element name="LIBRARYS" type="LIBRARYS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ECU-SHARED-DATA">
+    <xs:complexContent>
+      <xs:extension base="DIAG-LAYER">
+        <xs:sequence>
+          <xs:element name="DIAG-VARIABLES" type="DIAG-VARIABLES" minOccurs="0"/>
+          <xs:element name="VARIABLE-GROUPS" type="VARIABLE-GROUPS" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="HIERARCHY-ELEMENT" abstract="true">
+    <xs:complexContent>
+      <xs:extension base="DIAG-LAYER">
+        <xs:sequence>
+          <xs:element name="COMPARAM-REFS" type="COMPARAM-REFS" minOccurs="0"/>
+          <xs:element name="PARENT-REFS" type="PARENT-REFS" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="PROTOCOL">
+    <xs:complexContent>
+      <xs:extension base="HIERARCHY-ELEMENT">
+        <xs:sequence>
+          <xs:element name="COMPARAM-SPEC-REF" type="ODXLINK" minOccurs="0"/>
+          <xs:element name="PROT-STACK-SNREF" type="SNREF" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="FUNCTIONAL-GROUP">
+    <xs:complexContent>
+      <xs:extension base="HIERARCHY-ELEMENT"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="BASE-VARIANT">
+    <xs:complexContent>
+      <xs:extension base="HIERARCHY-ELEMENT">
+        <xs:sequence>
+          <xs:element name="BASE-VARIANT-PATTERN" type="BASE-VARIANT-PATTERN" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="ECU-VARIANT">
+    <xs:complexContent>
+      <xs:extension base="HIERARCHY-ELEMENT">
+        <xs:sequence>
+          <xs:element name="ECU-VARIANT-PATTERNS" type="ECU-VARIANT-PATTERNS" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <!-- ECU-SHARED-DATA variables (converter only checks presence) -->
+
+  <xs:complexType name="DIAG-VARIABLES">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:annotation>
+        <xs:appinfo>
+          <jaxb:property name="DIAGVARIABLEPROXY"/>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:element name="DIAG-VARIABLE" type="DIAG-VARIABLE"/>
+      <xs:element name="DIAG-VARIABLE-REF" type="ODXLINK"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="DIAG-VARIABLE">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="VARIABLE-GROUPS">
+    <xs:sequence>
+      <xs:element name="VARIABLE-GROUP" type="VARIABLE-GROUP" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="VARIABLE-GROUP">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <!-- Parent references (xsi:type polymorphic) -->
+
+  <xs:complexType name="PARENT-REFS">
+    <xs:sequence>
+      <xs:element name="PARENT-REF" type="PARENT-REF" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PARENT-REF" abstract="true">
+    <xs:sequence>
+      <xs:element name="NOT-INHERITED-DIAG-COMMS" type="NOT-INHERITED-DIAG-COMMS" minOccurs="0"/>
+      <xs:element name="NOT-INHERITED-VARIABLES" type="NOT-INHERITED-VARIABLES" minOccurs="0"/>
+      <xs:element name="NOT-INHERITED-DOPS" type="NOT-INHERITED-DOPS" minOccurs="0"/>
+      <xs:element name="NOT-INHERITED-TABLES" type="NOT-INHERITED-TABLES" minOccurs="0"/>
+      <xs:element name="NOT-INHERITED-GLOBAL-NEG-RESPONSES" type="NOT-INHERITED-GLOBAL-NEG-RESPONSES" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID-REF" type="xs:string" use="required"/>
+    <xs:attribute name="DOCREF" type="xs:string"/>
+    <xs:attribute name="DOCTYPE" type="DOCTYPE"/>
+  </xs:complexType>
+
+  <xs:complexType name="BASE-VARIANT-REF">
+    <xs:complexContent>
+      <xs:extension base="PARENT-REF"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="ECU-VARIANT-REF">
+    <xs:complexContent>
+      <xs:extension base="PARENT-REF"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="PROTOCOL-REF">
+    <xs:complexContent>
+      <xs:extension base="PARENT-REF"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="FUNCTIONAL-GROUP-REF">
+    <xs:complexContent>
+      <xs:extension base="PARENT-REF"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="ECU-SHARED-DATA-REF">
+    <xs:complexContent>
+      <xs:extension base="PARENT-REF"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="NOT-INHERITED-DIAG-COMMS">
+    <xs:sequence>
+      <xs:element name="NOT-INHERITED-DIAG-COMM" type="NOT-INHERITED-DIAG-COMM" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NOT-INHERITED-DIAG-COMM">
+    <xs:sequence>
+      <xs:element name="DIAG-COMM-SNREF" type="SNREF"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NOT-INHERITED-VARIABLES">
+    <xs:sequence>
+      <xs:element name="NOT-INHERITED-VARIABLE" type="NOT-INHERITED-VARIABLE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NOT-INHERITED-VARIABLE">
+    <xs:sequence>
+      <xs:element name="DIAG-VARIABLE-SNREF" type="SNREF"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NOT-INHERITED-DOPS">
+    <xs:sequence>
+      <xs:element name="NOT-INHERITED-DOP" type="NOT-INHERITED-DOP" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NOT-INHERITED-DOP">
+    <xs:sequence>
+      <xs:element name="DOP-BASE-SNREF" type="SNREF"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NOT-INHERITED-TABLES">
+    <xs:sequence>
+      <xs:element name="NOT-INHERITED-TABLE" type="NOT-INHERITED-TABLE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NOT-INHERITED-TABLE">
+    <xs:sequence>
+      <xs:element name="TABLE-SNREF" type="SNREF"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NOT-INHERITED-GLOBAL-NEG-RESPONSES">
+    <xs:sequence>
+      <xs:element name="NOT-INHERITED-GLOBAL-NEG-RESPONSE" type="NOT-INHERITED-GLOBAL-NEG-RESPONSE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NOT-INHERITED-GLOBAL-NEG-RESPONSE">
+    <xs:sequence>
+      <xs:element name="GLOBAL-NEG-RESPONSE-SNREF" type="SNREF"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Variant identification patterns -->
+
+  <xs:complexType name="BASE-VARIANT-PATTERN">
+    <xs:sequence>
+      <xs:element name="MATCHING-BASE-VARIANT-PARAMETERS" type="MATCHING-BASE-VARIANT-PARAMETERS"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MATCHING-BASE-VARIANT-PARAMETERS">
+    <xs:sequence>
+      <xs:element name="MATCHING-BASE-VARIANT-PARAMETER" type="MATCHING-BASE-VARIANT-PARAMETER" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MATCHING-BASE-VARIANT-PARAMETER">
+    <xs:sequence>
+      <xs:element name="EXPECTED-VALUE" type="xs:string"/>
+      <xs:element name="USE-PHYSICAL-ADDRESSING" type="xs:boolean"/>
+      <xs:element name="DIAG-COMM-SNREF" type="SNREF"/>
+      <xs:element name="OUT-PARAM-IF-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="OUT-PARAM-IF-SNPATHREF" type="SNPATHREF" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ECU-VARIANT-PATTERNS">
+    <xs:sequence>
+      <xs:element name="ECU-VARIANT-PATTERN" type="ECU-VARIANT-PATTERN" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ECU-VARIANT-PATTERN">
+    <xs:sequence>
+      <xs:element name="MATCHING-PARAMETERS" type="MATCHING-PARAMETERS"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MATCHING-PARAMETERS">
+    <xs:sequence>
+      <xs:element name="MATCHING-PARAMETER" type="MATCHING-PARAMETER" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MATCHING-PARAMETER">
+    <xs:sequence>
+      <xs:element name="EXPECTED-VALUE" type="xs:string"/>
+      <xs:element name="DIAG-COMM-SNREF" type="SNREF"/>
+      <xs:element name="OUT-PARAM-IF-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="OUT-PARAM-IF-SNPATHREF" type="SNPATHREF" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Diagnostic communications                                -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="DIAG-COMMS">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:annotation>
+        <xs:appinfo>
+          <jaxb:property name="DIAGCOMMPROXY"/>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:element name="DIAG-SERVICE" type="DIAG-SERVICE"/>
+      <xs:element name="SINGLE-ECU-JOB" type="SINGLE-ECU-JOB"/>
+      <xs:element name="DIAG-COMM-REF" type="ODXLINK"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="DIAG-COMM" abstract="true">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+      <xs:element name="FUNCT-CLASS-REFS" type="FUNCT-CLASS-REFS" minOccurs="0"/>
+      <xs:element name="AUDIENCE" type="AUDIENCE" minOccurs="0"/>
+      <xs:element name="PROTOCOL-SNREFS" type="PROTOCOL-SNREFS" minOccurs="0"/>
+      <xs:element name="RELATED-DIAG-COMM-REFS" type="RELATED-DIAG-COMM-REFS" minOccurs="0"/>
+      <xs:element name="PRE-CONDITION-STATE-REFS" type="PRE-CONDITION-STATE-REFS" minOccurs="0"/>
+      <xs:element name="STATE-TRANSITION-REFS" type="STATE-TRANSITION-REFS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+    <xs:attribute name="SEMANTIC" type="xs:string"/>
+    <xs:attribute name="DIAGNOSTIC-CLASS" type="DIAG-CLASS-TYPE"/>
+    <xs:attribute name="IS-MANDATORY" type="xs:boolean" default="false"/>
+    <xs:attribute name="IS-EXECUTABLE" type="xs:boolean" default="true"/>
+    <xs:attribute name="IS-FINAL" type="xs:boolean" default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="DIAG-SERVICE">
+    <xs:complexContent>
+      <xs:extension base="DIAG-COMM">
+        <xs:sequence>
+          <xs:element name="COMPARAM-REFS" type="COMPARAM-REFS" minOccurs="0"/>
+          <xs:element name="REQUEST-REF" type="ODXLINK"/>
+          <xs:element name="POS-RESPONSE-REFS" type="POS-RESPONSE-REFS" minOccurs="0"/>
+          <xs:element name="NEG-RESPONSE-REFS" type="NEG-RESPONSE-REFS" minOccurs="0"/>
+          <xs:element name="POS-RESPONSE-SUPPRESSABLE" type="POS-RESPONSE-SUPPRESSABLE" minOccurs="0"/>
+        </xs:sequence>
+        <xs:attribute name="ADDRESSING" type="ADDRESSING"/>
+        <xs:attribute name="TRANSMISSION-MODE" type="TRANS-MODE"/>
+        <xs:attribute name="IS-CYCLIC" type="xs:boolean" default="false"/>
+        <xs:attribute name="IS-MULTIPLE" type="xs:boolean" default="false"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="POS-RESPONSE-SUPPRESSABLE">
+    <xs:sequence>
+      <xs:element name="BIT-MASK" type="xs:hexBinary"/>
+      <xs:element name="CODED-CONST-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="CODED-CONST-SNPATHREF" type="SNPATHREF" minOccurs="0"/>
+      <xs:element name="VALUE-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="VALUE-SNPATHREF" type="SNPATHREF" minOccurs="0"/>
+      <xs:element name="TABLE-KEY-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="TABLE-KEY-SNPATHREF" type="SNPATHREF" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="SINGLE-ECU-JOB">
+    <xs:complexContent>
+      <xs:extension base="DIAG-COMM">
+        <xs:sequence>
+          <xs:element name="PROG-CODES" type="PROG-CODES"/>
+          <xs:element name="INPUT-PARAMS" type="INPUT-PARAMS" minOccurs="0"/>
+          <xs:element name="OUTPUT-PARAMS" type="OUTPUT-PARAMS" minOccurs="0"/>
+          <xs:element name="NEG-OUTPUT-PARAMS" type="NEG-OUTPUT-PARAMS" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="PROG-CODES">
+    <xs:sequence>
+      <xs:element name="PROG-CODE" type="PROG-CODE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PROG-CODE">
+    <xs:sequence>
+      <xs:element name="CODE-FILE" type="xs:string"/>
+      <xs:element name="ENCRYPTION" type="xs:string" minOccurs="0"/>
+      <xs:element name="SYNTAX" type="xs:string"/>
+      <xs:element name="REVISION" type="xs:string"/>
+      <xs:element name="ENTRYPOINT" type="xs:string" minOccurs="0"/>
+      <xs:element name="LIBRARY-REFS" type="LIBRARY-REFS" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="LIBRARY-REFS">
+    <xs:sequence>
+      <xs:element name="LIBRARY-REF" type="ODXLINK" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="LIBRARYS">
+    <xs:sequence>
+      <xs:element name="LIBRARY" type="LIBRARY" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="LIBRARY">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="CODE-FILE" type="xs:string"/>
+      <xs:element name="ENCRYPTION" type="xs:string" minOccurs="0"/>
+      <xs:element name="SYNTAX" type="xs:string"/>
+      <xs:element name="REVISION" type="xs:string"/>
+      <xs:element name="ENTRYPOINT" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="INPUT-PARAMS">
+    <xs:sequence>
+      <xs:element name="INPUT-PARAM" type="INPUT-PARAM" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="INPUT-PARAM">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="PHYSICAL-DEFAULT-VALUE" type="xs:string" minOccurs="0"/>
+      <xs:element name="DOP-BASE-REF" type="ODXLINK"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string"/>
+    <xs:attribute name="SEMANTIC" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="OUTPUT-PARAMS">
+    <xs:sequence>
+      <xs:element name="OUTPUT-PARAM" type="OUTPUT-PARAM" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="OUTPUT-PARAM">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="DOP-BASE-REF" type="ODXLINK"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string"/>
+    <xs:attribute name="SEMANTIC" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="NEG-OUTPUT-PARAMS">
+    <xs:sequence>
+      <xs:element name="NEG-OUTPUT-PARAM" type="NEG-OUTPUT-PARAM" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NEG-OUTPUT-PARAM">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="DOP-BASE-REF" type="ODXLINK"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="FUNCT-CLASSS">
+    <xs:sequence>
+      <xs:element name="FUNCT-CLASS" type="FUNCT-CLASS" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="FUNCT-CLASS">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="FUNCT-CLASS-REFS">
+    <xs:sequence>
+      <xs:element name="FUNCT-CLASS-REF" type="ODXLINK" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PROTOCOL-SNREFS">
+    <xs:sequence>
+      <xs:element name="PROTOCOL-SNREF" type="SNREF" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="RELATED-DIAG-COMM-REFS">
+    <xs:sequence>
+      <xs:element name="RELATED-DIAG-COMM-REF" type="RELATED-DIAG-COMM-REF" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="RELATED-DIAG-COMM-REF">
+    <xs:complexContent>
+      <xs:extension base="ODXLINK">
+        <xs:sequence>
+          <xs:element name="RELATION-TYPE" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="AUDIENCE">
+    <xs:sequence>
+      <xs:element name="ENABLED-AUDIENCE-REFS" type="ENABLED-AUDIENCE-REFS" minOccurs="0"/>
+      <xs:element name="DISABLED-AUDIENCE-REFS" type="DISABLED-AUDIENCE-REFS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="IS-SUPPLIER" type="xs:boolean" default="true"/>
+    <xs:attribute name="IS-DEVELOPMENT" type="xs:boolean" default="true"/>
+    <xs:attribute name="IS-MANUFACTURING" type="xs:boolean" default="true"/>
+    <xs:attribute name="IS-AFTERSALES" type="xs:boolean" default="true"/>
+    <xs:attribute name="IS-AFTERMARKET" type="xs:boolean" default="true"/>
+  </xs:complexType>
+
+  <xs:complexType name="ENABLED-AUDIENCE-REFS">
+    <xs:sequence>
+      <xs:element name="ENABLED-AUDIENCE-REF" type="ODXLINK" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DISABLED-AUDIENCE-REFS">
+    <xs:sequence>
+      <xs:element name="DISABLED-AUDIENCE-REF" type="ODXLINK" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ADDITIONAL-AUDIENCES">
+    <xs:sequence>
+      <xs:element name="ADDITIONAL-AUDIENCE" type="ADDITIONAL-AUDIENCE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ADDITIONAL-AUDIENCE">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="PRE-CONDITION-STATE-REFS">
+    <xs:sequence>
+      <xs:element name="PRE-CONDITION-STATE-REF" type="PRE-CONDITION-STATE-REF" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PRE-CONDITION-STATE-REF">
+    <xs:sequence>
+      <xs:element name="VALUE" type="xs:string" minOccurs="0"/>
+      <xs:element name="IN-PARAM-IF-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="IN-PARAM-IF-SNPATHREF" type="SNPATHREF" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID-REF" type="xs:string" use="required"/>
+    <xs:attribute name="DOCREF" type="xs:string"/>
+    <xs:attribute name="DOCTYPE" type="DOCTYPE"/>
+  </xs:complexType>
+
+  <xs:complexType name="STATE-TRANSITION-REFS">
+    <xs:sequence>
+      <xs:element name="STATE-TRANSITION-REF" type="STATE-TRANSITION-REF" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="STATE-TRANSITION-REF">
+    <xs:sequence>
+      <xs:element name="VALUE" type="xs:string" minOccurs="0"/>
+      <xs:element name="IN-PARAM-IF-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="IN-PARAM-IF-SNPATHREF" type="SNPATHREF" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID-REF" type="xs:string" use="required"/>
+    <xs:attribute name="DOCREF" type="xs:string"/>
+    <xs:attribute name="DOCTYPE" type="DOCTYPE"/>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Requests / responses / parameters                        -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="REQUESTS">
+    <xs:sequence>
+      <xs:element name="REQUEST" type="REQUEST" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="POS-RESPONSES">
+    <xs:sequence>
+      <xs:element name="POS-RESPONSE" type="POS-RESPONSE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NEG-RESPONSES">
+    <xs:sequence>
+      <xs:element name="NEG-RESPONSE" type="NEG-RESPONSE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="GLOBAL-NEG-RESPONSES">
+    <xs:sequence>
+      <xs:element name="GLOBAL-NEG-RESPONSE" type="GLOBAL-NEG-RESPONSE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="POS-RESPONSE-REFS">
+    <xs:sequence>
+      <xs:element name="POS-RESPONSE-REF" type="ODXLINK" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NEG-RESPONSE-REFS">
+    <xs:sequence>
+      <xs:element name="NEG-RESPONSE-REF" type="ODXLINK" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PARAMS">
+    <xs:sequence>
+      <xs:element name="PARAM" type="PARAM" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PARAM" abstract="true">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+      <xs:element name="BYTE-POSITION" type="xs:int" minOccurs="0"/>
+      <xs:element name="BIT-POSITION" type="xs:int" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string"/>
+    <xs:attribute name="SEMANTIC" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="VALUE">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:sequence>
+          <xs:element name="PHYSICAL-DEFAULT-VALUE" type="xs:string" minOccurs="0"/>
+          <xs:element name="DOP-REF" type="ODXLINK" minOccurs="0"/>
+          <xs:element name="DOP-SNREF" type="SNREF" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="PHYS-CONST">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:sequence>
+          <xs:element name="PHYS-CONSTANT-VALUE" type="xs:string" minOccurs="0"/>
+          <xs:element name="DOP-REF" type="ODXLINK" minOccurs="0"/>
+          <xs:element name="DOP-SNREF" type="SNREF" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="CODED-CONST">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:sequence>
+          <xs:element name="CODED-VALUE" type="xs:string" minOccurs="0"/>
+          <xs:element name="DIAG-CODED-TYPE" type="DIAG-CODED-TYPE"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="NRC-CONST">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:sequence>
+          <xs:element name="CODED-VALUES" type="CODED-VALUES" minOccurs="0"/>
+          <xs:element name="DIAG-CODED-TYPE" type="DIAG-CODED-TYPE" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="CODED-VALUES">
+    <xs:sequence>
+      <xs:element name="CODED-VALUE" type="xs:string" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="RESERVED">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:sequence>
+          <xs:element name="BIT-LENGTH" type="xs:int"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="MATCHING-REQUEST-PARAM">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:sequence>
+          <xs:element name="REQUEST-BYTE-POS" type="xs:int"/>
+          <xs:element name="BYTE-LENGTH" type="xs:int"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="SYSTEM">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:sequence>
+          <xs:element name="DOP-REF" type="ODXLINK" minOccurs="0"/>
+          <xs:element name="DOP-SNREF" type="SNREF" minOccurs="0"/>
+        </xs:sequence>
+        <xs:attribute name="SYSPARAM" type="xs:string" use="required"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="LENGTH-KEY">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:sequence>
+          <xs:element name="DOP-REF" type="ODXLINK" minOccurs="0"/>
+          <xs:element name="DOP-SNREF" type="SNREF" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="DYNAMIC">
+    <xs:complexContent>
+      <xs:extension base="PARAM"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="TABLE-KEY">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:choice minOccurs="0" maxOccurs="unbounded">
+          <xs:annotation>
+            <xs:appinfo>
+              <jaxb:property name="Rest"/>
+            </xs:appinfo>
+          </xs:annotation>
+          <xs:element name="TABLE-REF" type="ODXLINK"/>
+          <xs:element name="TABLE-ROW-REF" type="ODXLINK"/>
+          <xs:element name="TABLE-SNREF" type="SNREF"/>
+          <xs:element name="TABLE-ROW-SNREF" type="SNREF"/>
+        </xs:choice>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="TABLE-STRUCT">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:sequence>
+          <xs:element name="TABLE-KEY-REF" type="ODXLINK" minOccurs="0"/>
+          <xs:element name="TABLE-KEY-SNREF" type="SNREF" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="TABLE-ENTRY">
+    <xs:complexContent>
+      <xs:extension base="PARAM">
+        <xs:sequence>
+          <xs:element name="TARGET" type="ROW-FRAGMENT" minOccurs="0"/>
+          <xs:element name="TABLE-ROW-REF" type="ODXLINK" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Diag coded types (xsi:type polymorphic)                  -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="DIAG-CODED-TYPE" abstract="true">
+    <xs:attribute name="BASE-DATA-TYPE" type="DATA-TYPE" use="required"/>
+    <xs:attribute name="BASE-TYPE-ENCODING" type="xs:string"/>
+    <xs:attribute name="IS-HIGHLOW-BYTE-ORDER" type="xs:boolean" default="true"/>
+  </xs:complexType>
+
+  <xs:complexType name="STANDARD-LENGTH-TYPE">
+    <xs:complexContent>
+      <xs:extension base="DIAG-CODED-TYPE">
+        <xs:sequence>
+          <xs:element name="BIT-LENGTH" type="xs:int"/>
+          <xs:element name="BIT-MASK" type="xs:hexBinary" minOccurs="0"/>
+        </xs:sequence>
+        <xs:attribute name="CONDENSED" type="xs:boolean" default="false"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="LEADING-LENGTH-INFO-TYPE">
+    <xs:complexContent>
+      <xs:extension base="DIAG-CODED-TYPE">
+        <xs:sequence>
+          <xs:element name="BIT-LENGTH" type="xs:int"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="MIN-MAX-LENGTH-TYPE">
+    <xs:complexContent>
+      <xs:extension base="DIAG-CODED-TYPE">
+        <xs:sequence>
+          <xs:element name="MIN-LENGTH" type="xs:int"/>
+          <xs:element name="MAX-LENGTH" type="xs:int" minOccurs="0"/>
+        </xs:sequence>
+        <xs:attribute name="TERMINATION" type="TERMINATION"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="PARAM-LENGTH-INFO-TYPE">
+    <xs:complexContent>
+      <xs:extension base="DIAG-CODED-TYPE">
+        <xs:sequence>
+          <xs:element name="LENGTH-KEY-REF" type="ODXLINK"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- DOP hierarchy                                            -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="DIAG-DATA-DICTIONARY-SPEC">
+    <xs:sequence>
+      <xs:element name="DTC-DOPS" type="DTC-DOPS" minOccurs="0"/>
+      <xs:element name="ENV-DATA-DESCS" type="ENV-DATA-DESCS" minOccurs="0"/>
+      <xs:element name="DATA-OBJECT-PROPS" type="DATA-OBJECT-PROPS" minOccurs="0"/>
+      <xs:element name="STRUCTURES" type="STRUCTURES" minOccurs="0"/>
+      <xs:element name="STATIC-FIELDS" type="STATIC-FIELDS" minOccurs="0"/>
+      <xs:element name="DYNAMIC-LENGTH-FIELDS" type="DYNAMIC-LENGTH-FIELDS" minOccurs="0"/>
+      <xs:element name="DYNAMIC-ENDMARKER-FIELDS" type="DYNAMIC-ENDMARKER-FIELDS" minOccurs="0"/>
+      <xs:element name="END-OF-PDU-FIELDS" type="END-OF-PDU-FIELDS" minOccurs="0"/>
+      <xs:element name="MUXS" type="MUXS" minOccurs="0"/>
+      <xs:element name="ENV-DATAS" type="ENV-DATAS" minOccurs="0"/>
+      <xs:element name="UNIT-SPEC" type="UNIT-SPEC" minOccurs="0"/>
+      <xs:element name="TABLES" type="TABLES" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DATA-OBJECT-PROPS">
+    <xs:sequence>
+      <xs:element name="DATA-OBJECT-PROP" type="DATA-OBJECT-PROP" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="STRUCTURES">
+    <xs:sequence>
+      <xs:element name="STRUCTURE" type="STRUCTURE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DTC-DOPS">
+    <xs:sequence>
+      <xs:element name="DTC-DOP" type="DTC-DOP" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ENV-DATAS">
+    <xs:sequence>
+      <xs:element name="ENV-DATA" type="ENV-DATA" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ENV-DATA-DESCS">
+    <xs:sequence>
+      <xs:element name="ENV-DATA-DESC" type="ENV-DATA-DESC" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="STATIC-FIELDS">
+    <xs:sequence>
+      <xs:element name="STATIC-FIELD" type="STATIC-FIELD" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DYNAMIC-LENGTH-FIELDS">
+    <xs:sequence>
+      <xs:element name="DYNAMIC-LENGTH-FIELD" type="DYNAMIC-LENGTH-FIELD" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DYNAMIC-ENDMARKER-FIELDS">
+    <xs:sequence>
+      <xs:element name="DYNAMIC-ENDMARKER-FIELD" type="DYNAMIC-ENDMARKER-FIELD" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="END-OF-PDU-FIELDS">
+    <xs:sequence>
+      <xs:element name="END-OF-PDU-FIELD" type="END-OF-PDU-FIELD" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MUXS">
+    <xs:sequence>
+      <xs:element name="MUX" type="MUX" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TABLES">
+    <xs:sequence>
+      <xs:element name="TABLE" type="TABLE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DOP-BASE" abstract="true">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="DATA-OBJECT-PROP">
+    <xs:complexContent>
+      <xs:extension base="DOP-BASE">
+        <xs:sequence>
+          <xs:element name="COMPU-METHOD" type="COMPU-METHOD" minOccurs="0"/>
+          <xs:element name="DIAG-CODED-TYPE" type="DIAG-CODED-TYPE" minOccurs="0"/>
+          <xs:element name="PHYSICAL-TYPE" type="PHYSICAL-TYPE" minOccurs="0"/>
+          <xs:element name="INTERNAL-CONSTR" type="INTERNAL-CONSTR" minOccurs="0"/>
+          <xs:element name="UNIT-REF" type="ODXLINK" minOccurs="0"/>
+          <xs:element name="PHYS-CONSTR" type="INTERNAL-CONSTR" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="DTC-DOP">
+    <xs:complexContent>
+      <xs:extension base="DOP-BASE">
+        <xs:sequence>
+          <xs:element name="COMPU-METHOD" type="COMPU-METHOD"/>
+          <xs:element name="DIAG-CODED-TYPE" type="DIAG-CODED-TYPE"/>
+          <xs:element name="PHYSICAL-TYPE" type="PHYSICAL-TYPE"/>
+          <xs:element name="DTCS" type="DTCS"/>
+        </xs:sequence>
+        <xs:attribute name="IS-VISIBLE" type="xs:boolean" default="true"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="DTCS">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:annotation>
+        <xs:appinfo>
+          <jaxb:property name="DTCPROXY"/>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:element name="DTC" type="DTC"/>
+      <xs:element name="DTC-REF" type="ODXLINK"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="DTC">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="TROUBLE-CODE" type="xs:long"/>
+      <xs:element name="DISPLAY-TROUBLE-CODE" type="xs:string" minOccurs="0"/>
+      <xs:element name="TEXT" type="TEXT" minOccurs="0"/>
+      <xs:element name="LEVEL" type="xs:int" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+    <xs:attribute name="IS-TEMPORARY" type="xs:boolean" default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="COMPLEX-DOP" abstract="true">
+    <xs:complexContent>
+      <xs:extension base="DOP-BASE">
+        <xs:attribute name="IS-VISIBLE" type="xs:boolean" default="true"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="BASIC-STRUCTURE" abstract="true">
+    <xs:complexContent>
+      <xs:extension base="COMPLEX-DOP">
+        <xs:sequence>
+          <xs:element name="BYTE-SIZE" type="xs:int" minOccurs="0"/>
+          <xs:element name="PARAMS" type="PARAMS" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="STRUCTURE">
+    <xs:complexContent>
+      <xs:extension base="BASIC-STRUCTURE"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="REQUEST">
+    <xs:complexContent>
+      <xs:extension base="BASIC-STRUCTURE"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="RESPONSE" abstract="true">
+    <xs:complexContent>
+      <xs:extension base="BASIC-STRUCTURE"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="POS-RESPONSE">
+    <xs:complexContent>
+      <xs:extension base="RESPONSE"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="NEG-RESPONSE">
+    <xs:complexContent>
+      <xs:extension base="RESPONSE"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="GLOBAL-NEG-RESPONSE">
+    <xs:complexContent>
+      <xs:extension base="RESPONSE"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="ENV-DATA">
+    <xs:complexContent>
+      <xs:extension base="BASIC-STRUCTURE">
+        <xs:sequence>
+          <xs:element name="DTC-VALUES" type="DTC-VALUES" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="DTC-VALUES">
+    <xs:sequence>
+      <xs:element name="DTC-VALUE" type="DTC-VALUE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DTC-VALUE">
+    <xs:simpleContent>
+      <xs:extension base="xs:long"/>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="ENV-DATA-DESC">
+    <xs:complexContent>
+      <xs:extension base="COMPLEX-DOP">
+        <xs:sequence>
+          <xs:element name="PARAM-SNREF" type="SNREF" minOccurs="0"/>
+          <xs:element name="PARAM-SNPATHREF" type="SNPATHREF" minOccurs="0"/>
+          <xs:element name="ENV-DATAS" type="ENV-DATAS" minOccurs="0"/>
+          <xs:element name="ENV-DATA-REFS" type="ENV-DATA-REFS" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="ENV-DATA-REFS">
+    <xs:sequence>
+      <xs:element name="ENV-DATA-REF" type="ODXLINK" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="FIELD" abstract="true">
+    <xs:complexContent>
+      <xs:extension base="COMPLEX-DOP">
+        <xs:sequence>
+          <xs:element name="BASIC-STRUCTURE-REF" type="ODXLINK" minOccurs="0"/>
+          <xs:element name="BASIC-STRUCTURE-SNREF" type="SNREF" minOccurs="0"/>
+          <xs:element name="ENV-DATA-DESC-REF" type="ODXLINK" minOccurs="0"/>
+          <xs:element name="ENV-DATA-DESC-SNREF" type="SNREF" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="END-OF-PDU-FIELD">
+    <xs:complexContent>
+      <xs:extension base="FIELD">
+        <xs:sequence>
+          <xs:element name="MAX-NUMBER-OF-ITEMS" type="xs:int" minOccurs="0"/>
+          <xs:element name="MIN-NUMBER-OF-ITEMS" type="xs:int" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="STATIC-FIELD">
+    <xs:complexContent>
+      <xs:extension base="FIELD">
+        <xs:sequence>
+          <xs:element name="FIXED-NUMBER-OF-ITEMS" type="xs:int"/>
+          <xs:element name="ITEM-BYTE-SIZE" type="xs:int"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="DYNAMIC-LENGTH-FIELD">
+    <xs:complexContent>
+      <xs:extension base="FIELD">
+        <xs:sequence>
+          <xs:element name="OFFSET" type="xs:int"/>
+          <xs:element name="DETERMINE-NUMBER-OF-ITEMS" type="DETERMINE-NUMBER-OF-ITEMS"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="DYNAMIC-ENDMARKER-FIELD">
+    <xs:complexContent>
+      <xs:extension base="FIELD">
+        <xs:sequence>
+          <xs:element name="DYN-END-DOP-REF" type="ODXLINK" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="DETERMINE-NUMBER-OF-ITEMS">
+    <xs:sequence>
+      <xs:element name="BYTE-POSITION" type="xs:int"/>
+      <xs:element name="BIT-POSITION" type="xs:int" minOccurs="0"/>
+      <xs:element name="DATA-OBJECT-PROP-REF" type="ODXLINK" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MUX">
+    <xs:complexContent>
+      <xs:extension base="COMPLEX-DOP">
+        <xs:sequence>
+          <xs:element name="BYTE-POSITION" type="xs:int"/>
+          <xs:element name="SWITCH-KEY" type="SWITCH-KEY"/>
+          <xs:element name="DEFAULT-CASE" type="DEFAULT-CASE" minOccurs="0"/>
+          <xs:element name="CASES" type="CASES" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="SWITCH-KEY">
+    <xs:sequence>
+      <xs:element name="BYTE-POSITION" type="xs:int"/>
+      <xs:element name="BIT-POSITION" type="xs:int" minOccurs="0"/>
+      <xs:element name="DATA-OBJECT-PROP-REF" type="ODXLINK"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DEFAULT-CASE">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="STRUCTURE-REF" type="ODXLINK" minOccurs="0"/>
+      <xs:element name="STRUCTURE-SNREF" type="SNREF" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="CASES">
+    <xs:sequence>
+      <xs:element name="CASE" type="CASE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="CASE">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="STRUCTURE-REF" type="ODXLINK" minOccurs="0"/>
+      <xs:element name="STRUCTURE-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="LOWER-LIMIT" type="LIMIT"/>
+      <xs:element name="UPPER-LIMIT" type="LIMIT"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Physical type / computation methods / constraints        -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="PHYSICAL-TYPE">
+    <xs:sequence>
+      <xs:element name="PRECISION" type="xs:int" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="BASE-DATA-TYPE" type="PHYSICAL-DATA-TYPE" use="required"/>
+    <xs:attribute name="DISPLAY-RADIX" type="RADIX"/>
+  </xs:complexType>
+
+  <xs:complexType name="COMPU-METHOD">
+    <xs:sequence>
+      <xs:element name="CATEGORY" type="COMPU-CATEGORY" minOccurs="0"/>
+      <xs:element name="COMPU-INTERNAL-TO-PHYS" type="COMPU-INTERNAL-TO-PHYS" minOccurs="0"/>
+      <xs:element name="COMPU-PHYS-TO-INTERNAL" type="COMPU-PHYS-TO-INTERNAL" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPU-INTERNAL-TO-PHYS">
+    <xs:sequence>
+      <xs:element name="COMPU-SCALES" type="COMPU-SCALES" minOccurs="0"/>
+      <xs:element name="PROG-CODE" type="PROG-CODE" minOccurs="0"/>
+      <xs:element name="COMPU-DEFAULT-VALUE" type="COMPU-DEFAULT-VALUE" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPU-PHYS-TO-INTERNAL">
+    <xs:sequence>
+      <xs:element name="COMPU-SCALES" type="COMPU-SCALES" minOccurs="0"/>
+      <xs:element name="PROG-CODE" type="PROG-CODE" minOccurs="0"/>
+      <xs:element name="COMPU-DEFAULT-VALUE" type="COMPU-DEFAULT-VALUE" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPU-SCALES">
+    <xs:sequence>
+      <xs:element name="COMPU-SCALE" type="COMPU-SCALE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPU-SCALE">
+    <xs:sequence>
+      <xs:element name="SHORT-LABEL" type="TEXT" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="LOWER-LIMIT" type="LIMIT" minOccurs="0"/>
+      <xs:element name="UPPER-LIMIT" type="LIMIT" minOccurs="0"/>
+      <xs:element name="COMPU-INVERSE-VALUE" type="COMPU-INVERSE-VALUE" minOccurs="0"/>
+      <xs:element name="COMPU-CONST" type="COMPU-CONST" minOccurs="0"/>
+      <xs:element name="COMPU-RATIONAL-COEFFS" type="COMPU-RATIONAL-COEFFS" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPU-CONST">
+    <xs:sequence>
+      <xs:element name="V" type="V" minOccurs="0"/>
+      <xs:element name="VT" type="VT" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPU-INVERSE-VALUE">
+    <xs:sequence>
+      <xs:element name="V" type="V" minOccurs="0"/>
+      <xs:element name="VT" type="VT" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPU-DEFAULT-VALUE">
+    <xs:sequence>
+      <xs:element name="V" type="V" minOccurs="0"/>
+      <xs:element name="VT" type="VT" minOccurs="0"/>
+      <xs:element name="COMPU-INVERSE-VALUE" type="COMPU-INVERSE-VALUE" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPU-RATIONAL-COEFFS">
+    <xs:sequence>
+      <xs:element name="COMPU-NUMERATOR" type="V-ARRAY" minOccurs="0"/>
+      <xs:element name="COMPU-DENOMINATOR" type="V-ARRAY" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="V-ARRAY">
+    <xs:sequence>
+      <xs:element name="V" type="V" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="V">
+    <xs:simpleContent>
+      <xs:extension base="xs:double">
+        <xs:attribute name="TI" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="VT">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="TI" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="INTERNAL-CONSTR">
+    <xs:sequence>
+      <xs:element name="LOWER-LIMIT" type="LIMIT" minOccurs="0"/>
+      <xs:element name="UPPER-LIMIT" type="LIMIT" minOccurs="0"/>
+      <xs:element name="SCALE-CONSTRS" type="SCALE-CONSTRS" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="SCALE-CONSTRS">
+    <xs:sequence>
+      <xs:element name="SCALE-CONSTR" type="SCALE-CONSTR" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="SCALE-CONSTR">
+    <xs:sequence>
+      <xs:element name="SHORT-LABEL" type="TEXT" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="LOWER-LIMIT" type="LIMIT" minOccurs="0"/>
+      <xs:element name="UPPER-LIMIT" type="LIMIT" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="VALIDITY" type="VALID-TYPE" default="VALID"/>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Communication parameters                                 -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="COMPARAM-SPEC">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="COMPANY-DATAS" type="COMPANY-DATAS" minOccurs="0"/>
+      <xs:element name="PROT-STACKS" type="PROT-STACKS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="PROT-STACKS">
+    <xs:sequence>
+      <xs:element name="PROT-STACK" type="PROT-STACK" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PROT-STACK">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="PDU-PROTOCOL-TYPE" type="xs:string" minOccurs="0"/>
+      <xs:element name="PHYSICAL-LINK-TYPE" type="xs:string" minOccurs="0"/>
+      <xs:element name="COMPARAM-SUBSET-REFS" type="COMPARAM-SUBSET-REFS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="COMPARAM-SUBSET-REFS">
+    <xs:sequence>
+      <xs:element name="COMPARAM-SUBSET-REF" type="ODXLINK" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPARAM-SUBSET">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="COMPANY-DATAS" type="COMPANY-DATAS" minOccurs="0"/>
+      <xs:element name="COMPARAMS" type="COMPARAMS" minOccurs="0"/>
+      <xs:element name="COMPLEX-COMPARAMS" type="COMPLEX-COMPARAMS" minOccurs="0"/>
+      <xs:element name="DATA-OBJECT-PROPS" type="DATA-OBJECT-PROPS" minOccurs="0"/>
+      <xs:element name="UNIT-SPEC" type="UNIT-SPEC" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+    <xs:attribute name="CATEGORY" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="COMPARAMS">
+    <xs:sequence>
+      <xs:element name="COMPARAM" type="COMPARAM" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPLEX-COMPARAMS">
+    <xs:sequence>
+      <xs:element name="COMPLEX-COMPARAM" type="COMPLEX-COMPARAM" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="BASE-COMPARAM" abstract="true">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+    <xs:attribute name="PARAM-CLASS" type="xs:string"/>
+    <xs:attribute name="CPTYPE" type="STANDARDISATION-LEVEL"/>
+    <xs:attribute name="DISPLAY-LEVEL" type="xs:int"/>
+    <xs:attribute name="CPUSAGE" type="USAGE"/>
+  </xs:complexType>
+
+  <xs:complexType name="COMPARAM">
+    <xs:complexContent>
+      <xs:extension base="BASE-COMPARAM">
+        <xs:sequence>
+          <xs:element name="PHYSICAL-DEFAULT-VALUE" type="xs:string" minOccurs="0"/>
+          <xs:element name="DATA-OBJECT-PROP-REF" type="ODXLINK" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="COMPLEX-COMPARAM">
+    <xs:complexContent>
+      <xs:extension base="BASE-COMPARAM">
+        <xs:sequence>
+          <xs:choice minOccurs="0" maxOccurs="unbounded">
+            <xs:element name="COMPARAM" type="COMPARAM"/>
+            <xs:element name="COMPLEX-COMPARAM" type="COMPLEX-COMPARAM"/>
+          </xs:choice>
+          <xs:element name="COMPLEX-PHYSICAL-DEFAULT-VALUE" type="COMPLEX-PHYSICAL-DEFAULT-VALUE" minOccurs="0"/>
+        </xs:sequence>
+        <xs:attribute name="ALLOW-MULTIPLE-VALUES" type="xs:boolean" default="false"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="COMPLEX-PHYSICAL-DEFAULT-VALUE">
+    <xs:sequence>
+      <xs:element name="COMPLEX-VALUES" type="COMPLEX-VALUES" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPLEX-VALUES">
+    <xs:sequence>
+      <xs:element name="COMPLEX-VALUE" type="COMPLEX-VALUE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPLEX-VALUE">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="SIMPLE-VALUE" type="SIMPLE-VALUE"/>
+      <xs:element name="COMPLEX-VALUE" type="COMPLEX-VALUE"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="SIMPLE-VALUE">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="TI" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="COMPARAM-REFS">
+    <xs:sequence>
+      <xs:element name="COMPARAM-REF" type="COMPARAM-REF" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="COMPARAM-REF">
+    <xs:sequence>
+      <xs:choice minOccurs="0">
+        <xs:element name="SIMPLE-VALUE" type="SIMPLE-VALUE"/>
+        <xs:element name="COMPLEX-VALUE" type="COMPLEX-VALUE"/>
+      </xs:choice>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="PROTOCOL-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="PROT-STACK-SNREF" type="SNREF" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID-REF" type="xs:string" use="required"/>
+    <xs:attribute name="DOCREF" type="xs:string"/>
+    <xs:attribute name="DOCTYPE" type="DOCTYPE"/>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Units                                                    -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="UNIT-SPEC">
+    <xs:sequence>
+      <xs:element name="UNIT-GROUPS" type="UNIT-GROUPS" minOccurs="0"/>
+      <xs:element name="UNITS" type="UNITS" minOccurs="0"/>
+      <xs:element name="PHYSICAL-DIMENSIONS" type="PHYSICAL-DIMENSIONS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="UNIT-GROUPS">
+    <xs:sequence>
+      <xs:element name="UNIT-GROUP" type="UNIT-GROUP" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="UNIT-GROUP">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="CATEGORY" type="xs:string"/>
+      <xs:element name="UNIT-REFS" type="UNIT-REFS" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="UNIT-REFS">
+    <xs:sequence>
+      <xs:element name="UNIT-REF" type="ODXLINK" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="UNITS">
+    <xs:sequence>
+      <xs:element name="UNIT" type="UNIT" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="UNIT">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="DISPLAY-NAME" type="xs:string"/>
+      <xs:element name="FACTOR-SI-TO-UNIT" type="xs:double" minOccurs="0"/>
+      <xs:element name="OFFSET-SI-TO-UNIT" type="xs:double" minOccurs="0"/>
+      <xs:element name="PHYSICAL-DIMENSION-REF" type="ODXLINK" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="PHYSICAL-DIMENSIONS">
+    <xs:sequence>
+      <xs:element name="PHYSICAL-DIMENSION" type="PHYSICAL-DIMENSION" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PHYSICAL-DIMENSION">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="LENGTH-EXP" type="xs:int" minOccurs="0"/>
+      <xs:element name="MASS-EXP" type="xs:int" minOccurs="0"/>
+      <xs:element name="TIME-EXP" type="xs:int" minOccurs="0"/>
+      <xs:element name="CURRENT-EXP" type="xs:int" minOccurs="0"/>
+      <xs:element name="TEMPERATURE-EXP" type="xs:int" minOccurs="0"/>
+      <xs:element name="MOLAR-AMOUNT-EXP" type="xs:int" minOccurs="0"/>
+      <xs:element name="LUMINOUS-INTENSITY-EXP" type="xs:int" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- Tables                                                   -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="TABLE">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="KEY-LABEL" type="xs:string" minOccurs="0"/>
+      <xs:element name="STRUCT-LABEL" type="xs:string" minOccurs="0"/>
+      <xs:element name="ADMIN-DATA" type="ADMIN-DATA" minOccurs="0"/>
+      <xs:element name="KEY-DOP-REF" type="ODXLINK" minOccurs="0"/>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:annotation>
+          <xs:appinfo>
+            <jaxb:property name="ROWWRAPPER"/>
+          </xs:appinfo>
+        </xs:annotation>
+        <xs:element name="TABLE-ROW" type="TABLE-ROW"/>
+        <xs:element name="TABLE-ROW-REF" type="ODXLINK"/>
+      </xs:choice>
+      <xs:element name="TABLE-DIAG-COMM-CONNECTORS" type="TABLE-DIAG-COMM-CONNECTORS" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+    <xs:attribute name="SEMANTIC" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="TABLE-ROW">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="KEY" type="xs:string" minOccurs="0"/>
+      <xs:element name="STRUCTURE-REF" type="ODXLINK" minOccurs="0"/>
+      <xs:element name="STRUCTURE-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="DATA-OBJECT-PROP-REF" type="ODXLINK" minOccurs="0"/>
+      <xs:element name="DATA-OBJECT-PROP-SNREF" type="SNREF" minOccurs="0"/>
+      <xs:element name="SDGS" type="SDGS" minOccurs="0"/>
+      <xs:element name="AUDIENCE" type="AUDIENCE" minOccurs="0"/>
+      <xs:element name="FUNCT-CLASS-REFS" type="FUNCT-CLASS-REFS" minOccurs="0"/>
+      <xs:element name="STATE-TRANSITION-REFS" type="STATE-TRANSITION-REFS" minOccurs="0"/>
+      <xs:element name="PRE-CONDITION-STATE-REFS" type="PRE-CONDITION-STATE-REFS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+    <xs:attribute name="SEMANTIC" type="xs:string"/>
+    <xs:attribute name="IS-EXECUTABLE" type="xs:boolean" default="true"/>
+    <xs:attribute name="IS-MANDATORY" type="xs:boolean" default="false"/>
+    <xs:attribute name="IS-FINAL" type="xs:boolean" default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="TABLE-DIAG-COMM-CONNECTORS">
+    <xs:sequence>
+      <xs:element name="TABLE-DIAG-COMM-CONNECTOR" type="TABLE-DIAG-COMM-CONNECTOR" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TABLE-DIAG-COMM-CONNECTOR">
+    <xs:sequence>
+      <xs:element name="SEMANTIC" type="xs:string"/>
+      <xs:element name="DIAG-COMM-REF" type="ODXLINK" minOccurs="0"/>
+      <xs:element name="DIAG-COMM-SNREF" type="SNREF" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ======================================================== -->
+  <!-- State charts                                             -->
+  <!-- ======================================================== -->
+
+  <xs:complexType name="STATE-CHARTS">
+    <xs:sequence>
+      <xs:element name="STATE-CHART" type="STATE-CHART" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="STATE-CHART">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="SEMANTIC" type="xs:string"/>
+      <xs:element name="START-STATE-SNREF" type="SNREF"/>
+      <xs:element name="STATES" type="STATES" minOccurs="0"/>
+      <xs:element name="STATE-TRANSITIONS" type="STATE-TRANSITIONS" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="STATES">
+    <xs:sequence>
+      <xs:element name="STATE" type="STATE" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="STATE">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="STATE-TRANSITIONS">
+    <xs:sequence>
+      <xs:element name="STATE-TRANSITION" type="STATE-TRANSITION" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="STATE-TRANSITION">
+    <xs:sequence>
+      <xs:element name="SHORT-NAME" type="xs:string"/>
+      <xs:element name="LONG-NAME" type="LONG-NAME" minOccurs="0"/>
+      <xs:element name="DESC" type="DESCRIPTION" minOccurs="0"/>
+      <xs:element name="SOURCE-SNREF" type="SNREF"/>
+      <xs:element name="TARGET-SNREF" type="SNREF"/>
+    </xs:sequence>
+    <xs:attribute name="ID" type="xs:string" use="required"/>
+  </xs:complexType>
+
+</xs:schema>

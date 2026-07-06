@@ -3,9 +3,82 @@
 SPDX-License-Identifier: Apache-2.0
 (c) 2026 Taktflow Systems
 
-Last updated: 2026-04-14
+Last updated: 2026-07-06 (Phase 2). Sections below the Phase-2 block
+are the historical Phase-1 record (2026-04-14) and are superseded
+where they conflict.
 
-## Artifacts delivered
+## Phase 2 — codegen-complete schema (2026-07-06)
+
+Executed per
+[`docs/plan/adr-0008-phase2-community-xsd-plan.md`](../../../../../../../docs/plan/adr-0008-phase2-community-xsd-plan.md)
+(S-XSD-01..05). Deliverables:
+
+- `odx-community-2_2_0.xsd` (this directory, committed — see
+  `.gitignore` re-include) — single-file, no-namespace, Apache-2.0
+  clean-room ODX 2.2 schema, codegen-complete for the converter:
+  239 generated `schema.odx.*` classes covering all 119 main-source
+  and 13 test-source imports (inventory:
+  [`PHASE2-REQUIREMENTS.md`](PHASE2-REQUIREMENTS.md)).
+- `converter/build.gradle.kts` downstream patch (schema selection +
+  xjc `includes` restriction) — recorded in
+  [`odx-converter/DOWNSTREAM-PATCHES.md`](../../../../../DOWNSTREAM-PATCHES.md).
+  This resolves the Phase-1 T6 blocker (recursive schema scan).
+
+### Gate results
+
+Toolchain: portable Temurin JDK 21.0.11+10, Gradle 8.14.3 (wrapper),
+Windows control PC, 2026-07-06. "Gate copy" = pristine copy of the
+vendored tree in the session scratchpad with exactly one change: the
+upstream `ae6e814` content of `converter/src/main/kotlin/ConverterOptions.kt`
+restored (the in-tree copy is missing the `withAudiences` line — a
+vendoring defect of sync commit `8c069a5`, out of scope for the
+schema task; see DOWNSTREAM-PATCHES.md "Known vendoring defects").
+
+| Gate | Check | In-tree | Gate copy |
+|---|---|---|---|
+| G-XSD-1 | `gradlew --no-daemon :converter:xjc` | **PASS** (`BUILD SUCCESSFUL`, 239 classes) | PASS |
+| G-XSD-2 | `gradlew --no-daemon :converter:compileKotlin` | FAIL — exactly 7 errors, all `withAudiences` (vendoring defect above); **0 schema-related errors** | **PASS** (`BUILD SUCCESSFUL`) |
+| G-XSD-3 | `gradlew --no-daemon build` | blocked by the same defect | **PASS** — `BUILD SUCCESSFUL in 1m 22s`, 88 tasks; **178 tests, 0 failures, 0 errors, 0 skipped** (incl. IntegrationTest, AudienceFilteringTest, SnrefIntegrationTest, LenientTableKeyTest, ODXCollection*, EnumConverterTest, ChunkBuilderTest — all unmodified) |
+| G-XSD-4 | somersault.pdx → MDD via `converter-all.jar` | blocked by the same defect | **PASS** — exit 0, `somersault.mdd` 9,601 bytes (chunk `somersault_base_variant`, 27,144 B uncompressed), log free of WARNING/SEVERE |
+
+Schema iteration count: **1** — the first authored schema produced
+zero schema-attributable compile errors; no schema fixes were needed
+through all four gates.
+
+**In-tree re-verification (2026-07-06, after the vendoring fix
+`27d3a6d` restored `ConverterOptions.kt` to the upstream blob):** all
+four gates PASS in-tree — `gradlew --no-daemon build` `BUILD
+SUCCESSFUL in 1m 9s` (88 tasks, upstream test suite unmodified) and
+the somersault conversion produced an identical `somersault.mdd`
+(9,601 bytes, 27,144 B uncompressed chunk). The gate-copy column above
+is retained as the historical record of the schema-only verification.
+
+Additional S-XSD-02 acceptance checks:
+
+- Selection flip: dropping a dummy `schema/odx_2_2_0.xsd` into the
+  gate copy and re-running `:converter:xjc` compiled only the dummy
+  (1 generated class instead of 239) — the ASAM schema wins without
+  edits; removing it falls back to the community schema.
+- `git status` shows `community/odx-community-2_2_0.xsd` as
+  untracked-but-trackable (`??`), i.e. the repo-level `*.xsd` ignore
+  is neutralized by this directory's `.gitignore` re-include.
+
+### Runtime-correctness caveat
+
+G-XSD-3/G-XSD-4 were executed in the gate copy because the in-tree
+`ConverterOptions.kt` cannot compile until the one-line upstream hunk
+(`val withAudiences: List<String> = emptyList(),`) is restored by the
+main session. The gate copy differs from the in-tree state **only**
+in that file; the schema, build patch and all other sources are
+byte-identical. Re-run G-XSD-2..4 in-tree after the vendoring fix
+lands (and per the plan's toolchain note, re-verify on the laptop at
+merge-back).
+
+Byte-equivalence of the community-schema MDD with ASAM-schema output
+remains out of scope (queued under the deferred upstream `6b21111`
+MDD-regeneration follow-up).
+
+## Artifacts delivered (Phase 1)
 
 - `odx-community.xsd` (ODX root, 760+ lines)
 - `odx-cc-community.xsd` (CATALOG root, for PDX index.xml)
@@ -42,7 +115,7 @@ python3 converter/src/main/resources/schema/community/validate.py \
   ../taktflow-embedded-production/firmware/ecu/tcu/odx/tcu.pdx
 ```
 
-## Gradle build status (T6) — BLOCKED
+## Gradle build status (T6) — BLOCKED *(Phase-1 record; resolved by Phase 2 above)*
 
 ### What was attempted
 

@@ -1,8 +1,8 @@
-# Taktflow OpenSOVD - Capability Showcase Dashboard
+# Taktflow OpenSOVD - Live SIL Dashboard
 
 ADR-0024 Stage 1, tasks T24.1.5 through T24.1.8 plus the first live data-wiring pass.
 
-Single-page SvelteKit dashboard visualizing all 20 OpenSOVD use cases.
+Single-page SvelteKit dashboard for the public OpenSOVD SIL.
 
 ## Running locally
 
@@ -13,7 +13,7 @@ pnpm run dev
 
 Open `http://localhost:5173`.
 
-## Building for Pi
+## Building for Pi or VPS
 
 ```bash
 pnpm run build
@@ -38,7 +38,7 @@ If env vars are not practical on the bench, the dashboard also reads:
 
 ## What is live now
 
-- Component discovery uses `GET /sovd/v1/components` plus per-component capability fetches.
+- Component discovery uses `GET /sovd/v1/components` plus per-component capability fetches, including CDA-forwarded components such as `flxc1000` when the SIL exposes them.
 - Fault lists and clear-fault actions use the real `/faults` endpoints.
 - UC10 live DID reads now use `GET /sovd/v1/components/{component}/data/{data_id}` when the backend publishes matching values, with per-field fallback when a DID is absent on the bench.
 - Operation catalogs and async execution start/status use the real `/operations/.../executions` endpoints.

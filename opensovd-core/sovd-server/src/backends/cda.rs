@@ -66,7 +66,7 @@ use sovd_interfaces::{
         component::EntityCapabilities,
         data::{Datas, ReadValue},
         error::{DataError, GenericError},
-        fault::{FaultFilter, ListOfFaults},
+        fault::{FaultDetails, FaultFilter, ListOfFaults},
         operation::{
             Capability, ExecutionStatus, ExecutionStatusResponse, OperationDescription,
             OperationsList, StartExecutionAsyncResponse, StartExecutionRequest,
@@ -1873,6 +1873,22 @@ impl SovdBackend for CdaBackend {
         self.stale_cached_faults(reason).await
     }
 
+    async fn get_fault(&self, code: &str) -> Result<FaultDetails> {
+        let url = self.component_url(&format!("faults/{code}"))?;
+        let response = self
+            .send_with_auth_retry_response("get_fault", "GET", &url, |token| {
+                self.request_builder(self.http.get(url.clone()), token)
+            })
+            .await?;
+        let details = response
+            .error_for_status()
+            .map_err(|error| map_reqwest_err(&self.component_id, &error))?
+            .json::<FaultDetails>()
+            .await
+            .map_err(|error| map_reqwest_err(&self.component_id, &error))?;
+        Ok(details)
+    }
+
     async fn clear_all_faults(&self) -> Result<()> {
         let url = self.component_url("faults")?;
         self.send_with_auth_retry("clear_all_faults", "DELETE", &url, |token| {
@@ -3121,6 +3137,96 @@ mod tests {
             "cached token should avoid a second authorize round-trip",
         );
         assert_eq!(state.fault_calls.load(Ordering::SeqCst), 3);
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn get_fault_authorizes_after_initial_401() {
+        use std::sync::{
+            Arc as StdArc,
+            atomic::{AtomicU32, Ordering},
+        };
+
+        use axum::{
+            extract::State,
+            response::{IntoResponse, Response},
+            routing::post,
+        };
+        use sovd_interfaces::spec::fault::{Fault, FaultDetails};
+
+        #[derive(Clone)]
+        struct AuthRetryState {
+            authorize_calls: StdArc<AtomicU32>,
+            detail_calls: StdArc<AtomicU32>,
+        }
+
+        async fn authorize(State(state): State<AuthRetryState>) -> Json<serde_json::Value> {
+            state.authorize_calls.fetch_add(1, Ordering::SeqCst);
+            Json(serde_json::json!({
+                "access_token": "phase5-token",
+                "token_type": "Bearer",
+                "expires_in": 2_000_000_000u64,
+            }))
+        }
+
+        async fn fault_detail(State(state): State<AuthRetryState>, headers: HeaderMap) -> Response {
+            state.detail_calls.fetch_add(1, Ordering::SeqCst);
+            let Some(value) = headers.get(AUTHORIZATION) else {
+                return HttpStatusCode::UNAUTHORIZED.into_response();
+            };
+            if value != "Bearer phase5-token" {
+                return HttpStatusCode::FORBIDDEN.into_response();
+            }
+            Json(FaultDetails {
+                item: Fault {
+                    code: "P0A1F".into(),
+                    scope: Some("FaultMem".into()),
+                    display_code: Some("P0A1F".into()),
+                    fault_name: "mock detail".into(),
+                    fault_translation_id: None,
+                    severity: Some(2),
+                    status: Some(serde_json::json!({ "confirmedDTC": "1" })),
+                    symptom: None,
+                    symptom_translation_id: None,
+                    tags: None,
+                },
+                environment_data: Some(serde_json::json!({ "battery_voltage": 12.4 })),
+                errors: None,
+                schema: None,
+                extras: None,
+            })
+            .into_response()
+        }
+
+        let state = AuthRetryState {
+            authorize_calls: StdArc::new(AtomicU32::new(0)),
+            detail_calls: StdArc::new(AtomicU32::new(0)),
+        };
+        let app = Router::new()
+            .route("/vehicle/v15/authorize", post(authorize))
+            .route(
+                "/vehicle/v15/components/cvc/faults/P0A1F",
+                get(fault_detail),
+            )
+            .with_state(state.clone());
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve mock CDA");
+        });
+
+        let backend = CdaBackend::new(
+            ComponentId::new("cvc"),
+            Url::parse(&format!("http://{addr}/")).expect("parse mock CDA URL"),
+        )
+        .expect("construct backend");
+        let details = backend.get_fault("P0A1F").await.expect("get_fault");
+
+        assert_eq!(details.item.code, "P0A1F");
+        assert!(details.environment_data.is_some());
+        assert_eq!(state.authorize_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.detail_calls.load(Ordering::SeqCst), 2);
 
         handle.abort();
     }

@@ -3,7 +3,7 @@
 #
 # smoke-public-sil.sh - exercise every OpenSOVD UC against the public SIL.
 #
-# Target: https://sovd.taktflow-systems.com (live SIL, SQLite backend, pre-seeded faults).
+# Target: https://sovd.taktflow-systems.com (live SIL, SQLite backend, CDA-backed ECU sim).
 # Usage:  bash scripts/smoke-public-sil.sh
 #
 # Each UC is a pass/fail probe. Prints PASS / FAIL per UC and an aggregate total.
@@ -12,6 +12,10 @@
 set -uo pipefail
 
 BASE="${SOVD_BASE:-https://sovd.taktflow-systems.com}"
+FAULT_COMPONENT="${SOVD_FAULT_COMPONENT:-flxc1000}"
+CONTROL_COMPONENT="${SOVD_CONTROL_COMPONENT:-bcm}"
+DATA_COMPONENT="${SOVD_DATA_COMPONENT:-flxc1000}"
+DATA_ID="${SOVD_DATA_ID:-VINDataIdentifier}"
 PASS=0
 FAIL=0
 SKIP=0
@@ -36,35 +40,42 @@ json_get() { python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(
 
 echo "== OpenSOVD public SIL smoke test =="
 echo "Target: $BASE"
+echo "Fault component: $FAULT_COMPONENT  |  Control component: $CONTROL_COMPONENT  |  Data component: $DATA_COMPONENT"
 echo
 
 # -------- UC01 Dtc List --------
-r=$(curl -sS "$BASE/sovd/v1/components/cvc/faults")
-if echo "$r" | json_has "d.get('total',0) >= 2 and len(d.get('items',[])) >= 2"; then
-  check "UC01 DtcList" pass "cvc has $(echo "$r" | json_get 'd[\"total\"]') pre-seeded faults"
+r=$(curl -sS "$BASE/sovd/v1/components/$FAULT_COMPONENT/faults")
+if echo "$r" | json_has "d.get('total',0) >= 1 and len(d.get('items',[])) >= 1"; then
+  FAULT_CODE=$(echo "$r" | json_get 'd["items"][0]["code"]')
+  check "UC01 DtcList" pass "$FAULT_COMPONENT has $(echo "$r" | json_get 'd[\"total\"]') live faults"
 else
-  check "UC01 DtcList" fail "expected >=2 faults on cvc, got: $r"
+  FAULT_CODE=""
+  check "UC01 DtcList" fail "expected >=1 fault on $FAULT_COMPONENT, got: $r"
 fi
 
 # -------- UC02 Dtc Detail --------
-r=$(curl -sS "$BASE/sovd/v1/components/cvc/faults/P0A1F")
-if echo "$r" | json_has "'environment_data' in d and d['item']['code']=='P0A1F' and d['item']['fault_name']"; then
+if [[ -n "$FAULT_CODE" ]]; then
+  r=$(curl -sS "$BASE/sovd/v1/components/$FAULT_COMPONENT/faults/$FAULT_CODE")
+else
+  r="{}"
+fi
+if [[ -n "$FAULT_CODE" ]] && echo "$r" | json_has "d.get('item',{}).get('code') == '$FAULT_CODE' and d.get('item',{}).get('fault_name')"; then
   check "UC02 DtcDetail" pass "fault_name=$(echo "$r" | json_get 'd[\"item\"][\"fault_name\"]')"
 else
-  check "UC02 DtcDetail" fail "missing environment_data or fault_name: $r"
+  check "UC02 DtcDetail" fail "detail endpoint did not return the listed fault $FAULT_CODE: $r"
 fi
 
 # -------- UC03 ClearFaults --------
-code=$(curl -sS -o /dev/null -w "%{http_code}" -X DELETE "$BASE/sovd/v1/components/bcm/faults")
+code=$(curl -sS -o /dev/null -w "%{http_code}" -X DELETE "$BASE/sovd/v1/components/$CONTROL_COMPONENT/faults")
 if [[ "$code" == "204" ]]; then
-  check "UC03 ClearFaults" pass "DELETE /bcm/faults returned 204"
+  check "UC03 ClearFaults" pass "DELETE /$CONTROL_COMPONENT/faults returned 204"
 else
   check "UC03 ClearFaults" fail "expected 204, got $code"
 fi
 
 # -------- UC04 Pagination --------
 # sovd-main uses ISO 17978-3 convention: page=N (1-indexed), page-size=N
-r=$(curl -sS "$BASE/sovd/v1/components/cvc/faults?page=1&page-size=1")
+r=$(curl -sS "$BASE/sovd/v1/components/$FAULT_COMPONENT/faults?page=1&page-size=1")
 got=$(echo "$r" | json_get "len(d.get('items',[]))")
 if [[ "$got" == "1" ]]; then
   check "UC04 Pagination" pass "page-size=1 returned 1 item (spec pagination)"
@@ -73,15 +84,15 @@ else
 fi
 
 # -------- UC05 FaultsTimeline (status fields) --------
-r=$(curl -sS "$BASE/sovd/v1/components/cvc/faults")
-if echo "$r" | json_has "all('status' in it and 'aggregatedStatus' in it['status'] for it in d['items'])"; then
-  check "UC05 FaultsTimeline" pass "all faults have status.aggregatedStatus"
+r=$(curl -sS "$BASE/sovd/v1/components/$FAULT_COMPONENT/faults")
+if echo "$r" | json_has "all(isinstance(it.get('status'), dict) and len(it['status']) > 0 for it in d['items'])"; then
+  check "UC05 FaultsTimeline" pass "all live faults have status fields"
 else
   check "UC05 FaultsTimeline" fail "missing status fields: $r"
 fi
 
 # -------- UC06 Operations (execute) --------
-r=$(curl -sS -X POST "$BASE/sovd/v1/components/bcm/operations/relay_self_test/executions" \
+r=$(curl -sS -X POST "$BASE/sovd/v1/components/$CONTROL_COMPONENT/operations/relay_self_test/executions" \
     -H "Content-Type: application/json" -d '{}')
 if echo "$r" | json_has "'id' in d and 'status' in d"; then
   check "UC06 Operations" pass "execution id=$(echo "$r" | json_get 'd[\"id\"]') status=$(echo "$r" | json_get 'd[\"status\"]')"
@@ -92,40 +103,40 @@ else
 fi
 
 # -------- UC07 RoutineCatalog --------
-r=$(curl -sS "$BASE/sovd/v1/components/cvc/operations")
-if echo "$r" | json_has "len(d.get('items',[])) >= 2 and all('id' in op and 'name' in op for op in d['items'])"; then
-  check "UC07 RoutineCatalog" pass "cvc exposes $(echo "$r" | json_get "len(d['items'])") operations"
+r=$(curl -sS "$BASE/sovd/v1/components/$CONTROL_COMPONENT/operations")
+if echo "$r" | json_has "len(d.get('items',[])) >= 1 and all('id' in op and 'name' in op for op in d['items'])"; then
+  check "UC07 RoutineCatalog" pass "$CONTROL_COMPONENT exposes $(echo "$r" | json_get "len(d['items'])") operations"
 else
   check "UC07 RoutineCatalog" fail "operations list malformed: $r"
 fi
 
 # -------- UC08 ComponentCards --------
 r=$(curl -sS "$BASE/sovd/v1/components")
-if echo "$r" | json_has "len(d.get('items',[])) == 4"; then
-  r2=$(curl -sS "$BASE/sovd/v1/components/bcm")
+if echo "$r" | json_has "len(d.get('items',[])) >= 5 and any(it.get('id') == '$FAULT_COMPONENT' for it in d['items'])"; then
+  r2=$(curl -sS "$BASE/sovd/v1/components/$FAULT_COMPONENT")
   if echo "$r2" | json_has "'id' in d and 'name' in d"; then
-    check "UC08 ComponentCards" pass "4 components, bcm metadata ok"
+    check "UC08 ComponentCards" pass "component catalog includes live CDA component $FAULT_COMPONENT"
   else
     check "UC08 ComponentCards" fail "component metadata missing: $r2"
   fi
 else
-  check "UC08 ComponentCards" fail "expected 4 components: $r"
+  check "UC08 ComponentCards" fail "expected public SIL components including $FAULT_COMPONENT: $r"
 fi
 
 # -------- UC09 HwSwVersion --------
-r=$(curl -sS "$BASE/sovd/v1/components/bcm/data/vin")
+r=$(curl -sS "$BASE/sovd/v1/components/$DATA_COMPONENT/data/$DATA_ID")
 if echo "$r" | json_has "'data' in d and len(d['data']) > 0"; then
-  check "UC09 HwSwVersion" pass "bcm VIN=$(echo "$r" | json_get 'd[\"data\"]')"
+  check "UC09 HwSwVersion" pass "$DATA_COMPONENT $DATA_ID=$(echo "$r" | json_get 'd[\"data\"]')"
 else
-  check "UC09 HwSwVersion" fail "VIN DID missing: $r"
+  check "UC09 HwSwVersion" fail "$DATA_COMPONENT $DATA_ID missing: $r"
 fi
 
 # -------- UC10 LiveDidReads --------
-r=$(curl -sS "$BASE/sovd/v1/components/bcm/data")
-if echo "$r" | json_has "len(d.get('items',[])) >= 1 and any(it.get('id')=='vin' for it in d['items'])"; then
-  check "UC10 LiveDidReads" pass "/data lists DIDs including vin"
+r=$(curl -sS "$BASE/sovd/v1/components/$DATA_COMPONENT/data")
+if echo "$r" | json_has "len(d.get('items',[])) >= 1 and any('vin' in it.get('id','').lower() or 'vehicle identification' in it.get('name','').lower() for it in d['items'])"; then
+  check "UC10 LiveDidReads" pass "/data lists VIN-like DIDs"
 else
-  check "UC10 LiveDidReads" fail "/data missing vin: $r"
+  check "UC10 LiveDidReads" fail "/data missing VIN-like DID: $r"
 fi
 
 # -------- UC11 FaultPipeline --------
@@ -141,7 +152,7 @@ fi
 # -------- UC12 OperationCycle --------
 # Retrieve execution status from UC06. Operation cycle = how DFM tracks async ops.
 if [[ -n "$EXEC_ID" ]]; then
-  r=$(curl -sS "$BASE/sovd/v1/components/bcm/operations/relay_self_test/executions/$EXEC_ID")
+  r=$(curl -sS "$BASE/sovd/v1/components/$CONTROL_COMPONENT/operations/relay_self_test/executions/$EXEC_ID")
   if echo "$r" | json_has "'status' in d"; then
     check "UC12 OperationCycle" pass "exec $EXEC_ID status=$(echo "$r" | json_get 'd[\"status\"]')"
   else
@@ -153,17 +164,17 @@ fi
 
 # -------- UC13 DtcLifecycle --------
 # Fault must expose state transitions: aggregatedStatus + confirmedDTC.
-r=$(curl -sS "$BASE/sovd/v1/components/cvc/faults")
-if echo "$r" | json_has "any(it['status'].get('aggregatedStatus') in ('active','pending','confirmed') for it in d['items']) and any('confirmedDTC' in it['status'] for it in d['items'])"; then
-  check "UC13 DtcLifecycle" pass "status includes aggregatedStatus + confirmedDTC fields"
+r=$(curl -sS "$BASE/sovd/v1/components/$FAULT_COMPONENT/faults")
+if echo "$r" | json_has "any(isinstance(it.get('status'), dict) and any(k.lower() in ('confirmeddtc','confirmed_dtc','pendingdtc','pending_dtc','testfailed','test_failed') for k in it['status']) for it in d['items'])"; then
+  check "UC13 DtcLifecycle" pass "status includes live UDS DTC lifecycle bits"
 else
   check "UC13 DtcLifecycle" fail "lifecycle fields missing: $r"
 fi
 
 # -------- UC14 CdaTopology --------
 r=$(curl -sS "$BASE/sovd/v1/gateway/backends")
-if echo "$r" | json_has "len(d.get('items',[])) == 4 and all('protocol' in b and 'reachable' in b for b in d['items'])"; then
-  check "UC14 CdaTopology" pass "4 backends, all with protocol + reachable"
+if echo "$r" | json_has "len(d.get('items',[])) >= 5 and any(b.get('id') == '$FAULT_COMPONENT' for b in d['items']) and all('protocol' in b and 'reachable' in b for b in d['items'])"; then
+  check "UC14 CdaTopology" pass "backend registry includes live CDA route $FAULT_COMPONENT"
 else
   check "UC14 CdaTopology" fail "backends missing fields: $r"
 fi
@@ -187,7 +198,7 @@ fi
 # -------- UC17 SafetyBoundary --------
 # Call a nonexistent operation; expect structured error.
 code=$(curl -sS -o /tmp/_uc17.json -w "%{http_code}" -X POST \
-  "$BASE/sovd/v1/components/bcm/operations/DOES_NOT_EXIST/executions" \
+  "$BASE/sovd/v1/components/$CONTROL_COMPONENT/operations/DOES_NOT_EXIST/executions" \
   -H "Content-Type: application/json" -d '{}')
 r=$(cat /tmp/_uc17.json)
 if [[ "$code" == "404" ]] && echo "$r" | json_has "'error_code' in d"; then
@@ -218,12 +229,12 @@ fi
 # Issue 8 concurrent GETs; expect all 200.
 code_list=""
 for i in 1 2 3 4 5 6 7 8; do
-  (curl -sS -o /dev/null -w "%{http_code}\n" "$BASE/sovd/v1/components/cvc/faults") &
+  (curl -sS -o /dev/null -w "%{http_code}\n" "$BASE/sovd/v1/components/$FAULT_COMPONENT/faults") &
 done
 wait
 # all exit with 200 implicitly if none panicked; use more direct probe:
 status_total=$(for i in 1 2 3 4 5 6 7 8; do
-  curl -sS -o /dev/null -w "%{http_code} " "$BASE/sovd/v1/components/cvc/faults" &
+  curl -sS -o /dev/null -w "%{http_code} " "$BASE/sovd/v1/components/$FAULT_COMPONENT/faults" &
 done; wait | tr -d '\n')
 if echo "$status_total" | grep -qv 200 ; then
   check "UC20 ConcurrentTesters" fail "not all 200: $status_total"

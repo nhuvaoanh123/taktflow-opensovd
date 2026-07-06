@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // OpenSOVD type definitions — typed stubs; real OpenAPI codegen lands in T24.1.6
 
-export type EcuId = 'cvc' | 'sc' | 'bcm';
+export type EcuId = string;
+export type ComponentCapability = 'faults' | 'operations' | 'data' | 'modes';
+export type ComponentSource = 'local' | 'cda' | 'dfm' | 'unknown';
 
 export interface SovdComponent {
 	id: EcuId;
@@ -10,7 +12,10 @@ export interface SovdComponent {
 	swVersion: string;
 	serial: string;
 	vin: string;
-	capabilities: ('faults' | 'operations' | 'data' | 'modes')[];
+	capabilities: ComponentCapability[];
+	source: ComponentSource;
+	logicalAddress?: string;
+	state?: string;
 }
 
 export type DtcStatus =

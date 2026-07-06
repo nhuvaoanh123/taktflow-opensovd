@@ -6,6 +6,7 @@
 
 import type {
 	AuditEntry,
+	ComponentSource,
 	DtcEntry,
 	DtcStatus,
 	EcuId,
@@ -35,6 +36,12 @@ type EntityCapabilitiesResponse = {
 	faults?: string | null;
 	operations?: string | null;
 	modes?: string | null;
+	variant?: {
+		logical_address?: string | null;
+		name?: string | null;
+		state?: string | null;
+		is_base_variant?: boolean | null;
+	} | null;
 };
 
 type FaultResponse = {
@@ -144,7 +151,7 @@ type BackendRoutesResponse = {
 const DEFAULT_BASE = 'http://localhost:21002';
 const EXECUTION_IDS = new Map<string, string>();
 
-export const BENCH_COMPONENT_IDS: readonly EcuId[] = ['cvc', 'sc', 'bcm'];
+export const FALLBACK_COMPONENT_IDS: readonly EcuId[] = ['cvc', 'sc', 'bcm'];
 
 function apiBase(): string {
 	if (typeof window === 'undefined') {
@@ -205,8 +212,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isKnownComponentId(value: string): value is EcuId {
-	return BENCH_COMPONENT_IDS.includes(value as EcuId);
+function isComponentId(value: unknown): value is EcuId {
+	return typeof value === 'string' && value.trim().length > 0;
 }
 
 function cannedComponent(id: EcuId): SovdComponent {
@@ -218,7 +225,8 @@ function cannedComponent(id: EcuId): SovdComponent {
 			swVersion: '--',
 			serial: '--',
 			vin: '--',
-			capabilities: []
+			capabilities: [],
+			source: 'unknown'
 		}
 	);
 }
@@ -239,12 +247,32 @@ function mapComponent(
 ): SovdComponent {
 	const fallback = cannedComponent(id);
 	const capabilities = capabilitiesFromEntity(entity);
+	const source = componentSource(id, entity);
 	return {
 		...fallback,
 		id,
 		label: name?.trim() || fallback.label,
-		capabilities: capabilities.length > 0 ? capabilities : fallback.capabilities
+		capabilities: capabilities.length > 0 ? capabilities : fallback.capabilities,
+		source,
+		logicalAddress: entity?.variant?.logical_address ?? fallback.logicalAddress,
+		state: entity?.variant?.state ?? fallback.state
 	};
+}
+
+function componentSource(
+	id: EcuId,
+	entity?: EntityCapabilitiesResponse
+): ComponentSource {
+	if (id === 'dfm') {
+		return 'dfm';
+	}
+	if (entity?.variant || entity?.faults?.includes('/vehicle/v15/')) {
+		return 'cda';
+	}
+	if (FALLBACK_COMPONENT_IDS.includes(id)) {
+		return 'local';
+	}
+	return 'unknown';
 }
 
 function severityFromValue(value: number | string | null | undefined): DtcEntry['severity'] {
@@ -571,14 +599,14 @@ export async function listComponents(): Promise<SovdComponent[]> {
 	try {
 		const discovered = await fetchJson<DiscoveredEntitiesResponse>('/sovd/v1/components');
 		const items = discovered.items ?? [];
-		const knownItems = items.filter(
-			(item): item is { id: EcuId; name?: string } => !!item.id && isKnownComponentId(item.id)
+		const liveItems = items.filter(
+			(item): item is { id: EcuId; name?: string } => isComponentId(item.id)
 		);
-		if (knownItems.length === 0) {
+		if (liveItems.length === 0) {
 			return CANNED_COMPONENTS;
 		}
 		const capabilities = await Promise.all(
-			knownItems.map(async (item) => {
+			liveItems.map(async (item) => {
 				try {
 					return await fetchJson<EntityCapabilitiesResponse>(`/sovd/v1/components/${item.id}`);
 				} catch {
@@ -586,7 +614,7 @@ export async function listComponents(): Promise<SovdComponent[]> {
 				}
 			})
 		);
-		return knownItems.map((item, index) => mapComponent(item.id, item.name, capabilities[index]));
+		return liveItems.map((item, index) => mapComponent(item.id, item.name, capabilities[index]));
 	} catch {
 		return CANNED_COMPONENTS;
 	}
@@ -614,10 +642,9 @@ export async function listFaults(componentId: EcuId, statusMask?: DtcStatus): Pr
 	}
 }
 
-export async function listAllFaults(
-	componentIds: readonly EcuId[] = BENCH_COMPONENT_IDS
-): Promise<DtcEntry[]> {
-	const batches = await Promise.all(componentIds.map((componentId) => listFaults(componentId)));
+export async function listAllFaults(componentIds?: readonly EcuId[]): Promise<DtcEntry[]> {
+	const ids = componentIds ?? (await listComponents()).map((component) => component.id);
+	const batches = await Promise.all(ids.map((componentId) => listFaults(componentId)));
 	return batches
 		.flat()
 		.sort((left, right) => new Date(right.lastSeen).getTime() - new Date(left.lastSeen).getTime());
@@ -898,13 +925,14 @@ export function telemetryPayloadToDtc(payload: unknown): DtcEntry | null {
 	const record = payload as Record<string, unknown>;
 	const componentId = record.component_id ?? record.componentId ?? record.component;
 	const code = record.dtc ?? record.code;
-	if (typeof componentId !== 'string' || typeof code !== 'string' || !isKnownComponentId(componentId)) {
+	if (!isComponentId(componentId) || typeof code !== 'string') {
 		return null;
 	}
+	const id = componentId.trim();
 	const timestamp =
 		typeof record.timestamp === 'string' ? record.timestamp : new Date().toISOString();
 	return {
-		id: `${componentId}:${code}:${timestamp}`,
+		id: `${id}:${code}:${timestamp}`,
 		code,
 		description:
 			typeof record.description === 'string'
@@ -915,19 +943,19 @@ export function telemetryPayloadToDtc(payload: unknown): DtcEntry | null {
 		firstSeen: timestamp,
 		lastSeen: timestamp,
 		occurrences: 1,
-		component: componentId,
+		component: id,
 		ecuAddress: 0
 	};
 }
 
 function cannedDid(componentId: EcuId): LiveDid {
-	const volts: Record<EcuId, number> = { cvc: 14.2, sc: 12.8, bcm: 13.5 };
-	const temps: Record<EcuId, number> = { cvc: 42, sc: 38, bcm: 35 };
+	const volts: Record<string, number> = { cvc: 14.2, sc: 12.8, bcm: 13.5 };
+	const temps: Record<string, number> = { cvc: 42, sc: 38, bcm: 35 };
 	return {
 		component: componentId,
 		vin: cannedComponent(componentId).vin,
-		batteryVoltage: volts[componentId],
-		temperature: temps[componentId],
+		batteryVoltage: volts[componentId] ?? 12,
+		temperature: temps[componentId] ?? 25,
 		timestamp: new Date().toISOString()
 	};
 }
@@ -940,7 +968,8 @@ export const CANNED_COMPONENTS: SovdComponent[] = [
 		swVersion: 'SW-4.7.3',
 		serial: 'CVC-001-2024',
 		vin: 'WBA3A5G59ENP26705',
-		capabilities: ['faults', 'operations', 'data', 'modes']
+		capabilities: ['faults', 'operations', 'data', 'modes'],
+		source: 'local'
 	},
 	{
 		id: 'sc',
@@ -949,7 +978,8 @@ export const CANNED_COMPONENTS: SovdComponent[] = [
 		swVersion: 'SW-3.2.1',
 		serial: 'SC-002-2024',
 		vin: 'WBA3A5G59ENP26705',
-		capabilities: ['faults', 'data']
+		capabilities: ['faults', 'data'],
+		source: 'local'
 	},
 	{
 		id: 'bcm',
@@ -958,7 +988,8 @@ export const CANNED_COMPONENTS: SovdComponent[] = [
 		swVersion: 'SW-5.1.0',
 		serial: 'BCM-003-2024',
 		vin: 'WBA3A5G59ENP26705',
-		capabilities: ['faults', 'operations', 'modes']
+		capabilities: ['faults', 'operations', 'modes'],
+		source: 'local'
 	}
 ];
 

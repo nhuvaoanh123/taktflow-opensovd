@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Taktflow OpenSOVD - Capability Showcase Dashboard (ADR-0024 Stage 1) -->
+<!-- Taktflow OpenSOVD - Live SIL Dashboard (ADR-0024 Stage 1) -->
 <!-- Composes all 20 UC widgets per T24.1.7 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -50,7 +50,7 @@
 </script>
 
 <svelte:head>
-	<title>Taktflow OpenSOVD - Dashboard</title>
+	<title>Taktflow OpenSOVD - Live SIL</title>
 </svelte:head>
 
 <UC02DtcDetail dtc={selectedDtc} onClose={() => (selectedDtc = null)} />
@@ -59,7 +59,7 @@
 	<header class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-4 py-2">
 		<div>
 			<h1 class="text-base font-bold tracking-tight">Taktflow OpenSOVD</h1>
-			<p class="text-[10px] text-muted-foreground">Capability Showcase Dashboard - ADR-0024 Stage 1</p>
+			<p class="text-[10px] text-muted-foreground">Live SIL Dashboard - ADR-0024 Stage 1</p>
 		</div>
 		<nav class="flex flex-wrap items-center gap-2 text-[11px]">
 			<a
@@ -82,7 +82,7 @@
 			</a>
 		</nav>
 		<div class="text-[10px] text-muted-foreground">
-			3-ECU bench: CVC + SC + BCM - ADR-0023
+			Public SIL: sovd-main + CDA + ecu-sim + MQTT
 		</div>
 	</header>
 
@@ -153,7 +153,7 @@
 						SOVD v1.1 / ISO 17978-3.
 					</li>
 					<li>
-						CDA bridge translates SOVD REST &rarr; UDS/DoIP for the physical ECU tier.
+						CDA bridge translates SOVD REST &rarr; UDS/DoIP for the simulated ECU tier.
 					</li>
 					<li>
 						DFM scores faults, publishes to MQTT; ws-bridge relays to this dashboard for live

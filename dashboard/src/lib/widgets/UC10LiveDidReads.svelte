@@ -1,9 +1,10 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- UC10 — Live DID reads: VIN + battery voltage + temperature at 1 Hz (FR-3.3) -->
+<!-- Live DID reads: VIN, battery voltage, and temperature. -->
 <script lang="ts">
-	import type { EcuId, LiveDid } from '$lib/types/sovd';
+	import { onDestroy, onMount } from 'svelte';
+
 	import { readDid } from '$lib/api/sovdClient';
-	import { onMount, onDestroy } from 'svelte';
+	import type { EcuId, LiveDid } from '$lib/types/sovd';
 
 	interface Props {
 		componentId: EcuId;
@@ -19,8 +20,10 @@
 	}
 
 	onMount(() => {
-		poll();
-		timer = setInterval(poll, 1000);
+		void poll();
+		timer = setInterval(() => {
+			void poll();
+		}, 1000);
 	});
 
 	onDestroy(() => {
@@ -28,9 +31,9 @@
 	});
 </script>
 
-<div class="rounded-lg border border-border bg-card p-3 text-xs">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-		Live DIDs — {componentId.toUpperCase()} <span class="text-green-400">● 1 Hz</span>
+<div class="rounded-md border border-border bg-card p-3 text-xs">
+	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+		Live data - {componentId.toUpperCase()} <span class="text-emerald-700">1 Hz</span>
 	</h3>
 	{#if data}
 		<dl class="grid grid-cols-2 gap-x-3 gap-y-0.5">
@@ -41,12 +44,12 @@
 			<dd class="font-mono font-semibold">{data.batteryVoltage.toFixed(2)} V</dd>
 
 			<dt class="text-muted-foreground">Temp</dt>
-			<dd class="font-mono">{data.temperature.toFixed(1)} °C</dd>
+			<dd class="font-mono">{data.temperature.toFixed(1)} C</dd>
 
 			<dt class="text-muted-foreground">Updated</dt>
 			<dd class="tabular-nums">{new Date(data.timestamp).toLocaleTimeString()}</dd>
 		</dl>
 	{:else}
-		<p class="text-muted-foreground">Loading…</p>
+		<p class="text-muted-foreground">Loading...</p>
 	{/if}
 </div>

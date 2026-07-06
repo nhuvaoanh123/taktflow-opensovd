@@ -25,15 +25,15 @@
 	}
 </script>
 
-<div class="rounded-lg border border-border bg-card p-3">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-		Routine Catalog - {componentId.toUpperCase()}
+<div class="rounded-md border border-border bg-card p-3">
+	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+		Routine catalog - {componentId.toUpperCase()}
 	</h3>
 	{#if routines.length === 0}
 		<p class="text-xs text-muted-foreground">No routines registered for this ECU.</p>
 	{:else}
 		<select
-			class="w-full rounded border border-border bg-background px-2 py-1 text-xs text-foreground"
+			class="w-full rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
 			onchange={(event) => {
 				const id = (event.target as HTMLSelectElement).value;
 				selected = routines.find((routine) => routine.id === id) ?? null;
@@ -45,7 +45,7 @@
 			{/each}
 		</select>
 		{#if selected}
-			<div class="mt-2 rounded bg-muted/30 p-2 text-xs">
+			<div class="mt-2 rounded border border-border bg-muted/30 p-2 text-xs">
 				<p><span class="text-muted-foreground">ID:</span> <span class="font-mono">{selected.id}</span></p>
 				<p><span class="text-muted-foreground">Status:</span> {selected.status}</p>
 				{#if selected.lastResult}

@@ -32,20 +32,20 @@
 
 	const allEntries = $derived([...extraEntries, ...entries].slice(0, 50));
 
-	const RESULT_COLOR = { ok: 'text-green-400', denied: 'text-red-400', error: 'text-orange-400' };
+	const RESULT_COLOR = { ok: 'text-emerald-700', denied: 'text-red-700', error: 'text-orange-700' };
 </script>
 
-<div class="rounded-lg border border-border bg-card p-3">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-		Audit Log - SEC-3.1 (append-only)
+<div class="rounded-md border border-border bg-card p-3">
+	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+		Audit log
 	</h3>
 	<div class="max-h-32 overflow-y-auto space-y-px font-mono text-[10px]">
 		{#each allEntries as entry, i (i)}
-			<div class="flex gap-2 border-b border-border/30 py-0.5">
+			<div class="flex gap-2 border-b border-border/50 py-0.5">
 				<span class="shrink-0 tabular-nums text-muted-foreground">
 					{new Date(entry.timestamp).toLocaleTimeString()}
 				</span>
-				<span class="shrink-0 text-blue-300">{entry.actor}</span>
+				<span class="shrink-0 text-slate-700">{entry.actor}</span>
 				<span class="shrink-0 font-semibold">{entry.action}</span>
 				<span class="grow text-muted-foreground">{entry.target}</span>
 				<span class="shrink-0 {RESULT_COLOR[entry.result]}">{entry.result}</span>

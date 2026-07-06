@@ -95,30 +95,30 @@
 	}
 
 	const SEVERITY_COLOR: Record<string, string> = {
-		critical: 'bg-red-700 text-white',
-		high: 'bg-orange-600 text-white',
-		medium: 'bg-yellow-500 text-black',
-		low: 'bg-slate-500 text-white'
+		critical: 'border-red-300 bg-red-50 text-red-700',
+		high: 'border-orange-300 bg-orange-50 text-orange-700',
+		medium: 'border-amber-300 bg-amber-50 text-amber-700',
+		low: 'border-slate-300 bg-slate-50 text-slate-700'
 	};
 
 	const STATUS_COLOR: Record<string, string> = {
-		confirmed: 'text-red-400',
-		pending: 'text-yellow-400',
-		cleared: 'text-green-400',
-		suppressed: 'text-slate-400',
-		test_failed: 'text-orange-400',
-		warning_indicator: 'text-purple-400'
+		confirmed: 'text-red-700',
+		pending: 'text-amber-700',
+		cleared: 'text-emerald-700',
+		suppressed: 'text-slate-600',
+		test_failed: 'text-orange-700',
+		warning_indicator: 'text-slate-700'
 	};
 </script>
 
-<div class="rounded-lg border border-border bg-card p-3 text-card-foreground">
+<div class="rounded-md border border-border bg-card p-3 text-card-foreground">
 	<div class="mb-2 flex items-center justify-between">
-		<span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-			DTC List - {componentId.toUpperCase()} ({filtered.length})
+		<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+			Faults - {componentId.toUpperCase()} ({filtered.length})
 		</span>
 		<select
 			bind:value={statusMask}
-			class="rounded border border-border bg-background px-1 py-0.5 text-xs text-foreground"
+			class="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
 		>
 			{#each STATUS_OPTIONS as opt (opt.value)}
 				<option value={opt.value}>{opt.label}</option>
@@ -144,14 +144,18 @@
 			<tbody>
 				{#each visible as dtc (dtc.id)}
 					<tr
-						class="cursor-pointer border-b border-border/40 hover:bg-accent/30"
+						class="cursor-pointer border-b border-border/60 hover:bg-muted"
 						onclick={() => onSelect?.(dtc)}
 					>
 						<td class="py-1 font-mono font-semibold">{dtc.code}</td>
 						<td class="max-w-[120px] truncate py-1 text-muted-foreground">{dtc.description}</td>
 						<td class="py-1">
-							<span class="rounded px-1 py-0.5 text-[10px] {SEVERITY_COLOR[dtc.severity]}">
-								{dtc.severity[0].toUpperCase()}
+							<span
+								class="rounded border px-1.5 py-0.5 text-[10px] font-medium {SEVERITY_COLOR[
+									dtc.severity
+								]}"
+							>
+								{dtc.severity}
 							</span>
 						</td>
 						<td class="py-1 {STATUS_COLOR[dtc.status]}">{dtc.status}</td>

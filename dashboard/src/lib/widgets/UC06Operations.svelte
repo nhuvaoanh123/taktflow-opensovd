@@ -1,28 +1,25 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- UC06 - Start / stop / poll routines (FR-2.1-2.3) -->
+<!-- Routine execution monitor. Public dashboard builds default to read-only. -->
 <script lang="ts">
-	import {
-		CANNED_ROUTINES,
-		listRoutines,
-		pollRoutine,
-		startRoutine,
-		stopRoutine
-	} from '$lib/api/sovdClient';
+	import { CANNED_ROUTINES, listRoutines, pollRoutine, startRoutine } from '$lib/api/sovdClient';
 	import type { EcuId, RoutineEntry } from '$lib/types/sovd';
 
 	interface Props {
 		componentId?: EcuId;
+		controlEnabled?: boolean;
 	}
 
-	let { componentId }: Props = $props();
+	let { componentId, controlEnabled = false }: Props = $props();
 
 	let baseRoutines = $state<RoutineEntry[]>(CANNED_ROUTINES);
 	let statusOverride = $state<Record<string, RoutineEntry>>({});
+	let actionError = $state<string | null>(null);
 
 	const routines = $derived(baseRoutines.map((routine) => statusOverride[routine.id] ?? routine));
 
 	$effect(() => {
 		statusOverride = {};
+		actionError = null;
 		void load(componentId);
 	});
 
@@ -32,15 +29,15 @@
 		}
 		const timer = setInterval(() => {
 			void refreshRunning(componentId);
-		}, 1500);
+		}, 3000);
 		return () => clearInterval(timer);
 	});
 
 	const STATUS_CHIP: Record<string, string> = {
-		idle: 'bg-slate-600 text-slate-200',
-		running: 'bg-blue-600 text-white animate-pulse',
-		completed: 'bg-green-700 text-white',
-		failed: 'bg-red-700 text-white'
+		idle: 'border-slate-300 bg-slate-50 text-slate-700',
+		running: 'border-blue-300 bg-blue-50 text-blue-700',
+		completed: 'border-emerald-300 bg-emerald-50 text-emerald-700',
+		failed: 'border-red-300 bg-red-50 text-red-700'
 	};
 
 	async function load(id?: EcuId) {
@@ -62,55 +59,65 @@
 	}
 
 	async function handleStart(routine: RoutineEntry) {
+		if (!controlEnabled) {
+			return;
+		}
 		const target = componentId ?? routine.component;
-		await startRoutine(target, routine.id);
-		statusOverride = {
-			...statusOverride,
-			[routine.id]: { ...routine, status: 'running', lastResult: 'Execution started' }
-		};
-		await refreshRunning(target);
-	}
-
-	async function handleStop(routine: RoutineEntry) {
-		const target = componentId ?? routine.component;
-		await stopRoutine(target, routine.id);
-		statusOverride = {
-			...statusOverride,
-			[routine.id]: { ...routine, status: 'idle', lastResult: 'Stopped by user' }
-		};
+		actionError = null;
+		try {
+			await startRoutine(target, routine.id);
+			statusOverride = {
+				...statusOverride,
+				[routine.id]: { ...routine, status: 'running', lastResult: 'Execution started' }
+			};
+			await refreshRunning(target);
+		} catch (cause) {
+			actionError = cause instanceof Error ? cause.message : 'Routine start failed.';
+		}
 	}
 </script>
 
-<div class="rounded-lg border border-border bg-card p-3">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-		Operations
-	</h3>
-	<div class="space-y-1.5">
+<div class="rounded-md border border-border bg-card p-3">
+	<div class="mb-3 flex items-center justify-between gap-2">
+		<h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+			Operations
+		</h3>
+		<span class="text-[10px] font-medium text-muted-foreground">
+			{controlEnabled ? 'Control enabled' : 'Read-only'}
+		</span>
+	</div>
+
+	{#if actionError}
+		<p class="mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700">
+			{actionError}
+		</p>
+	{/if}
+
+	<div class="divide-y divide-border rounded border border-border">
 		{#each routines as rt (rt.id)}
-			<div class="flex items-center gap-2 rounded bg-muted/30 px-2 py-1.5 text-xs">
-				<span class="grow truncate font-medium">{rt.name}</span>
-				<span class="rounded px-1.5 py-0.5 text-[10px] font-semibold {STATUS_CHIP[rt.status]}">
+			<div class="flex items-center gap-3 px-3 py-2 text-xs">
+				<div class="min-w-0 grow">
+					<p class="truncate font-medium">{rt.name}</p>
+					{#if rt.lastResult}
+						<p class="truncate text-[10px] text-muted-foreground">{rt.lastResult}</p>
+					{/if}
+				</div>
+				<span
+					class="rounded border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide {STATUS_CHIP[
+						rt.status
+					]}"
+				>
 					{rt.status}
 				</span>
-				{#if rt.status === 'idle' || rt.status === 'failed' || rt.status === 'completed'}
+				{#if controlEnabled && (rt.status === 'idle' || rt.status === 'failed' || rt.status === 'completed')}
 					<button
 						onclick={() => handleStart(rt)}
-						class="rounded bg-primary px-2 py-0.5 text-[10px] text-primary-foreground hover:bg-primary/80"
+						class="rounded border border-border bg-white px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted"
 					>
 						Start
 					</button>
-				{:else if rt.status === 'running'}
-					<button
-						onclick={() => handleStop(rt)}
-						class="rounded bg-destructive px-2 py-0.5 text-[10px] text-destructive-foreground hover:bg-destructive/80"
-					>
-						Stop
-					</button>
 				{/if}
 			</div>
-			{#if rt.lastResult}
-				<p class="ml-2 text-[10px] text-muted-foreground">{rt.lastResult}</p>
-			{/if}
 		{/each}
 	</div>
 </div>

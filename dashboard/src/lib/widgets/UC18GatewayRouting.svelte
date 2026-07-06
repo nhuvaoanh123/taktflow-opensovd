@@ -25,34 +25,34 @@
 	}
 
 	function probeTone(status: GatewayHealth['sovdDb']['status']): string {
-		if (status === 'degraded') return 'text-yellow-300';
-		if (status === 'unavailable') return 'text-red-400';
-		return 'text-green-400';
+		if (status === 'degraded') return 'text-amber-700';
+		if (status === 'unavailable') return 'text-red-700';
+		return 'text-emerald-700';
 	}
 </script>
 
-<div class="rounded-lg border border-border bg-card p-3">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+<div class="rounded-md border border-border bg-card p-3">
+	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 		Gateway Routing
 	</h3>
 	{#if health}
 		<div class="mb-3 grid gap-2 text-[10px] md:grid-cols-4">
-			<div class="rounded border border-border/50 bg-background/50 p-2">
+			<div class="rounded border border-border bg-muted/30 p-2">
 				<div class="text-muted-foreground">Server</div>
 				<div class="font-mono">{health.version}</div>
 			</div>
-			<div class="rounded border border-border/50 bg-background/50 p-2">
+			<div class="rounded border border-border bg-muted/30 p-2">
 				<div class="text-muted-foreground">Cycle</div>
 				<div class="font-mono">{health.operationCycle ?? 'idle'}</div>
 			</div>
-			<div class="rounded border border-border/50 bg-background/50 p-2">
+			<div class="rounded border border-border bg-muted/30 p-2">
 				<div class="text-muted-foreground">SOVD DB</div>
 				<div class="font-semibold {probeTone(health.sovdDb.status)}">{health.sovdDb.status}</div>
 				{#if health.sovdDb.reason}
 					<div class="truncate text-muted-foreground">{health.sovdDb.reason}</div>
 				{/if}
 			</div>
-			<div class="rounded border border-border/50 bg-background/50 p-2">
+			<div class="rounded border border-border bg-muted/30 p-2">
 				<div class="text-muted-foreground">Fault Sink</div>
 				<div class="font-semibold {probeTone(health.faultSink.status)}">
 					{health.faultSink.status}
@@ -63,12 +63,7 @@
 			</div>
 		</div>
 		<p class="mb-2 text-[10px] text-muted-foreground">
-			Live probe from <span class="font-mono">/sovd/v1/health</span> in {health.latencyMs} ms.
-			{#if backendsLive}
-				Route list below is live from <span class="font-mono">/sovd/v1/gateway/backends</span>.
-			{:else}
-				Route list below is still on fallback data.
-			{/if}
+			Health latency: {health.latencyMs} ms. Routes: {backendsLive ? 'live' : 'fallback'}.
 		</p>
 	{:else}
 		<p class="mb-2 text-[10px] text-muted-foreground">
@@ -87,7 +82,7 @@
 		</thead>
 		<tbody>
 			{#each backends as b (b.id)}
-				<tr class="border-b border-border/40">
+				<tr class="border-b border-border/60">
 					<td class="py-1 font-mono">{b.id}</td>
 					<td class="py-1 font-mono text-muted-foreground">{b.address}</td>
 					<td class="py-1 uppercase">{b.protocol}</td>
@@ -96,9 +91,9 @@
 					</td>
 					<td class="py-1 text-right">
 						{#if b.reachable}
-							<span class="text-green-400">up</span>
+							<span class="text-emerald-700">up</span>
 						{:else}
-							<span class="text-red-400">down</span>
+							<span class="text-red-700">down</span>
 						{/if}
 					</td>
 				</tr>

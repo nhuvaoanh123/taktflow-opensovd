@@ -1,57 +1,54 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- UC12 — Operation cycle state machine viz (FR-4.3) -->
+<!-- Operation-cycle status from the public health endpoint when reported. -->
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 
-	type OpState = 'Idle' | 'Running' | 'Evaluating' | 'Complete';
+	import { getGatewayHealth } from '$lib/api/sovdClient';
 
-	const STATES: OpState[] = ['Idle', 'Running', 'Evaluating', 'Complete'];
+	const STATES = ['Idle', 'Running', 'Evaluating', 'Complete'];
 
-	const TRANSITIONS: Record<OpState, OpState> = {
-		Idle: 'Running',
-		Running: 'Evaluating',
-		Evaluating: 'Complete',
-		Complete: 'Idle'
-	};
-
-	const STATE_COLOR: Record<OpState, string> = {
-		Idle: 'border-slate-500 bg-slate-800 text-slate-200',
-		Running: 'border-blue-500 bg-blue-900 text-blue-200 animate-pulse',
-		Evaluating: 'border-yellow-500 bg-yellow-900 text-yellow-200',
-		Complete: 'border-green-500 bg-green-900 text-green-200'
-	};
-
-	let current = $state<OpState>('Idle');
+	let reported = $state<string | null>(null);
 	let timer: ReturnType<typeof setInterval> | null = null;
 
+	async function load() {
+		reported = (await getGatewayHealth())?.operationCycle ?? null;
+	}
+
 	onMount(() => {
+		void load();
 		timer = setInterval(() => {
-			current = TRANSITIONS[current];
-		}, 1500);
+			void load();
+		}, 5000);
 	});
 
 	onDestroy(() => {
 		if (timer) clearInterval(timer);
 	});
+
+	function isCurrent(state: string): boolean {
+		return reported?.toLowerCase() === state.toLowerCase();
+	}
 </script>
 
-<div class="rounded-lg border border-border bg-card p-3">
-	<h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-		Operation Cycle State
-	</h3>
-	<div class="flex flex-wrap items-center gap-2">
+<div class="rounded-md border border-border bg-card p-3">
+	<div class="mb-3 flex items-center justify-between gap-2">
+		<h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+			Operation cycle
+		</h3>
+		<span class="text-[10px] text-muted-foreground">
+			{reported ?? 'Not reported'}
+		</span>
+	</div>
+	<div class="grid gap-2 sm:grid-cols-4">
 		{#each STATES as state (state)}
 			<div
-				class="flex flex-1 min-w-[60px] flex-col items-center rounded border px-2 py-2 text-xs transition-all duration-300 {STATE_COLOR[state]}"
+				class="rounded border px-2 py-2 text-center text-xs
+					{isCurrent(state)
+					? 'border-slate-900 bg-slate-50 text-slate-900'
+					: 'border-border bg-muted/30 text-muted-foreground'}"
 			>
-				<span class="font-semibold">{state}</span>
-				{#if current === state}
-					<span class="mt-0.5 text-[10px] opacity-80">◀ current</span>
-				{/if}
+				<span class="font-medium">{state}</span>
 			</div>
-			{#if state !== 'Complete'}
-				<span class="text-muted-foreground">→</span>
-			{/if}
 		{/each}
 	</div>
 </div>

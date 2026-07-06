@@ -24,8 +24,11 @@
 </script>
 
 {#if comp}
-	<div class="rounded-lg border border-border bg-card p-3 text-xs">
-		<h3 class="mb-2 font-semibold">{comp.label}</h3>
+	<div class="rounded-md border border-border bg-card p-3 text-xs">
+		<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+			Component details
+		</h3>
+		<p class="mb-2 font-semibold">{comp.label}</p>
 		<dl class="grid grid-cols-2 gap-x-3 gap-y-0.5">
 			<dt class="text-muted-foreground">HW Rev</dt>
 			<dd class="font-mono">{comp.hwVersion}</dd>

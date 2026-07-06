@@ -157,7 +157,11 @@ function apiBase(): string {
 	if (typeof window === 'undefined') {
 		return DEFAULT_BASE;
 	}
-	return import.meta.env.VITE_SOVD_BASE ?? DEFAULT_BASE;
+	const configured = import.meta.env.VITE_SOVD_BASE;
+	if (typeof configured === 'string') {
+		return configured;
+	}
+	return import.meta.env.PROD ? '' : DEFAULT_BASE;
 }
 
 function sessionValue(key: string): string | null {
@@ -666,12 +670,7 @@ export async function clearFaults(componentId: EcuId, group?: string): Promise<v
 	const path = group
 		? `/sovd/v1/components/${componentId}/faults/${encodeURIComponent(group)}`
 		: `/sovd/v1/components/${componentId}/faults`;
-	try {
-		await fetchJson<void>(path, { method: 'DELETE' });
-	} catch {
-		// Demo-safe fallback: leave local UI behavior intact when the
-		// backend is unavailable or the mutation route is not yet mounted.
-	}
+	await fetchJson<void>(path, { method: 'DELETE' });
 }
 
 export async function listRoutines(componentId: EcuId): Promise<RoutineEntry[]> {
@@ -697,22 +696,18 @@ export async function listRoutines(componentId: EcuId): Promise<RoutineEntry[]> 
 }
 
 export async function startRoutine(componentId: EcuId, routineId: string): Promise<void> {
-	try {
-		const response = await fetchJson<StartExecutionAsyncResponse>(
-			`/sovd/v1/components/${componentId}/operations/${encodeURIComponent(routineId)}/executions`,
-			{
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({})
-			}
-		);
-		if (response?.id) {
-			EXECUTION_IDS.set(executionKey(componentId, routineId), response.id);
+	const response = await fetchJson<StartExecutionAsyncResponse>(
+		`/sovd/v1/components/${componentId}/operations/${encodeURIComponent(routineId)}/executions`,
+		{
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({})
 		}
-	} catch {
-		// Demo-safe fallback.
+	);
+	if (response?.id) {
+		EXECUTION_IDS.set(executionKey(componentId, routineId), response.id);
 	}
 }
 

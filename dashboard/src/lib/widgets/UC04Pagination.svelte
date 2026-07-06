@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- UC04 — Paginator widget (FR-1.4) — reusable, used by UC01 but shown standalone for visibility -->
+<!-- Pagination control. -->
 <script lang="ts">
 	interface Props {
 		total: number;
@@ -24,26 +24,24 @@
 		<button
 			disabled={page === 0}
 			onclick={() => onPage(0)}
-			class="rounded px-1.5 py-0.5 disabled:opacity-30 hover:bg-accent"
-			aria-label="First page"
+			class="rounded border border-border px-2 py-0.5 disabled:opacity-30 hover:bg-muted"
 		>
-			«
+			First
 		</button>
 		<button
 			disabled={page === 0}
 			onclick={() => onPage(page - 1)}
-			class="rounded px-1.5 py-0.5 disabled:opacity-30 hover:bg-accent"
-			aria-label="Previous page"
+			class="rounded border border-border px-2 py-0.5 disabled:opacity-30 hover:bg-muted"
 		>
-			‹
+			Prev
 		</button>
 
 		{#each pages() as p (p)}
 			<button
 				onclick={() => onPage(p)}
-				class="rounded px-2 py-0.5 {p === page
-					? 'bg-primary text-primary-foreground'
-					: 'hover:bg-accent'}"
+				class="rounded border px-2 py-0.5 {p === page
+					? 'border-slate-900 bg-slate-900 text-white'
+					: 'border-border hover:bg-muted'}"
 				aria-current={p === page ? 'page' : undefined}
 			>
 				{p + 1}
@@ -53,18 +51,16 @@
 		<button
 			disabled={page >= pageCount - 1}
 			onclick={() => onPage(page + 1)}
-			class="rounded px-1.5 py-0.5 disabled:opacity-30 hover:bg-accent"
-			aria-label="Next page"
+			class="rounded border border-border px-2 py-0.5 disabled:opacity-30 hover:bg-muted"
 		>
-			›
+			Next
 		</button>
 		<button
 			disabled={page >= pageCount - 1}
 			onclick={() => onPage(pageCount - 1)}
-			class="rounded px-1.5 py-0.5 disabled:opacity-30 hover:bg-accent"
-			aria-label="Last page"
+			class="rounded border border-border px-2 py-0.5 disabled:opacity-30 hover:bg-muted"
 		>
-			»
+			Last
 		</button>
 
 		<span class="ml-2 text-muted-foreground">

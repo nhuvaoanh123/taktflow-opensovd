@@ -28,9 +28,9 @@
 	);
 
 	const SEV_DOT: Record<string, string> = {
-		critical: 'bg-red-500',
+		critical: 'bg-red-600',
 		high: 'bg-orange-500',
-		medium: 'bg-yellow-400',
+		medium: 'bg-amber-500',
 		low: 'bg-slate-400'
 	};
 
@@ -43,15 +43,15 @@
 	}
 </script>
 
-<div class="rounded-lg border border-border bg-card p-3">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-		Aggregated Fault Timeline ({all.length} events)
+<div class="rounded-md border border-border bg-card p-3">
+	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+		Fault timeline ({all.length})
 	</h3>
-	<ol class="space-y-1">
+	<ol class="space-y-0.5">
 		{#each all as dtc (dtc.id)}
-			<li class="flex items-start gap-2 text-xs">
-				<span class="mt-1 h-2 w-2 shrink-0 rounded-full {SEV_DOT[dtc.severity]}"></span>
-				<span class="font-mono font-semibold">{dtc.code}</span>
+			<li class="flex items-start gap-2 border-b border-border/50 py-1 text-xs last:border-b-0">
+				<span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {SEV_DOT[dtc.severity]}"></span>
+				<span class="w-16 shrink-0 font-mono font-semibold">{dtc.code}</span>
 				<span class="grow truncate text-muted-foreground">{dtc.description}</span>
 				<span class="shrink-0 text-[10px] uppercase text-muted-foreground">{dtc.component}</span>
 				<span class="shrink-0 text-[10px] tabular-nums text-muted-foreground">{rel(dtc.lastSeen)}</span>

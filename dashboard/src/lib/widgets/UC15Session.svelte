@@ -37,9 +37,9 @@
 	});
 
 	const LEVEL_COLOR: Record<string, string> = {
-		default: 'text-slate-300',
-		programming: 'text-yellow-300',
-		extended: 'text-blue-300'
+		default: 'text-slate-700',
+		programming: 'text-amber-700',
+		extended: 'text-blue-700'
 	};
 
 	function secBar(level: number): string {
@@ -49,8 +49,8 @@
 	}
 </script>
 
-<div class="rounded-lg border border-border bg-card p-3 text-xs">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+<div class="rounded-md border border-border bg-card p-3 text-xs">
+	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 		Session
 	</h3>
 	<dl class="space-y-0.5">
@@ -74,8 +74,8 @@
 				class="tabular-nums font-semibold {session.active === false
 					? 'text-muted-foreground'
 					: remaining < 30
-						? 'text-red-400 animate-pulse'
-						: 'text-green-400'}"
+						? 'text-red-700'
+						: 'text-emerald-700'}"
 			>
 				{remaining}s
 			</dd>

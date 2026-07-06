@@ -45,7 +45,7 @@ plan entries.
 | A | ADR index |
 | B | Use-case catalog |
 | C | Glossary |
-| — | **Part II — Production Grade** (separate file, DRAFT): [MASTER-PLAN-PART-2-PRODUCTION-GRADE.md](MASTER-PLAN-PART-2-PRODUCTION-GRADE.md) — extends this plan from M10 (reference / docs maturity) to in-vehicle production release. Pending OEM answers to `Q-PROD-1..9`. |
+| — | **Part II — Production Grade** (separate file, DRAFT): [MASTER-PLAN-PART-2-PRODUCTION-GRADE.md](MASTER-PLAN-PART-2-PRODUCTION-GRADE.md) — extends this plan from M10 (reference / docs maturity) to in-vehicle production release. `Q-PROD-1`/`Q-PROD-2` answered 2026-04-23; the remaining open questions are tracked in Part II §II.9. |
 
 ### 0.3 Time Convention
 
@@ -1725,13 +1725,13 @@ pulled in.
 |---|---|---|---|
 | Fault IPC — Unix socket vs shared memory | Rust lead | P0.W2 | Decided — Unix socket, in prod |
 | DFM persistence — SQLite vs FlatBuffers | Architect | P0.W2 | Decided — SQLite via sqlx |
-| ODX schema — ASAM download vs community XSD (R3) | Embedded lead | P1.W2 | Open — default community XSD; decision owner due 2026-05-15 |
+| ODX schema — ASAM download vs community XSD (R3) | Embedded lead | P1.W2 | Open (past due 2026-05-15, unresolved as of 2026-07-06) — community-XSD default in place per ADR-0008; production posture folds into Part II `Q-PROD-9` |
 | Auth model — OAuth2 / cert / both | Architect + security lead | G-AUTH-DECISION | Decided — ADR-0030 hybrid default; TLS/default transport wiring landed in P6-01, route auth layers still follow in later P6 work |
 | DoIP discovery on Pi — broadcast vs static | Pi engineer | — | Decided — ADR-0010 "both" |
 | Physical DoIP on STM32 — lwIP / NetX / never | Hardware lead | P5 | Deferred |
 | doip-codec Cargo pin — vendor vs git-rev | Rust lead | G-OTA-SCOPE | Default git-rev; confirmed during P5-HIL-08 |
-| OTA scope-down — drop boot-OK witness? defer N=5 rollback? | Architect + Embedded lead | G-OTA-SCOPE | Open |
-| ISO 21434 CAL levels — per-surface table | Security lead | P9-CS-03 | Open |
+| OTA scope-down — drop boot-OK witness? defer N=5 rollback? | Architect + Embedded lead | G-OTA-SCOPE | Overtaken — P6-05 delivered the boot-OK witness (§7.7.2); fleet-scale rollback scope is carried by Part II PROD-4 |
+| ISO 21434 CAL levels — per-surface table | Security lead | P9-CS-03 | Closed — per-surface CAL assignment matrix delivered by P9-CS-03 (§7.10) |
 | S-CORE backend trait surface | Architect | P10-ECO-01 | Decided - ADR-0038 accepted |
 | ISO 17978 conformance subset declaration | Architect | P11-CONF-01 | Decided - ADR-0039 accepted |
 
@@ -1749,6 +1749,13 @@ pulled in.
 | P3 | 2026-08-15 (M3) | Fault inject → DFM → SOVD GET <100 ms in Docker |
 | P4 | 2026-10-15 (M4) | 5 MVP UCs pass in Docker Compose |
 | P5 | 2026-04-21 (M5 entry) | 8 HIL scenarios green; VPS + Pi perf baselines met; SIL + HIL dashboards live; Stage 2 AWS uplink operating; demo recorded |
+
+Note (2026-07-06): the P0–P4 dates above are the original reference-time
+plan dates carried over verbatim — they are not wall-clock completion
+facts (P3/P4 rows even post-date P5's actual completion). Actual
+execution is recorded in the §13.2 Achievements Log (April 2026); P6–P11
+completion is recorded per-step in §7.7–§7.12. Rows kept unmodified for
+historical continuity.
 
 ### 13.2 Achievements Log (Verbatim)
 

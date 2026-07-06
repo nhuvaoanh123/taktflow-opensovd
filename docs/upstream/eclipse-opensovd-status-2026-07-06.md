@@ -191,3 +191,14 @@ on the documented automation. Remediation options (decision belongs to
    `deny.toml` (done 2026-06-11, no change).
 6. Next scheduled check: 2026-08-06 (monthly default; quarterly
    workstreams per the PROD-15 cadence table).
+
+## Same-Day Follow-Up
+
+After ADR-0008 Phase 2 unblocked the converter, the deferred `6b21111`
+MDD-regeneration slice was absorbed on 2026-07-06. The retained CDA
+fixtures `FLXC1000.mdd`, `FLXCNG1000.mdd`, and `FSNR2000.mdd` were
+regenerated with the community schema; direct MDD inspection confirmed
+`SecuritySeed` on every RequestSeed positive response in the two
+security-bearing fixtures. The next upstream work list no longer
+includes `6b21111`; laptop merge-back still needs to rerun the Docker
+integration suite.

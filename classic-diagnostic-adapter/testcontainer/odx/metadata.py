@@ -79,6 +79,7 @@ def add_functional_classes(dlr: DiagLayerRaw):
         "CommCtrl",
         "Ident",
         "Routine",
+        "Routines",
         "StandardDataTransfer",
         "SecurityAccess",
         "Authentication",

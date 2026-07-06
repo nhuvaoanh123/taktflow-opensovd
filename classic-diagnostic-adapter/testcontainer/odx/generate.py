@@ -259,3 +259,11 @@ generate_for_ecu(
     functional_address=0xFFFF,
     variants=[("App_1010", 0x001010)],
 )
+
+generate_for_ecu(
+    ecu_name="FSNR2000",
+    logical_address=0x2000,
+    gateway_address=0x2000,
+    functional_address=0xFFFF,
+    variants=[("Boot_Variant", 0xFF0000), ("App_0101", 0x000101)],
+)

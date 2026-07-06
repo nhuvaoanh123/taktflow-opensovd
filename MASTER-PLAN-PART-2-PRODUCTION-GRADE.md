@@ -453,6 +453,31 @@ schema) launched by user decision 2026-07-06 — also the unlock for
 deferred `6b21111` MDD regeneration and the PROD-13 / `Q-PROD-9`
 CI-side build posture.
 
+**MDD-regeneration follow-up (2026-07-06, same day).** Deferred CDA
+commit `6b21111` is now absorbed. The ODX generator now gives SendKey
+positive responses unique `PR_SendKey_Level_*` IDs, preventing the
+converter response map from overwriting RequestSeed responses that
+carry the `SecuritySeed` parameter. ECU-sim seed generation is
+deterministic (`0x00..0x07`) and returns only the seed payload; the
+existing SOVD security integration assertion no longer skips a raw UDS
+prefix and now checks the deterministic payload. The ADR-0008 Phase-2
+converter regenerated the reproducible CDA fixtures
+`FLXC1000.mdd`, `FLXCNG1000.mdd`, and `FSNR2000.mdd`; direct MDD
+inspection confirmed `SecuritySeed` on every RequestSeed positive
+response in the two security-bearing fixtures and no affected services
+in `functional_groups.mdd`. The local generator was also completed
+with the upstream `FSNR2000` generation call and the missing `Routines`
+functional-class name so the retained `FSNR2000.mdd` fixture is no
+longer unreproducible. Gates on the control-PC mirror: odx-converter
+`:converter:compileKotlin`, ECU-sim `compileKotlin` + `ktlintCheck`,
+odx-converter focused `*IntegrationTest*`, CDA `cargo fmt --check`,
+and non-OpenSSL CDA `cargo check -p cda-database -p cda-core -p
+cda-sovd -p sovd-interfaces` all green. The full integration-test
+crate compile remains blocked on this Windows host by the known
+default-feature OpenSSL discovery issue (`openssl-sys` cannot find an
+OpenSSL install); a vendored-OpenSSL retry exceeded the local timeout,
+so the docker integration suite still belongs to laptop merge-back.
+
 ### II.6.16 PROD-16 Fault-lib feature parity (debounce / enabling conditions / aging / IPC retry)
 
 **Context.** Upstream Eclipse OpenSOVD ADR 001 (2025-07-21) pins `fault-lib` as **the primary technical and organisational interface between OpenSOVD and S-CORE** — S-CORE carries safety-relevant (up to ASIL-B), OpenSOVD stays QM. Subsequent upstream design work (absorbed into our §II.6.17 / §II.5.1) adds a second interface (`diagnostic-lib`) for non-fault SOVD resources, but the **fault** path remains fault-lib's. PROD-16 therefore is not an internal transport story — it is Taktflow's adoption of the S-CORE ↔ OpenSOVD boundary on the fault side, with OEM authority on which features are in scope and where the safety cut-line lives.
@@ -1174,6 +1199,24 @@ Carried forward from research §II.10, prioritized as **M (mandatory for product
 ---
 
 ## II.13 Revision Log
+
+- **2026-07-06, Draft 1.28** - absorbed the deferred CDA `6b21111`
+  MDD-regeneration slice after ADR-0008 Phase 2 unblocked the
+  converter. `security_access.py` now gives SendKey positive
+  responses unique `PR_SendKey_Level_*` IDs, ECU-sim returns a
+  deterministic seed payload, and the existing SOVD security
+  integration test asserts the stripped `0x00..0x07` seed before key
+  calculation. Regenerated `FLXC1000.mdd`, `FLXCNG1000.mdd`, and
+  `FSNR2000.mdd`; direct MDD inspection confirmed `SecuritySeed` on
+  every RequestSeed positive response in the security-bearing
+  fixtures. Local generator reproducibility repaired by adding the
+  retained `FSNR2000` fixture generation call and missing `Routines`
+  functional class. Gates green: odx-converter compileKotlin,
+  ECU-sim compileKotlin/ktlint, odx-converter focused IntegrationTest,
+  `cargo fmt --check`, and non-OpenSSL CDA check
+  (`cda-database`, `cda-core`, `cda-sovd`, `sovd-interfaces`). Full
+  CDA integration-test compile remains Windows/OpenSSL-blocked here;
+  rerun on laptop merge-back.
 
 - **2026-07-06, Draft 1.27** - ADR-0008 Phase 2 delivered same-day
   (plan `582a1d7`, deliverable `e3d070a`): clean-room codegen-complete

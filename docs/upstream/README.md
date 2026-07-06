@@ -2,16 +2,26 @@
 
 ## Rule
 
-**Every Taktflow fork of an `eclipse-opensovd/*` repository must sync from
-upstream at least once per day.** The fork tracks its upstream default
-branch; our downstream changes live on separate branches (never on
-`main`). Sync is automatic via a scheduled GitHub Action — no human is
-allowed to be the bottleneck on upstream visibility.
+**Upstream drift visibility is maintained by the monthly PROD-15 check:
+`git fetch upstream` in each local fork clone plus an org-level GitHub
+sweep, recorded in a dated status report in this directory.** Downstream
+changes live on separate branches (never on a fork's `main`).
 
-This is the concrete answer to `Q-PROD-8` (upstream tracking policy) for
-monitoring purposes. Merging upstream into the Taktflow monolith itself
-is a separate question; this rule only guarantees that we can *see* the
-drift, not that we *absorb* it.
+This is the monitoring layer of `Q-PROD-8`, decided 2026-07-06 (fork-sync
+remediation). Merging upstream into the Taktflow monolith itself is a
+separate question; this rule only guarantees that we can *see* the drift,
+not that we *absorb* it.
+
+**Retired rule (2026-04-20 .. 2026-07-06): daily fork auto-sync.** The
+forks carried a scheduled GitHub Action (`sync-upstream.yml`, daily
+02:00 UTC) that fast-forwarded each fork's `main` from upstream. GitHub's
+60-day scheduled-workflow auto-disable killed it around 2026-06-20 —
+scheduled runs do **not** count as repository activity, contrary to the
+assumption in setup step 5 below — and the loss changed nothing in
+practice: drift visibility had been the monthly manual fetch since May.
+The workflows remain in the forks, disabled; fork `main`s are 2026-04-20
+snapshots. The setup guide below is retained as reference in case the
+automation is ever revived.
 
 ## Repositories to fork
 
@@ -49,8 +59,10 @@ is created; migration is a rename, not a re-fork.
    `fast-forward` (or `none` if already current).
 5. **Verify the schedule** — the workflow will run daily at 02:00 UTC
    automatically. GitHub may disable scheduled workflows after 60 days
-   of repo inactivity; the daily sync itself counts as activity, so in
-   practice the schedule does not lapse.
+   of repo inactivity. *(The original assumption that the daily sync
+   itself counts as activity **proved wrong** — GitHub auto-disabled the
+   workflows ~2026-06-20; see the Rule section. A keep-alive step would
+   be required to make the schedule durable.)*
 
 ## How the workflow works
 

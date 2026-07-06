@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Revision | Part II, Draft 1.24 |
+| Revision | Part II, Draft 1.25 |
 | Status | **DRAFT** — pending OEM answers to open questions in §II.9 |
 | Audience | AI worker or human engineer landing cold; assumes familiarity with [MASTER-PLAN.md](MASTER-PLAN.md) Parts 0–13. |
 | Relation | Extends [MASTER-PLAN.md](MASTER-PLAN.md). Part I gets Taktflow to a bench-validated, conformance-tested, documented reference stack (M10). Part II gets it into a customer vehicle at production. |
@@ -934,7 +934,7 @@ Each open question is a blocker on one or more capability specs and/or execution
 | Q-PROD-5 | **Tester-over-HTTP scopes — which of {OEM engineering, dealer, authorized workshop, 3rd-party OBD, public API} are in scope?** 3rd-party OBD brings regulatory obligations (e.g., EU right-to-repair / Euro 7 RDE data access). | PROD-5, PROD-9 |
 | Q-PROD-6 | **Cloud bridge pattern — reverse tunnel (vehicle-initiated), broker with per-VIN mTLS, private APN, or federated with OEM backend's existing VPN?** Affects attack surface and the R155 evidence pack. | PROD-11, P13 step table |
 | Q-PROD-7 | **ODX authoring tool target — Softing DTS.venice, Vector CANdelaStudio, ETAS OpenSOVD stack, or internal?** Defines the upstream boundary for PROD-13. | PROD-13, P13 step table |
-| Q-PROD-8 | **Upstream tracking strategy — continuous upstream merge (git subtree), periodic re-vendor, mirror-fork with drift automation, or frozen fork?** The monolith carries seven Eclipse OpenSOVD-shaped top-level repos (§II.11.1). `opensovd/`, `fault-lib/`, `classic-diagnostic-adapter/`, and `uds2sovd-proxy/` are now audited as vendored/upstream-shaped subtrees; `classic-diagnostic-adapter/` and `uds2sovd-proxy/` carry local product divergence, while `opensovd/` is synced to upstream `2f7b1c0606f4`. `opensovd-core/` is a name collision, not a vendor (Taktflow-authored stack). No `upstream` remote on any vendored subtree; the fork-side daily auto-sync was found dead on 2026-07-06 (fork `main`s pinned at 2026-04-20 — see §II.11.4 status note), so drift automation is currently zero and visibility is the monthly PROD-15 manual fetch. Subtree audits are complete (`Q-PROD-11b`, answered 2026-06-11); opensovd-core-specific posture is `Q-PROD-11` (answered). | PROD-15, new ADR |
+| Q-PROD-8 | **Upstream tracking strategy — continuous upstream merge (git subtree), periodic re-vendor, mirror-fork with drift automation, or frozen fork?** The monolith carries seven Eclipse OpenSOVD-shaped top-level repos (§II.11.1). `opensovd/`, `fault-lib/`, `classic-diagnostic-adapter/`, and `uds2sovd-proxy/` are now audited as vendored/upstream-shaped subtrees; `classic-diagnostic-adapter/` and `uds2sovd-proxy/` carry local product divergence, while `opensovd/` is synced to upstream `2f7b1c0606f4`. `opensovd-core/` is a name collision, not a vendor (Taktflow-authored stack). No `upstream` remote on any vendored subtree; the fork-side daily auto-sync was found dead on 2026-07-06 (fork `main`s pinned at 2026-04-20 — see §II.11.4), and the **fork-sync remediation was decided 2026-07-06: the monitoring layer is re-documented as the monthly PROD-15 manual `git fetch upstream` in the local fork clones — no workflow re-enable, no keep-alive.** The broader merge-strategy question (continuous subtree vs. periodic re-vendor vs. frozen) remains open; current practice is periodic gate-verified correctness slices under PROD-15 (2026-05-01, 2026-06-11, 2026-07-06 merge notes in §II.6.15). Subtree audits are complete (`Q-PROD-11b`, answered 2026-06-11); opensovd-core-specific posture is `Q-PROD-11` (answered). | PROD-15, new ADR |
 | Q-PROD-9 | **ODX-converter production posture — keep the vendored Kotlin/JVM [`odx-converter/`](odx-converter/) on the CI side only (offline MDD compile, JVM never ships to vehicle), ship the JVM into the production deployment boundary, or port to Rust to drop the JVM dep?** Upstream tool is pre-1.0 but actively developed. | PROD-13, P13 step table |
 | Q-PROD-11 | **Answered 2026-05-01 by [`docs/upstream/deltas/opensovd-core-main-side-by-side.md`](docs/upstream/deltas/opensovd-core-main-side-by-side.md): keep Taktflow `opensovd-core/` standalone; do not absorb upstream `main` as a second vendored subtree.** Cherry-pick individual patterns instead: topology/data-provider boundaries for PROD-8/PROD-12, hyper/tower client and Unix connector shape for PROD-19, generic authn/authz and Rego option for PROD-5, and Unix socket/systemd socket-activation patterns for P12/P13. Upstream `main` remains a reference watched under PROD-15. | PROD-15, PROD-5, PROD-8, PROD-12, PROD-17, PROD-19, §II.11.2 tracking |
 | Q-PROD-10b | **Fault-catalog loader shape (PROD-18)** — expose the upstream crate's `FaultCatalog::from_config` loader verbatim, or a Taktflow-specific loader that also honours ADR-0012 cycle identities and ADR-0018 degraded-mode metadata? Drives whether the YAML schema is upstream-compatible or deliberately Taktflow-specific. | PROD-18 |
@@ -1087,21 +1087,31 @@ The monolith was snapshotted at some past commit per directory. Upstream has con
 These actions are diagnostic by default; any future upstream merge or local-patch
 cleanup should land with a dedicated merge note like the 2026-05-01 CDA sync.
 
-### II.11.4 Monitoring rule — daily fork sync
+### II.11.4 Monitoring rule — monthly manual upstream fetch
 
-**Rule.** Every Taktflow fork of an `eclipse-opensovd/*` repository MUST sync from upstream **at least once per day**. The fork tracks its upstream default branch; downstream Taktflow work lives on separate branches, never on `main`.
+**Rule (decided 2026-07-06, `Q-PROD-8` fork-sync remediation).** Upstream
+drift visibility is maintained by the monthly PROD-15 check: `git fetch
+upstream` in each local fork clone plus an org-level GitHub sweep,
+recorded in a dated status report under
+[`docs/upstream/`](docs/upstream/). No scheduled automation is relied
+upon. Downstream Taktflow work lives on separate branches, never on a
+fork's `main`.
 
-**Mechanism.** Each fork carries a scheduled GitHub Actions workflow ([`docs/upstream/.github/workflows/sync-upstream.yml`](docs/upstream/.github/workflows/sync-upstream.yml)) that runs daily at 02:00 UTC and calls GitHub's native `merge-upstream` REST API to fast-forward the fork's tracked branch. No third-party action, no extra secret, no local cron.
-
-**Status (2026-07-06) — rule currently NOT met.** Verified by fetching the
-fork `origin`s: every fork `main` is still pinned at its 2026-04-20 setup
-commit while upstream moved on (the CDA fork is 126 commits behind). Most
-likely cause is GitHub's 60-day auto-disable of `schedule`-triggered
-workflows in inactive repositories. Remediation options (re-enable +
-keep-alive, or re-document the monitoring layer as monthly manual fetch)
-are listed in the [2026-07-06 status report](docs/upstream/eclipse-opensovd-status-2026-07-06.md);
-the decision belongs to `Q-PROD-8`. Until then, drift visibility is the
-monthly PROD-15 manual `git fetch upstream` in the local fork clones.
+**Retired rule — daily fork auto-sync (2026-04-20 .. 2026-07-06).** Each
+fork carried a scheduled GitHub Actions workflow
+([`docs/upstream/.github/workflows/sync-upstream.yml`](docs/upstream/.github/workflows/sync-upstream.yml),
+daily 02:00 UTC, GitHub native `merge-upstream` REST API). GitHub's
+60-day auto-disable of `schedule`-triggered workflows killed it around
+2026-06-20 (scheduled runs do not count as repository activity), verified
+2026-07-06: every fork `main` still pinned at its 2026-04-20 setup commit
+(the CDA fork 126 commits behind). The loss changed nothing in practice —
+drift visibility had been the monthly manual fetch since May. The
+2026-07-06 decision accepts that reality: the workflows stay disabled
+(they remain in the forks and can be `workflow_dispatch`-triggered
+manually if ever needed), fork `main`s are 2026-04-20 snapshots, and the
+monitoring layer of `Q-PROD-8` is the monthly manual fetch. Remediation
+options considered are recorded in the
+[2026-07-06 status report](docs/upstream/eclipse-opensovd-status-2026-07-06.md).
 
 **Install guide and the authoritative list of repos to fork.** See [`docs/upstream/README.md`](docs/upstream/README.md).
 
@@ -1138,6 +1148,15 @@ Carried forward from research §II.10, prioritized as **M (mandatory for product
 ---
 
 ## II.13 Revision Log
+
+- **2026-07-06, Draft 1.25** - `Q-PROD-8` fork-sync remediation decided
+  (user decision): re-document the monitoring layer as the monthly
+  PROD-15 manual `git fetch upstream` in the local fork clones; no
+  workflow re-enable, no keep-alive. §II.11.4 retitled to "monthly
+  manual upstream fetch" with the daily-auto-sync rule retired as
+  history; §II.9 `Q-PROD-8` row annotated (merge-strategy half stays
+  open); [`docs/upstream/README.md`](docs/upstream/README.md) rule
+  section rewritten accordingly.
 
 - **2026-07-06, Draft 1.24** - executed the absorption pass queued by
   the 2026-07-06 check (decisions 3 and 4 in the status report). CDA

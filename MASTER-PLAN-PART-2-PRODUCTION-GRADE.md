@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Revision | Part II, Draft 1.25 |
+| Revision | Part II, Draft 1.26 |
 | Status | **DRAFT** — pending OEM answers to open questions in §II.9 |
 | Audience | AI worker or human engineer landing cold; assumes familiarity with [MASTER-PLAN.md](MASTER-PLAN.md) Parts 0–13. |
 | Relation | Extends [MASTER-PLAN.md](MASTER-PLAN.md). Part I gets Taktflow to a bench-validated, conformance-tested, documented reference stack (M10). Part II gets it into a customer vehicle at production. |
@@ -426,6 +426,32 @@ merge-back. PROD-13: `odx-converter/` synced `dc04859` → `ae6e814`
 fixtures); blob hashes verified identical; the four community-schema
 files preserved; JVM build deferred to the laptop (same as `4bc887c`);
 draft PR `#47` (multi-ECU MDD schema break) not absorbed.
+
+**Laptop verification addendum (2026-07-06, same day).** The pass was
+transferred to the primary workstation via git bundle into branch
+`taktflow/upstream-check-2026-07-06` (isolated worktree; laptop `main`
+untouched) and the env-blocked gates executed there: full-feature CDA
+workspace check **green**, workspace unit tests **green**, Docker
+integration suite **green — 38/38**, including all four new Tester
+Present tests (network-disconnect resume, DoIP reconnection,
+programming-session switch, lock-held), which exercise the absorbed
+reconnect machinery with the Taktflow overlay active. First attempt
+surfaced one latent gap invisible on the Windows host (feature-gated
+integration tests + OpenSSL blocker): the absorbed test code needs
+`tokio_ext::sleep_for`, added upstream in the unabsorbed `5d67183` —
+absorbed verbatim as `a308f4b` (helper + tokio `time` feature), same
+dependency-completion rationale as the `DoIPConfig` field. The
+odx-converter Gradle gate is **blocked by design, not by this sync**:
+the build feeds `odx_2_2_0.xsd` to xjc for JAXB codegen and the
+ASAM/ISO-licensed schema has never been present on any Taktflow
+machine (`*.xsd` gitignored per upstream NOTICE); the ADR-0008 Phase-1
+community XSD was validation-only and cannot produce the ~119
+generated `schema.odx.*` types the Kotlin converter compiles against.
+Disposition: sync soundness rests on blob-hash identity with upstream
+`ae6e814`; ADR-0008 **Phase 2** (clean-room codegen-complete community
+schema) launched by user decision 2026-07-06 — also the unlock for
+deferred `6b21111` MDD regeneration and the PROD-13 / `Q-PROD-9`
+CI-side build posture.
 
 ### II.6.16 PROD-16 Fault-lib feature parity (debounce / enabling conditions / aging / IPC retry)
 
@@ -1148,6 +1174,20 @@ Carried forward from research §II.10, prioritized as **M (mandatory for product
 ---
 
 ## II.13 Revision Log
+
+- **2026-07-06, Draft 1.26** - laptop verification of the absorption
+  pass completed (bundle -> `taktflow/upstream-check-2026-07-06`
+  branch, isolated worktree, laptop `main` untouched): full-feature
+  CDA workspace check + unit tests green, Docker integration suite
+  38/38 green incl. the four new Tester Present tests; one latent gap
+  fixed at source (`a308f4b` absorbs `tokio_ext::sleep_for` + tokio
+  `time` feature from unabsorbed upstream `5d67183`). odx-converter
+  Gradle gate identified as blocked by design on the ASAM-licensed
+  `odx_2_2_0.xsd` (never present on any Taktflow machine; xjc codegen
+  needs the full type hierarchy, which the ADR-0008 Phase-1
+  validation-only community XSD deliberately lacks). ADR-0008 Phase 2
+  (clean-room codegen-complete community schema) launched by user
+  decision; merge-note addendum in §II.6.15.
 
 - **2026-07-06, Draft 1.25** - `Q-PROD-8` fork-sync remediation decided
   (user decision): re-document the monitoring layer as the monthly

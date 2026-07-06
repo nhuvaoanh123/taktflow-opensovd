@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Revision | Part II, Draft 1.26 |
+| Revision | Part II, Draft 1.27 |
 | Status | **DRAFT** — pending OEM answers to open questions in §II.9 |
 | Audience | AI worker or human engineer landing cold; assumes familiarity with [MASTER-PLAN.md](MASTER-PLAN.md) Parts 0–13. |
 | Relation | Extends [MASTER-PLAN.md](MASTER-PLAN.md). Part I gets Taktflow to a bench-validated, conformance-tested, documented reference stack (M10). Part II gets it into a customer vehicle at production. |
@@ -1174,6 +1174,21 @@ Carried forward from research §II.10, prioritized as **M (mandatory for product
 ---
 
 ## II.13 Revision Log
+
+- **2026-07-06, Draft 1.27** - ADR-0008 Phase 2 delivered same-day
+  (plan `582a1d7`, deliverable `e3d070a`): clean-room codegen-complete
+  community ODX 2.2 schema (`odx-community-2_2_0.xsd`, committed) +
+  build-selection downstream patch (ASAM schema preferred when
+  provided) + per-type provenance table. All gates green on the
+  control PC: xjc (239 classes), compileKotlin, full upstream test
+  suite at `ae6e814` (178 tests, unmodified), somersault.pdx -> MDD.
+  The odx-converter Gradle gate is therefore no longer blocked; the
+  deferred `6b21111` MDD-regeneration follow-up is unblocked. Side
+  finding fixed as `27d3a6d`: `ConverterOptions.kt` had a latent
+  one-line divergence from the ORIGINAL vendoring (missed by the
+  Q-PROD-11b audit - erratum added to the delta report). New
+  `odx-converter/DOWNSTREAM-PATCHES.md` starts the CDA-convention
+  patch record for this subtree.
 
 - **2026-07-06, Draft 1.26** - laptop verification of the absorption
   pass completed (bundle -> `taktflow/upstream-check-2026-07-06`

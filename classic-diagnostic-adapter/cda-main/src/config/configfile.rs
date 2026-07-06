@@ -13,14 +13,13 @@
 pub use cda_comm_doip::config::DoipConfig;
 use cda_interfaces::{
     FunctionalDescriptionConfig, HashMap,
+    config::{ConfigSanity, ConfigSanityError},
     datatypes::{
-        ComParams, ComponentsConfig, DatabaseNamingConvention, DiagnosticServiceAffixPosition,
-        FaultConfig, FlatbBufConfig, SdBoolMappings, SdMappingsTruthyValue,
+        ComParams, ComponentsConfig, DatabaseNamingConvention, FaultConfig, FlatbBufConfig,
+        SdBoolMappings, SdMappingsTruthyValue,
     },
 };
 use serde::{Deserialize, Serialize};
-
-use crate::AppError;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Configuration {
@@ -54,13 +53,6 @@ pub struct DatabaseConfig {
     /// If true, when variant detection fails to find a matching variant,
     /// the ECU will fall back to the base variant instead of reporting an error.
     pub fallback_to_base_variant: bool,
-}
-
-pub trait ConfigSanity {
-    /// Checks the configuration for common mistakes and returns an error message if found.
-    /// # Errors
-    /// Returns `Err(String)` if a sanity check fails, with a descriptive error message.
-    fn validate_sanity(&self) -> Result<(), AppError>;
 }
 
 impl Default for Configuration {
@@ -124,60 +116,10 @@ impl Default for Configuration {
 }
 
 impl ConfigSanity for Configuration {
-    fn validate_sanity(&self) -> Result<(), AppError> {
+    fn validate_sanity(&self) -> Result<(), ConfigSanityError> {
         self.database.naming_convention.validate_sanity()?;
+        self.doip.validate_sanity()?;
         // Add more checks for Configuration fields here if needed
-        Ok(())
-    }
-}
-
-impl ConfigSanity for DatabaseNamingConvention {
-    fn validate_sanity(&self) -> Result<(), AppError> {
-        const SHORT_NAME_AFFIX_KEY: &str = "database_naming_convention.short_name_affixes";
-        const LONG_NAME_AFFIX_KEY: &str = "database_naming_convention.long_name_affixes";
-        const SERVICE_NAME_AFFIX_KEY: &str = "database_naming_convention.service_name_affixes";
-
-        fn validate_affix(
-            affix: &str,
-            pos: &DiagnosticServiceAffixPosition,
-            key: &str,
-        ) -> Result<(), AppError> {
-            match pos {
-                DiagnosticServiceAffixPosition::Prefix => {
-                    if affix.starts_with(' ') {
-                        return Err(AppError::ConfigurationError(format!(
-                            "{key}: '{affix}' has leading whitespace"
-                        )));
-                    }
-                }
-                DiagnosticServiceAffixPosition::Suffix => {
-                    if affix.ends_with(' ') {
-                        return Err(AppError::ConfigurationError(format!(
-                            "{key}: '{affix}' has trailing whitespace"
-                        )));
-                    }
-                }
-            }
-            Ok(())
-        }
-
-        // Check short name affixes
-        for affix in &self.short_name_affixes {
-            validate_affix(affix, &self.short_name_affix_position, SHORT_NAME_AFFIX_KEY)?;
-        }
-
-        // Check long name affixes
-        for affix in &self.long_name_affixes {
-            validate_affix(affix, &self.long_name_affix_position, LONG_NAME_AFFIX_KEY)?;
-        }
-
-        // Validate services affixes
-        for (pos, affixes) in self.service_affixes.values() {
-            for affix in affixes {
-                validate_affix(affix, pos, SERVICE_NAME_AFFIX_KEY)?;
-            }
-        }
-
         Ok(())
     }
 }

@@ -13,14 +13,12 @@
 use std::sync::Arc;
 
 use cda_core::DiagServiceResponseStruct;
-use cda_interfaces::dlt_ctx;
+use cda_interfaces::{config::ConfigSanity, dlt_ctx};
 use cda_plugin_security::{DefaultSecurityPlugin, DefaultSecurityPluginData};
 use clap::Parser;
 use futures::future::FutureExt;
 use opensovd_cda_lib::{
-    AppError, cda_version,
-    config::configfile::{ConfigSanity, Configuration},
-    setup_tracing, shutdown_signal,
+    AppError, cda_version, config::configfile::Configuration, setup_tracing, shutdown_signal,
 };
 
 #[cfg(feature = "health")]

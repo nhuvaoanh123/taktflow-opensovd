@@ -21,9 +21,9 @@ pub mod sovd2uds {
 
     pub mod data {
         pub mod network_structure {
-            use serde::Serialize;
+            use serde::{Deserialize, Serialize};
 
-            #[derive(Serialize)]
+            #[derive(Serialize, Deserialize)]
             #[serde(rename_all = "PascalCase")]
             #[derive(schemars::JsonSchema)]
             pub struct Ecu {
@@ -40,7 +40,7 @@ pub mod sovd2uds {
                 pub logical_link: String,
             }
 
-            #[derive(Serialize)]
+            #[derive(Serialize, Deserialize)]
             #[serde(rename_all = "PascalCase")]
             #[derive(schemars::JsonSchema)]
             pub struct Gateway {
@@ -54,7 +54,7 @@ pub mod sovd2uds {
                 pub ecus: Vec<Ecu>,
             }
 
-            #[derive(Serialize)]
+            #[derive(Serialize, Deserialize)]
             #[serde(rename_all = "PascalCase")]
             #[derive(schemars::JsonSchema)]
             pub struct FunctionalGroup {
@@ -62,7 +62,7 @@ pub mod sovd2uds {
                 pub ecus: Vec<Ecu>,
             }
 
-            #[derive(Serialize)]
+            #[derive(Serialize, Deserialize)]
             #[serde(rename_all = "PascalCase")]
             #[derive(schemars::JsonSchema)]
             pub struct NetworkStructure {
@@ -71,9 +71,9 @@ pub mod sovd2uds {
             }
 
             pub mod get {
-                use serde::Serialize;
+                use serde::{Deserialize, Serialize};
 
-                #[derive(Serialize, schemars::JsonSchema)]
+                #[derive(Serialize, Deserialize, schemars::JsonSchema)]
                 #[schemars(rename = "NetworkStructureResponse")]
                 pub struct Response {
                     pub id: String,

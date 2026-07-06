@@ -33,6 +33,7 @@ mod ecu;
 mod faults;
 mod locks;
 mod operations;
+mod tester_present;
 mod version_endpoint;
 
 pub(crate) const ECU_FLXC1000_ENDPOINT: &str = "components/flxc1000";

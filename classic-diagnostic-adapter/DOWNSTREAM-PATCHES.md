@@ -108,6 +108,15 @@ disable.
 **Upstreamable?** Yes. ETAS and Vector testers expose an equivalent
 knob; this is a well-trodden config surface.
 
+**2026-07 upstream interplay.** The 2026-07 correctness slice absorbed
+upstream `alive_check_interval_secs` (idle-reset alive-check timer,
+default 1800 s, `0` = disabled — upstream `1337932`/`c30055f`). The
+merged sender task treats the alive check as enabled only when
+`enable_alive_check == true` **and** `alive_check_interval_secs > 0`,
+so both config surfaces keep working. Upstream now covers this patch's
+disable use case via `alive_check_interval_secs = 0`; retirement
+candidate once bench configs migrate off `enable_alive_check = false`.
+
 ### Patch 3 — Gateway-IP connection sharing
 
 **Files.** [`cda-comm-doip/src/lib.rs`](cda-comm-doip/src/lib.rs)
@@ -142,6 +151,14 @@ which logical address's routing activation.
 ISO 13400-2 supports multiple logical addresses per TCP connection via
 routing activation; upstream's "one socket per logical address" model
 is over-conservative for modern zonal topologies.
+
+**2026-07 upstream interplay.** Upstream `d96cc2c` (absorbed 2026-07)
+triggers variant re-detection after a connection reconnect, keyed on
+the ECU names of the gateway that opened the connection. Because this
+patch shares one connection across all gateway logical addresses on an
+IP, the local merge aggregates the ECU names of **every** gateway
+address sharing the connection before handing them to the reconnect
+re-detection (see `cda-comm-doip/src/lib.rs`, connection loop).
 
 **Config shape.** No flag. Unconditional — but there is no downside
 case. When each IP has exactly one logical address, the grouping

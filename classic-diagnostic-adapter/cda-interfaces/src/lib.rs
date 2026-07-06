@@ -28,6 +28,7 @@ mod ecumanager;
 pub use ecumanager::*;
 mod ecuuds;
 pub use ecuuds::*;
+pub mod config;
 pub mod file_manager;
 mod schema;
 pub use schema::*;

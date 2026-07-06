@@ -137,12 +137,19 @@ async fn test_custom_demo_endpoint() {
     };
     let health = Some(health);
 
+    let doip_socket = cda_comm_doip::create_socket(
+        &doip_config.tester_address,
+        doip_config.gateway_port,
+        doip_config.protocol_version,
+    )
+    .expect("Failed to create DoIP socket");
     let gateway = opensovd_cda_lib::create_diagnostic_gateway(
         Arc::clone(&databases),
         &doip_config,
         variant_tx,
         shutdown_signal.clone(),
         health.as_ref(),
+        Arc::new(tokio::sync::Mutex::new(doip_socket)),
     )
     .await
     .expect("Failed to create gateway");

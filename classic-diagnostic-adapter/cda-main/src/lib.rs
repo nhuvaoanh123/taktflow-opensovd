@@ -21,6 +21,7 @@ use cda_interfaces::{
     DiagServiceError, DoipGatewaySetupError, EcuAddressProvider, EcuManager as EcuManagerTrait,
     EcuManagerType, FunctionalDescriptionConfig, HashMap, HashMapEntry, HashMapExtensions, HashSet,
     Protocol, UdsEcu,
+    config::ConfigSanityError,
     datatypes::{ComParams, DatabaseNamingConvention, FaultConfig, FlatbBufConfig},
     dlt_ctx,
     file_manager::{Chunk, ChunkType},
@@ -30,7 +31,7 @@ use cda_sovd::Locks;
 use cda_tracing::{OtelGuard, TracingSetupError, TracingWorkerGuard};
 use tokio::{
     signal,
-    sync::{RwLock, mpsc},
+    sync::{Mutex, RwLock, mpsc},
 };
 use tracing::Instrument;
 use tracing_subscriber::layer::SubscriberExt;
@@ -153,6 +154,12 @@ impl From<TracingSetupError> for AppError {
     }
 }
 
+impl From<ConfigSanityError> for AppError {
+    fn from(value: ConfigSanityError) -> Self {
+        AppError::ConfigurationError(value.to_string())
+    }
+}
+
 pub const PROTO_LOAD_CONFIG: &[ProtoLoadConfig; 4] = &[
     ProtoLoadConfig {
         type_: ChunkType::DiagnosticDescription,
@@ -192,12 +199,19 @@ pub async fn load_vehicle_data<
 
     let (variant_detection_tx, variant_detection_rx) = mpsc::channel(50);
     let databases = Arc::new(databases);
+    let doip_socket = cda_comm_doip::create_socket(
+        &config.doip.tester_address,
+        config.doip.gateway_port,
+        config.doip.protocol_version,
+    )
+    .map_err(|e| AppError::InitializationFailed(format!("Failed to create DoIP socket: {e}")))?;
     let diagnostic_gateway = match create_diagnostic_gateway(
         Arc::clone(&databases),
         &config.doip,
         variant_detection_tx,
         clonable_shutdown_signal.clone(),
         health,
+        Arc::new(Mutex::new(doip_socket)),
     )
     .await
     {
@@ -658,7 +672,7 @@ pub fn create_uds_manager<S: SecurityPlugin>(
 /// # Errors
 /// Returns a string error if the gateway cannot be initialized.
 #[tracing::instrument(
-    skip(databases, variant_detection, shutdown_signal, health),
+    skip(databases, variant_detection, shutdown_signal, health, doip_socket),
     fields(
         database_count = databases.len(),
         dlt_context = dlt_ctx!("MAIN"),
@@ -670,6 +684,7 @@ pub async fn create_diagnostic_gateway<S: SecurityPlugin>(
     variant_detection: mpsc::Sender<Vec<String>>,
     shutdown_signal: impl Future<Output = ()> + Send + 'static,
     health: Option<&cda_health::HealthState>,
+    doip_socket: Arc<Mutex<cda_comm_doip::socket::DoIPUdpSocket>>,
 ) -> Result<DoipDiagGateway<EcuManager<S>>, DoipGatewaySetupError> {
     let doip_health_provider = if let Some(health_state) = health {
         let provider = Arc::new(cda_health::StatusHealthProvider::new(
@@ -689,8 +704,14 @@ pub async fn create_diagnostic_gateway<S: SecurityPlugin>(
         None
     };
 
-    let result =
-        DoipDiagGateway::new(doip_config, databases, variant_detection, shutdown_signal).await;
+    let result = DoipDiagGateway::new(
+        doip_config,
+        databases,
+        variant_detection,
+        shutdown_signal,
+        doip_socket,
+    )
+    .await;
     let status = if result.is_ok() {
         cda_health::Status::Up
     } else {

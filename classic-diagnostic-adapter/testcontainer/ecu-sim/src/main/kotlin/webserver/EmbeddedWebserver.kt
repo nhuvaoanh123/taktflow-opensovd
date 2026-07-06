@@ -81,6 +81,7 @@ fun Application.appModule() {
         addFlashTransferRoutes()
         addRecordingRoutes()
         addDtcFaultsRoutes()
+        addDisconnectRoutes()
         addRawResponseOverrideRoutes()
         addJwtAuthServerMockRoutes()
 

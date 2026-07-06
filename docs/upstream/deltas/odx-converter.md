@@ -20,6 +20,19 @@ watched PR `#34`), plus **four Taktflow-authored files** under
 No local patches to converter source were found; outside the community
 schema directory the snapshot matched upstream `0cce8bb` exactly.
 
+**Erratum (2026-07-06).** The statement above missed a one-line delta:
+the original vendoring (`d1aff0e`) captured
+`converter/src/main/kotlin/ConverterOptions.kt` without the
+`withAudiences` option, although the upstream blob is identical (and
+contains the line) at `0cce8bb`, `dc04859`, and `ae6e814`. The delta
+was latent — nothing referenced the field — until the 2026-07-06 sync
+to `ae6e814` (`8c069a5`) brought code that uses it, at which point the
+ADR-0008 Phase-2 whole-tree diff surfaced it. Fixed by restoring the
+upstream blob in the same-day follow-up commit; the corrected verdict
+is: vendored snapshot plus the four community files plus (from
+2026-07-06) the ADR-0008 Phase-2 community schema and its documented
+build patch (`odx-converter/DOWNSTREAM-PATCHES.md`).
+
 ## Divergence at audit time
 
 Upstream moved 13 files in `0cce8bb..dc04859` (2026-04-30..2026-06-08):

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Revision | Part II, Draft 1.23 |
+| Revision | Part II, Draft 1.24 |
 | Status | **DRAFT** — pending OEM answers to open questions in §II.9 |
 | Audience | AI worker or human engineer landing cold; assumes familiarity with [MASTER-PLAN.md](MASTER-PLAN.md) Parts 0–13. |
 | Relation | Extends [MASTER-PLAN.md](MASTER-PLAN.md). Part I gets Taktflow to a bench-validated, conformance-tested, documented reference stack (M10). Part II gets it into a customer vehicle at production. |
@@ -389,6 +389,43 @@ viewer/differ with a v1.0.0 release, candidate bench tooling;
 dead (fork `main`s pinned at 2026-04-20; GitHub scheduled-workflow
 auto-disable; remediation under `Q-PROD-8`). Details in
 [`docs/upstream/eclipse-opensovd-status-2026-07-06.md`](docs/upstream/eclipse-opensovd-status-2026-07-06.md).
+
+**Merge note (2026-07-06).** The absorption pass queued by the check
+(decisions 3 and 4) executed on the control-PC mirror. CDA correctness
+slice toward `c30055f`: absorbed `1337932` + `68ab6c3` (DoIP
+alive-check reworked to an idle-reset interval timer with biased
+select, alive **response** instead of request, no interruption of
+active communication; the check's single `68ab6c3` bullet spans both
+upstream commits), `4383f93` (Tester Present integration tests plus
+ECU-sim disconnect route), `d96cc2c` (variant re-detection after
+reconnect), `2b0700e` (connection/socket lifecycle restructure so ECUs
+come back online after a gateway rebuild — UDP socket now created in
+`cda-main` and reused; upstream commit is non-building standalone, the
+missing `DoIPConfig` field was completed locally), `dcb096b`
+(background tasks tracked in a `JoinSet`, aborted **and drained** on
+shutdown), and `c30055f` (config sanity checks; new
+`cda-interfaces::config::ConfigSanity` trait). Overlay preserved per
+[`DOWNSTREAM-PATCHES.md`](classic-diagnostic-adapter/DOWNSTREAM-PATCHES.md):
+`enable_alive_check` merged with upstream `alive_check_interval_secs`
+(either disables), reconnect re-detection aggregates ECU names across
+patch-3 shared connections (ADR-0010); interplay notes recorded there.
+Deferred as instructed: `6b21111` (MDD regeneration) and all feature
+drift (runtimefiles plugin incl. its `cda-main/src/update/` fix hunks,
+capability endpoints, `[strict]` consolidation, BulkDataDescriptor
+rename, manager modularization, `ce0f017`/`55a431e` config-struct
+refactors — four ADR-0032-tracked `#[allow]`s point at that refactor).
+Gate green on the control PC: new cda-comm-doip alive-check unit
+tests, targeted cda-core tests, cda-sovd/sovd-interfaces/opensovd-cda
+(health) checks, clippy per ADR-0032 (two pre-existing pedantic
+warnings noted), uds2sovd-proxy suite, prod20 bench fixture. Docker
+integration tests (incl. the new Tester Present suite) remain
+env-blocked on this Windows host (OpenSSL) — run on the laptop at
+merge-back. PROD-13: `odx-converter/` synced `dc04859` → `ae6e814`
+(33 files: TABLE-SNREF / TABLE-ROW-SNREF / TABLE-ROW-REF resolution,
+`ResolutionError` context, upstream test suite + synthetic ODX
+fixtures); blob hashes verified identical; the four community-schema
+files preserved; JVM build deferred to the laptop (same as `4bc887c`);
+draft PR `#47` (multi-ECU MDD schema break) not absorbed.
 
 ### II.6.16 PROD-16 Fault-lib feature parity (debounce / enabling conditions / aging / IPC retry)
 
@@ -1101,6 +1138,21 @@ Carried forward from research §II.10, prioritized as **M (mandatory for product
 ---
 
 ## II.13 Revision Log
+
+- **2026-07-06, Draft 1.24** - executed the absorption pass queued by
+  the 2026-07-06 check (decisions 3 and 4 in the status report). CDA
+  correctness slice toward `c30055f` absorbed into the vendored
+  subtree (`1337932`+`68ab6c3` alive-check semantics, `4383f93` Tester
+  Present tests, `d96cc2c` reconnect re-detection, `2b0700e`
+  socket/lifecycle restructure, `dcb096b` shutdown task draining,
+  `c30055f` config sanity + `cda-interfaces::config` trait), local
+  overlay preserved with interplay notes in `DOWNSTREAM-PATCHES.md`;
+  `6b21111` and the feature drift stay deferred. `odx-converter/`
+  synced `dc04859`→`ae6e814` under PROD-13, blob-hash verified,
+  community-schema files preserved, draft PR `#47` held. Gate green on
+  the control PC (63 tests incl. new alive-check unit tests and prod20
+  fixture); Docker integration tests and the JVM build defer to the
+  laptop at merge-back. §II.6.15 merge note added.
 
 - **2026-07-06, Draft 1.23** - PROD-15 monthly check executed early
   (report: [`docs/upstream/eclipse-opensovd-status-2026-07-06.md`](docs/upstream/eclipse-opensovd-status-2026-07-06.md));

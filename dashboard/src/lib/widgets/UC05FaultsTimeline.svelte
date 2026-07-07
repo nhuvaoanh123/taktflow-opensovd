@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- UC05 - Aggregated DTC timeline across all ECUs (FR-1.5) -->
 <script lang="ts">
+	import { Activity } from 'lucide-svelte';
+
 	import { listAllFaults } from '$lib/api/sovdClient';
 	import type { DtcEntry } from '$lib/types/sovd';
 
@@ -63,10 +65,17 @@
 </script>
 
 <div class="rounded-lg border border-border bg-card p-5 shadow-sm">
-	<h3 class="mb-3 text-base font-semibold">
+	<h3 class="flex items-center gap-2 text-base font-semibold">
+		<span class="flex h-6 w-6 items-center justify-center rounded-md bg-amber-50 text-amber-600">
+			<Activity class="h-3.5 w-3.5" />
+		</span>
 		Fault feed — all components
-		<span class="ml-1 text-sm font-normal text-muted-foreground">({all.length})</span>
+		<span class="text-sm font-normal text-muted-foreground">({all.length})</span>
 	</h3>
+	<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
+		Every fault currently on the bench, newest first — dot color is severity. New fault
+		events stream in live over the MQTT bridge.
+	</p>
 	{#if all.length === 0}
 		<p class="py-2 text-center text-xs text-muted-foreground">
 			{#if loading}

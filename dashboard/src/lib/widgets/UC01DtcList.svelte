@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- UC01 - Read DTCs per component, status-mask filtered (FR-1.1) -->
 <script lang="ts">
+	import { TriangleAlert } from 'lucide-svelte';
+
 	import { listFaults } from '$lib/api/sovdClient';
 	import type { DtcEntry, DtcStatus, EcuId } from '$lib/types/sovd';
 
@@ -115,10 +117,13 @@
 </script>
 
 <div class="text-card-foreground">
-	<div class="mb-2 flex items-center justify-between gap-2">
-		<h3 class="text-base font-semibold">
+	<div class="mb-1 flex items-center justify-between gap-2">
+		<h3 class="flex items-center gap-2 text-base font-semibold">
+			<span class="flex h-6 w-6 items-center justify-center rounded-md bg-red-50 text-red-600">
+				<TriangleAlert class="h-3.5 w-3.5" />
+			</span>
 			Faults — <span class="font-mono text-indigo-700">{componentId}</span>
-			<span class="ml-1 text-sm font-normal text-muted-foreground">({filtered.length})</span>
+			<span class="text-sm font-normal text-muted-foreground">({filtered.length})</span>
 		</h3>
 		<select
 			bind:value={statusMask}
@@ -129,6 +134,10 @@
 			{/each}
 		</select>
 	</div>
+	<p class="mb-2 text-xs text-muted-foreground">
+		Diagnostic trouble codes this component reports. Filter by status, or click a row for
+		severity, occurrence, and freeze-frame detail.
+	</p>
 
 	{#if visible.length === 0}
 		<p class="py-2 text-center text-xs text-muted-foreground">

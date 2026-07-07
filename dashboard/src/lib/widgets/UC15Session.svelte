@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- UC15 - Session id, security level, timeout countdown (FR-7.1, FR-7.2) -->
 <script lang="ts">
+	import { KeyRound } from 'lucide-svelte';
 	import { onDestroy, onMount } from 'svelte';
 
 	import { getSession } from '$lib/api/sovdClient';
@@ -55,7 +56,16 @@
 </script>
 
 <div class="rounded-lg border border-border bg-card p-5 text-sm shadow-sm">
-	<h3 class="mb-3 text-base font-semibold">Session</h3>
+	<h3 class="flex items-center gap-2 text-base font-semibold">
+		<span class="flex h-6 w-6 items-center justify-center rounded-md bg-violet-50 text-violet-600">
+			<KeyRound class="h-3.5 w-3.5" />
+		</span>
+		Session
+	</h3>
+	<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
+		The observer diagnostic session the gateway issued for this page — level and security
+		clearance decide which actions are allowed.
+	</p>
 	{#if session}
 		<dl class="space-y-1">
 			<div class="flex justify-between gap-3">

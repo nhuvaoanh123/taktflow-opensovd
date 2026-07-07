@@ -2,6 +2,7 @@
 <!-- Taktflow OpenSOVD - Live SIL Operations Dashboard -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { Boxes, Gauge, RefreshCw, TriangleAlert } from 'lucide-svelte';
 
 	import { getGatewayHealth } from '$lib/api/sovdClient';
 	import { subscribe } from '$lib/api/wsClient';
@@ -111,44 +112,88 @@
 	</header>
 
 	<main class="mx-auto flex max-w-[1600px] flex-col gap-6 px-6 py-6">
+		<!-- What this is / how to use it -->
+		<section class="rounded-lg border border-indigo-200 bg-indigo-50/80 px-4 py-3 shadow-sm">
+			<p class="text-sm text-slate-800">
+				<span class="font-semibold text-indigo-900">What you're looking at:</span>
+				a live software-in-the-loop diagnostic bench. A real
+				<span class="font-medium">sovd-main</span> gateway, a classic diagnostic adapter (CDA),
+				and simulated ECUs run on this host — every panel below reads the public SOVD API in
+				real time, nothing is mocked.
+			</p>
+			<p class="mt-1 text-xs text-slate-600">
+				<span class="font-semibold">Try it:</span> select a component card below to scope the
+				fault and component panels · click a fault row to open its freeze-frame detail ·
+				watch your own reads appear in the audit log on the right. The public build is
+				read-only; destructive actions are disabled.
+			</p>
+		</section>
+
 		<!-- Hero stats -->
 		<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-			<div class="rounded-lg border border-border bg-card p-4 shadow-sm">
-				<p class="text-xs font-medium text-muted-foreground">Components online</p>
-				<p class="mt-1 text-3xl font-semibold">{componentCount ?? '--'}</p>
-				<p class="mt-1 text-xs text-muted-foreground">discovered via /sovd/v1/components</p>
+			<div class="flex items-start gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
+				<span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">
+					<Boxes class="h-5 w-5" />
+				</span>
+				<div>
+					<p class="text-xs font-medium text-muted-foreground">Components online</p>
+					<p class="mt-0.5 text-3xl font-semibold">{componentCount ?? '--'}</p>
+					<p class="mt-0.5 text-xs text-muted-foreground">discovered via /sovd/v1/components</p>
+				</div>
 			</div>
-			<div class="rounded-lg border border-border bg-card p-4 shadow-sm">
-				<p class="text-xs font-medium text-muted-foreground">Active faults</p>
-				<p class="mt-1 text-3xl font-semibold {activeFaultCount ? 'text-red-700' : ''}">
-					{activeFaultCount ?? '--'}
-				</p>
-				<p class="mt-1 text-xs text-muted-foreground">across all components on the bench</p>
+			<div class="flex items-start gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
+				<span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-red-50 text-red-600">
+					<TriangleAlert class="h-5 w-5" />
+				</span>
+				<div>
+					<p class="text-xs font-medium text-muted-foreground">Active faults</p>
+					<p class="mt-0.5 text-3xl font-semibold {activeFaultCount ? 'text-red-700' : ''}">
+						{activeFaultCount ?? '--'}
+					</p>
+					<p class="mt-0.5 text-xs text-muted-foreground">across all components on the bench</p>
+				</div>
 			</div>
-			<div class="rounded-lg border border-border bg-card p-4 shadow-sm">
-				<p class="text-xs font-medium text-muted-foreground">API latency</p>
-				<p class="mt-1 text-3xl font-semibold">
-					{health ? `${health.latencyMs}` : '--'}<span class="ml-1 text-base font-normal text-muted-foreground">ms</span>
-				</p>
-				<p class="mt-1 text-xs text-muted-foreground">
-					{health
-						? `SOVD DB ${health.sovdDb.status} · fault sink ${health.faultSink.status}`
-						: 'gateway health probe'}
-				</p>
+			<div class="flex items-start gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
+				<span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
+					<Gauge class="h-5 w-5" />
+				</span>
+				<div>
+					<p class="text-xs font-medium text-muted-foreground">API latency</p>
+					<p class="mt-0.5 text-3xl font-semibold">
+						{health ? `${health.latencyMs}` : '--'}<span class="ml-1 text-base font-normal text-muted-foreground">ms</span>
+					</p>
+					<p class="mt-0.5 text-xs text-muted-foreground">
+						{health
+							? `SOVD DB ${health.sovdDb.status} · fault sink ${health.faultSink.status}`
+							: 'gateway health probe'}
+					</p>
+				</div>
 			</div>
-			<div class="rounded-lg border border-border bg-card p-4 shadow-sm">
-				<p class="text-xs font-medium text-muted-foreground">Operation cycle</p>
-				<p class="mt-1 text-3xl font-semibold capitalize">
-					{health ? (health.operationCycle ?? 'idle') : '--'}
-				</p>
-				<p class="mt-1 text-xs text-muted-foreground">
-					{MUTATIONS_ENABLED ? 'operator controls enabled' : 'public read-only mode'}
-				</p>
+			<div class="flex items-start gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
+				<span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-sky-50 text-sky-600">
+					<RefreshCw class="h-5 w-5" />
+				</span>
+				<div>
+					<p class="text-xs font-medium text-muted-foreground">Operation cycle</p>
+					<p class="mt-0.5 text-3xl font-semibold capitalize">
+						{health ? (health.operationCycle ?? 'idle') : '--'}
+					</p>
+					<p class="mt-0.5 text-xs text-muted-foreground">
+						{MUTATIONS_ENABLED ? 'operator controls enabled' : 'public read-only mode'}
+					</p>
+				</div>
 			</div>
 		</section>
 
 		<section class="space-y-3">
-			<h2 class="text-base font-semibold">Components</h2>
+			<div>
+				<h2 class="text-base font-semibold">Components</h2>
+				<p class="text-xs text-muted-foreground">
+					Discovered live from the gateway — LOCAL components are served by sovd-main itself,
+					CDA components are routed through the classic diagnostic adapter. Select one to
+					scope the panels below.
+				</p>
+			</div>
 			<UC08ComponentCards
 				selectedId={selectedEcu}
 				onSelect={(id) => {
@@ -200,9 +245,13 @@
 			<!-- Selected component -->
 			<div class="flex flex-col gap-6">
 				<section class="rounded-lg border border-border bg-card p-5 shadow-sm">
-					<h3 class="mb-3 text-base font-semibold">
+					<h3 class="text-base font-semibold">
 						Component — <span class="font-mono text-indigo-700">{selectedEcu}</span>
 					</h3>
+					<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
+						Identity read from the entity's capability response; live values are polled
+						data identifiers (DIDs). "--" means the component does not publish that value.
+					</p>
 					<UC09HwSwVersion componentId={selectedEcu} />
 					<div class="my-4 border-t border-border"></div>
 					<UC10LiveDidReads componentId={selectedEcu} />
@@ -223,7 +272,12 @@
 
 		<section class="space-y-3">
 			<div class="flex items-center justify-between gap-3">
-				<h2 class="text-base font-semibold">Historical trends</h2>
+				<div>
+					<h2 class="text-base font-semibold">Historical trends</h2>
+					<p class="text-xs text-muted-foreground">
+						Grafana view of bench telemetry over time (opens embedded, or via the header link).
+					</p>
+				</div>
 				<button
 					onclick={() => (showHistorical = !showHistorical)}
 					class="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-muted"

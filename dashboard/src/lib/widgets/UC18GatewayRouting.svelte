@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- UC18 - Gateway routing / backend registry topology (FR-6.1, FR-6.2) -->
 <script lang="ts">
+	import { Network } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 
 	import { getGatewayHealth, listGatewayBackends } from '$lib/api/sovdClient';
@@ -32,7 +33,16 @@
 </script>
 
 <div class="rounded-lg border border-border bg-card p-5 shadow-sm">
-	<h3 class="mb-3 text-base font-semibold">Gateway</h3>
+	<h3 class="flex items-center gap-2 text-base font-semibold">
+		<span class="flex h-6 w-6 items-center justify-center rounded-md bg-sky-50 text-sky-600">
+			<Network class="h-3.5 w-3.5" />
+		</span>
+		Gateway
+	</h3>
+	<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
+		Health of the sovd-main gateway and its routing table — how each component is reached
+		(local simulator vs. CDA over the sim network).
+	</p>
 	{#if health}
 		<div class="mb-3 grid gap-2 text-[11px] md:grid-cols-4">
 			<div class="rounded-md border border-border bg-muted/40 p-2">

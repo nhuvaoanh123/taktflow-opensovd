@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { Activity } from 'lucide-svelte';
 
-	import { listAllFaults } from '$lib/api/sovdClient';
+	import { compareFaults, listAllFaults } from '$lib/api/sovdClient';
 	import type { DtcEntry } from '$lib/types/sovd';
 	import Panel from './Panel.svelte';
 
@@ -34,14 +34,7 @@
 		}
 	}
 
-	function timeMs(iso?: string): number {
-		const parsed = iso ? Date.parse(iso) : Number.NaN;
-		return Number.isFinite(parsed) ? parsed : 0;
-	}
-
-	const all = $derived(
-		[...baseFaults, ...extraFaults].sort((left, right) => timeMs(right.lastSeen) - timeMs(left.lastSeen))
-	);
+	const all = $derived([...baseFaults, ...extraFaults].sort(compareFaults));
 
 	$effect(() => {
 		// Report null while loading or when the routes are unavailable so the
@@ -68,7 +61,7 @@
 <Panel
 	title="Fault feed"
 	meta={`all components · ${all.length}`}
-	hint="Every fault on the bench right now, newest first — dot color is severity. New events stream in live."
+	hint="Every fault on the bench right now — ordered by last-seen time where the ECU reports one, then by code. Dot color is severity; new events stream in live."
 	chip="bg-amber-50 text-amber-600"
 >
 	{#snippet icon()}<Activity class="h-3.5 w-3.5" />{/snippet}

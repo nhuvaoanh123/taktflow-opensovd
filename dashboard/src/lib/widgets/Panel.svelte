@@ -1,5 +1,10 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Shared card shell: consistent header, collapsible body, hover hint. -->
+<script lang="ts" module>
+	// Deterministic ids stay identical between prerender and hydration.
+	let nextHintId = 0;
+</script>
+
 <script lang="ts">
 	import { ChevronDown, Info } from 'lucide-svelte';
 	import type { Snippet } from 'svelte';
@@ -33,17 +38,22 @@
 		actions,
 		children
 	}: Props = $props();
+
+	// The hover title stays as a fallback; the info button makes the hint
+	// reachable by keyboard focus and by tap.
+	let showHint = $state(false);
+	const hintId = `panel-hint-${(nextHintId += 1)}`;
 </script>
 
 <details
 	{open}
-	class="group rounded-lg border shadow-sm {dark
+	class="group min-w-0 rounded-lg border shadow-sm {dark
 		? 'border-slate-800 bg-slate-900 text-slate-300'
 		: 'border-border bg-card'}"
 >
 	<summary
 		title={hint}
-		class="flex cursor-pointer list-none items-center gap-2 p-5 [&::-webkit-details-marker]:hidden"
+		class="flex cursor-pointer list-none flex-wrap items-center gap-2 p-5 [&::-webkit-details-marker]:hidden"
 	>
 		{#if icon}
 			<span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md {chip}">
@@ -78,9 +88,33 @@
 				? 'text-slate-500'
 				: 'text-muted-foreground/70'}"
 		>
-			<Info class="h-4 w-4" aria-hidden="true" />
+			<button
+				type="button"
+				aria-label="About the {title} panel"
+				aria-expanded={showHint}
+				aria-controls={hintId}
+				class="rounded-full"
+				onclick={(e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					showHint = !showHint;
+				}}
+				onkeydown={(e) => e.stopPropagation()}
+				onfocus={() => (showHint = true)}
+				onblur={() => (showHint = false)}
+			>
+				<Info class="h-4 w-4" aria-hidden="true" />
+			</button>
 			<ChevronDown class="h-4 w-4 transition-transform group-open:rotate-180" />
 		</span>
+		{#if showHint}
+			<span
+				id={hintId}
+				class="basis-full text-xs font-normal {dark ? 'text-slate-400' : 'text-muted-foreground'}"
+			>
+				{hint}
+			</span>
+		{/if}
 	</summary>
 	<div class="px-5 pb-5">
 		{@render children()}

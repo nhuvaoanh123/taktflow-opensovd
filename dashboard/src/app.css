@@ -57,4 +57,10 @@
 	body {
 		@apply bg-background text-foreground;
 	}
+	/* One focus ring everywhere: the indigo accent reads on white cards and
+	   on the dark header / audit log alike. */
+	:focus-visible {
+		outline: 2px solid #6366f1;
+		outline-offset: 2px;
+	}
 }

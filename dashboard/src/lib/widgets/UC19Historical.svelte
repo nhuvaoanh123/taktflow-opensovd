@@ -31,8 +31,4 @@
 			</div>
 		{/if}
 	</div>
-{:else}
-	<div class="rounded-md border border-dashed border-border bg-card p-3 text-center text-xs text-muted-foreground">
-		Historical panel hidden
-	</div>
 {/if}

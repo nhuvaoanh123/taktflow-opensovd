@@ -20,7 +20,7 @@
 <Panel
 	title="Topology"
 	meta="how requests and faults travel"
-	hint="The path your requests take through the bench, and the pipeline a fault passes before it lands in the DTC store."
+	hint="The path your requests take through the bench, and the pipeline a fault passes before it is recorded in the DTC store."
 	open={false}
 	chip="bg-indigo-50 text-indigo-600"
 >

@@ -29,20 +29,37 @@
 
 <div class="text-sm">
 	{#if comp}
+		{@const hasIdentity =
+			comp.hwVersion !== undefined ||
+			comp.swVersion !== undefined ||
+			comp.serial !== undefined ||
+			comp.vin !== undefined}
 		<p class="mb-2 font-medium">{comp.label}</p>
-		<dl class="grid grid-cols-2 gap-x-3 gap-y-1">
-			<dt class="text-muted-foreground">HW rev</dt>
-			<dd class="font-mono">{comp.hwVersion ?? '--'}</dd>
-
-			<dt class="text-muted-foreground">SW rev</dt>
-			<dd class="font-mono">{comp.swVersion ?? '--'}</dd>
-
-			<dt class="text-muted-foreground">Serial</dt>
-			<dd class="font-mono">{comp.serial ?? '--'}</dd>
-
-			<dt class="text-muted-foreground">VIN</dt>
-			<dd class="font-mono">{comp.vin ?? '--'}</dd>
-		</dl>
+		{#if hasIdentity}
+			<dl class="grid grid-cols-2 gap-x-3 gap-y-1">
+				{#if comp.hwVersion !== undefined}
+					<dt class="text-muted-foreground">HW rev</dt>
+					<dd class="font-mono">{comp.hwVersion}</dd>
+				{/if}
+				{#if comp.swVersion !== undefined}
+					<dt class="text-muted-foreground">SW rev</dt>
+					<dd class="font-mono">{comp.swVersion}</dd>
+				{/if}
+				{#if comp.serial !== undefined}
+					<dt class="text-muted-foreground">Serial</dt>
+					<dd class="font-mono">{comp.serial}</dd>
+				{/if}
+				{#if comp.vin !== undefined}
+					<dt class="text-muted-foreground">VIN</dt>
+					<dd class="font-mono">{comp.vin}</dd>
+				{/if}
+			</dl>
+		{:else}
+			<p class="text-xs text-muted-foreground">
+				This component does not publish identity records (HW/SW revision, serial, VIN) via its
+				component route.
+			</p>
+		{/if}
 	{:else}
 		<p class="text-muted-foreground">
 			{loading

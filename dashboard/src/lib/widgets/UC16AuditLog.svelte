@@ -65,7 +65,7 @@
 <Panel
 	title="Audit log"
 	meta="live"
-	hint="Append-only record of every API call the gateway serves — including the reads this page is making right now. Repeats collapse into one row with a count."
+	hint="Append-only record of every API call the gateway serves — including the reads this page is making right now."
 	dark
 	chip="bg-slate-800 text-emerald-400"
 >
@@ -81,7 +81,13 @@
 			{/if}
 		</p>
 	{/if}
-	<div class="max-h-40 overflow-y-auto space-y-px font-mono text-[11px]">
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+	<div
+		role="log"
+		aria-label="Audit log entries"
+		tabindex="0"
+		class="max-h-40 overflow-y-auto space-y-px font-mono text-[11px]"
+	>
 		{#each grouped as entry, i (i)}
 			<div class="flex gap-2 border-b border-slate-800 py-0.5">
 				<span class="shrink-0 tabular-nums text-slate-500">

@@ -42,6 +42,8 @@
 		</span>
 	</p>
 	{#if data}
+		{@const hasValues =
+			data.vin !== undefined || data.batteryVoltage !== undefined || data.temperature !== undefined}
 		<dl class="grid grid-cols-2 gap-x-3 gap-y-1">
 			<dt class="text-muted-foreground">VIN</dt>
 			<dd class="font-mono">{data.vin ?? '--'}</dd>
@@ -56,8 +58,12 @@
 				{data.temperature !== undefined ? `${data.temperature.toFixed(1)} C` : '--'}
 			</dd>
 
+			<!-- An Updated stamp with no values ever decoded would suggest data
+			     that is not arriving, so it stays -- until a value shows up. -->
 			<dt class="text-muted-foreground">Updated</dt>
-			<dd class="tabular-nums">{new Date(data.timestamp).toLocaleTimeString()}</dd>
+			<dd class="tabular-nums">
+				{hasValues ? new Date(data.timestamp).toLocaleTimeString() : '--'}
+			</dd>
 		</dl>
 	{:else}
 		<p class="text-muted-foreground">

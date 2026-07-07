@@ -48,18 +48,12 @@
 		programming: 'text-amber-700',
 		extended: 'text-blue-700'
 	};
-
-	function secBar(level: number): string {
-		const filled = '#'.repeat(level);
-		const empty = '-'.repeat(3 - level);
-		return filled + empty;
-	}
 </script>
 
 <Panel
 	title="Session"
 	meta={session ? `${session.level}, L${session.securityLevel}` : undefined}
-	hint="Your observer session, issued by the gateway — level and security decide what's allowed."
+	hint="The session issued to this page by the gateway — the diagnostic level and security state determine which operations are permitted."
 	open={false}
 	chip="bg-violet-50 text-violet-600"
 >
@@ -78,7 +72,7 @@
 			</div>
 			<div class="flex justify-between">
 				<dt class="text-muted-foreground">Security</dt>
-				<dd class="font-mono">{secBar(session.securityLevel)} L{session.securityLevel}</dd>
+				<dd class="font-medium">Security level {session.securityLevel}</dd>
 			</div>
 			<div class="flex justify-between">
 				<dt class="text-muted-foreground">Expires in</dt>

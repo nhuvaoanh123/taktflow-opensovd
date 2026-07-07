@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- UC01 - Read DTCs per component, status-mask filtered (FR-1.1) -->
 <script lang="ts">
-	import { listFaults } from '$lib/api/sovdClient';
+	import { compareFaults, listFaults } from '$lib/api/sovdClient';
 	import type { DtcEntry, DtcStatus, EcuId } from '$lib/types/sovd';
 
 	interface Props {
@@ -24,14 +24,14 @@
 		refreshNonce = 0
 	}: Props = $props();
 
-	const STATUS_OPTIONS: { value: DtcStatus | 'all'; label: string }[] = [
-		{ value: 'all', label: 'All' },
-		{ value: 'confirmed', label: 'Confirmed' },
-		{ value: 'pending', label: 'Pending' },
-		{ value: 'cleared', label: 'Cleared' },
-		{ value: 'suppressed', label: 'Suppressed' },
-		{ value: 'test_failed', label: 'Test Failed' }
-	];
+	const STATUS_LABEL: Record<DtcStatus, string> = {
+		confirmed: 'Confirmed',
+		pending: 'Pending',
+		cleared: 'Cleared',
+		suppressed: 'Suppressed',
+		test_failed: 'Test Failed',
+		warning_indicator: 'Warning Indicator'
+	};
 
 	let statusMask = $state<DtcStatus | 'all'>('all');
 	let localPage = $state(0);
@@ -41,9 +41,25 @@
 	let lastResetKey = $state('');
 
 	const currentPage = $derived(onPage ? page : localPage);
+	// Offer only statuses that exist in the loaded data, so every option
+	// (except All while loading) returns at least one row.
+	const statusOptions = $derived([
+		{ value: 'all' as const, label: 'All' },
+		...[...new Set(allFaults.map((fault) => fault.status))]
+			.sort()
+			.map((status) => ({ value: status, label: STATUS_LABEL[status] }))
+	]);
 	const filtered = $derived(
 		statusMask === 'all' ? allFaults : allFaults.filter((fault) => fault.status === statusMask)
 	);
+	const hasOccurrences = $derived(allFaults.some((fault) => fault.occurrences !== undefined));
+
+	// A stale filter (e.g. after switching components) falls back to All.
+	$effect(() => {
+		if (!loading && statusMask !== 'all' && !allFaults.some((f) => f.status === statusMask)) {
+			statusMask = 'all';
+		}
+	});
 	const pageCount = $derived(Math.max(1, Math.ceil(filtered.length / pageSize)));
 	const visible = $derived(filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize));
 
@@ -82,7 +98,7 @@
 		try {
 			const faults = await listFaults(id);
 			unavailable = faults === null;
-			allFaults = faults ?? [];
+			allFaults = [...(faults ?? [])].sort(compareFaults);
 		} finally {
 			loading = false;
 		}
@@ -122,7 +138,7 @@
 			bind:value={statusMask}
 			class="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
 		>
-			{#each STATUS_OPTIONS as opt (opt.value)}
+			{#each statusOptions as opt (opt.value)}
 				<option value={opt.value}>{opt.label}</option>
 			{/each}
 		</select>
@@ -146,14 +162,26 @@
 					<th class="py-1.5 text-left font-medium text-muted-foreground">Description</th>
 					<th class="py-1.5 text-left font-medium text-muted-foreground">Sev</th>
 					<th class="py-1.5 text-left font-medium text-muted-foreground">Status</th>
-					<th class="py-1.5 text-right font-medium text-muted-foreground">#</th>
+					{#if hasOccurrences}
+						<th class="py-1.5 text-right font-medium text-muted-foreground">#</th>
+					{/if}
 				</tr>
 			</thead>
 			<tbody>
 				{#each visible as dtc (dtc.id)}
+					<!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
 					<tr
+						role="button"
+						tabindex="0"
+						aria-label={`Open details for ${dtc.code} — ${dtc.description}`}
 						class="cursor-pointer border-b border-border/60 hover:bg-indigo-50/40"
 						onclick={() => onSelect?.(dtc)}
+						onkeydown={(e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								onSelect?.(dtc);
+							}
+						}}
 					>
 						<td class="py-1.5 font-mono font-semibold">{dtc.code}</td>
 						<td class="max-w-[140px] truncate py-1.5 text-muted-foreground">{dtc.description}</td>
@@ -167,7 +195,9 @@
 							</span>
 						</td>
 						<td class="py-1.5 text-xs {STATUS_COLOR[dtc.status]}">{dtc.status}</td>
-						<td class="py-1.5 text-right tabular-nums">{dtc.occurrences ?? '--'}</td>
+						{#if hasOccurrences}
+							<td class="py-1.5 text-right tabular-nums">{dtc.occurrences ?? '--'}</td>
+						{/if}
 					</tr>
 				{/each}
 			</tbody>

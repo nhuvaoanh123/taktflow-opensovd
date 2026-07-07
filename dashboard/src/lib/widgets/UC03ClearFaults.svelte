@@ -17,8 +17,10 @@
 	let source = $state<ComponentSource>('unknown');
 
 	const canClear = $derived(mutationsEnabled && source === 'local');
-	const unavailableLabel = $derived(
-		mutationsEnabled ? 'Clear unavailable for routed components' : 'Clear disabled'
+	const disabledReason = $derived(
+		mutationsEnabled
+			? 'Clear is unavailable for routed components'
+			: 'Disabled in the public read-only build'
 	);
 
 	$effect(() => {
@@ -60,10 +62,16 @@
 			{loading ? 'Clearing...' : 'Clear faults'}
 		</button>
 	{:else}
-		<span
-			class="rounded border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
-		>
-			{unavailableLabel}
+		<!-- Disabled buttons swallow hover events, so the title sits on a wrapper. -->
+		<span title={disabledReason} class="inline-block">
+			<button
+				type="button"
+				disabled
+				aria-label={`Clear — ${disabledReason}`}
+				class="cursor-not-allowed rounded border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
+			>
+				Clear
+			</button>
 		</span>
 	{/if}
 	{#if message}

@@ -619,6 +619,17 @@ function faultTimeMs(value: string | undefined): number {
 	return Number.isFinite(parsed) ? parsed : 0;
 }
 
+// Deterministic fault order: last-seen time (newest first) where the ECU
+// reports one, then code, then component. The fault routes return items in
+// arbitrary order, so an explicit tiebreak keeps rows stable across loads.
+export function compareFaults(left: DtcEntry, right: DtcEntry): number {
+	const timeDelta = faultTimeMs(right.lastSeen) - faultTimeMs(left.lastSeen);
+	if (timeDelta !== 0) {
+		return timeDelta;
+	}
+	return left.code.localeCompare(right.code) || left.component.localeCompare(right.component);
+}
+
 export async function listAllFaults(componentIds?: readonly EcuId[]): Promise<DtcEntry[] | null> {
 	const ids = componentIds ?? (await listComponents())?.map((component) => component.id);
 	if (!ids) {
@@ -629,9 +640,7 @@ export async function listAllFaults(componentIds?: readonly EcuId[]): Promise<Dt
 	if (ids.length > 0 && reachable.length === 0) {
 		return null;
 	}
-	return reachable
-		.flat()
-		.sort((left, right) => faultTimeMs(right.lastSeen) - faultTimeMs(left.lastSeen));
+	return reachable.flat().sort(compareFaults);
 }
 
 export async function getFaultDetail(componentId: EcuId, dtcId: string): Promise<DtcEntry | null> {

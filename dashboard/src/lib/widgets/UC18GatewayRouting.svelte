@@ -36,7 +36,7 @@
 <Panel
 	title="Gateway"
 	meta={health ? `v${health.version} · ${health.status}` : undefined}
-	hint="Health of the sovd-main gateway, and the routing table that says how it reaches each component."
+	hint="Health of the sovd-main gateway, and the routing table describing how it reaches each component."
 	chip="bg-sky-50 text-sky-600"
 >
 	{#snippet icon()}<Network class="h-3.5 w-3.5" />{/snippet}
@@ -70,7 +70,7 @@
 			</div>
 		</div>
 		<p class="mb-2 text-[11px] text-muted-foreground">
-			Health latency {health.latencyMs} ms
+			Gateway health-probe latency {health.latencyMs} ms
 		</p>
 	{:else if !loading}
 		<p class="mb-2 text-[11px] text-muted-foreground">Health route unavailable.</p>
@@ -85,36 +85,39 @@
 				</span>
 				<ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
 			</summary>
-		<table class="w-full text-xs">
-			<thead>
-				<tr class="border-b border-border">
-					<th class="py-1.5 text-left font-medium text-muted-foreground">Backend</th>
-					<th class="py-1.5 text-left font-medium text-muted-foreground">Address</th>
-					<th class="py-1.5 text-left font-medium text-muted-foreground">Proto</th>
-					<th class="py-1.5 text-right font-medium text-muted-foreground">Latency</th>
-					<th class="py-1.5 text-right font-medium text-muted-foreground">Status</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each backends as b (b.id)}
-					<tr class="border-b border-border/60">
-						<td class="py-1.5 font-mono font-medium">{b.id}</td>
-						<td class="py-1.5 font-mono text-muted-foreground">{b.address}</td>
-						<td class="py-1.5 uppercase">{b.protocol}</td>
-						<td class="py-1.5 text-right tabular-nums">
-							{b.reachable ? `${b.latencyMs} ms` : '--'}
-						</td>
-						<td class="py-1.5 text-right">
-							{#if b.reachable}
-								<span class="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">up</span>
-							{:else}
-								<span class="rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">down</span>
-							{/if}
-						</td>
+		<!-- Long route URLs scroll inside the card; the page body never scrolls sideways. -->
+		<div class="overflow-x-auto">
+			<table class="w-full text-xs">
+				<thead>
+					<tr class="border-b border-border">
+						<th class="py-1.5 text-left font-medium text-muted-foreground">Backend</th>
+						<th class="py-1.5 text-left font-medium text-muted-foreground">Address</th>
+						<th class="py-1.5 text-left font-medium text-muted-foreground">Proto</th>
+						<th class="py-1.5 text-right font-medium text-muted-foreground">Latency</th>
+						<th class="py-1.5 text-right font-medium text-muted-foreground">Status</th>
 					</tr>
-				{/each}
-			</tbody>
-		</table>
+				</thead>
+				<tbody>
+					{#each backends as b (b.id)}
+						<tr class="border-b border-border/60">
+							<td class="py-1.5 font-mono font-medium">{b.id}</td>
+							<td class="py-1.5 font-mono text-muted-foreground">{b.address}</td>
+							<td class="py-1.5 uppercase">{b.protocol}</td>
+							<td class="py-1.5 text-right tabular-nums">
+								{b.reachable ? `${b.latencyMs} ms` : '--'}
+							</td>
+							<td class="py-1.5 text-right">
+								{#if b.reachable}
+									<span class="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">up</span>
+								{:else}
+									<span class="rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">down</span>
+								{/if}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
 		</details>
 	{:else}
 		<p class="py-2 text-center text-xs text-muted-foreground">

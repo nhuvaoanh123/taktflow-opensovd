@@ -74,7 +74,9 @@ WORKDIR /src/opensovd-core
 COPY opensovd-core /src/opensovd-core
 COPY classic-diagnostic-adapter /src/classic-diagnostic-adapter
 COPY dlt-tracing-lib /src/dlt-tracing-lib
-RUN cargo build --locked -p sovd-main --release --features fault-sink-mqtt
+# insecure-http-fallback: TLS terminates at the caddy ingress; sovd-main
+# serves plain HTTP on the internal docker network only (not published).
+RUN cargo build --locked -p sovd-main --release --features fault-sink-mqtt,insecure-http-fallback
 
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*

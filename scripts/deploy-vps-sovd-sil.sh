@@ -134,7 +134,7 @@ COPY --from=builder /src/classic-diagnostic-adapter/testcontainer/cda/entrypoint
 RUN sed -i 's/\r$//' /app/entrypoint.sh \
     && chmod +x /app/opensovd-cda /app/entrypoint.sh \
     && mkdir -p /app/odx
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT [\"/app/entrypoint.sh\"]
 EOF"
 
 log "building VPS images"

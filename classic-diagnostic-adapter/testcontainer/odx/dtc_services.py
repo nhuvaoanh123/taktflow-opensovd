@@ -379,53 +379,58 @@ def add_dtc_read_services(dlr: DiagLayerRaw):
             bit_length=24,
             base_data_type=DataType.A_UINT32,
         ),
+        # Taktflow downstream patch (see DOWNSTREAM-PATCHES.md): the upstream
+        # placeholder names Code1..Code6 read as unfinished data on the public
+        # bench dashboard. The odx_ids and trouble codes stay untouched so the
+        # ECU-sim byte streams and every existing reference keep working; only
+        # the human-visible short_name/text change.
         dtcs_raw=[
             DiagnosticTroubleCode(
                 odx_id=derived_id(dlr, "DTC.Code1"),
-                short_name="Code1",
+                short_name="Supply_Voltage_Low",
                 trouble_code="123456",  # 0x01E240
                 text=Text(
-                    text="DTC Code 1",
+                    text="Supply voltage below operating threshold",
                 ),
             ),
             DiagnosticTroubleCode(
                 odx_id=derived_id(dlr, "DTC.Code2"),
-                short_name="Code2",
+                short_name="Lost_Comm_Subnet_Node",
                 trouble_code="234567",  # 0x039447
                 text=Text(
-                    text="DTC Code 2",
+                    text="Lost communication with a subnet node",
                 ),
             ),
             DiagnosticTroubleCode(
                 odx_id=derived_id(dlr, "DTC.Code3"),
-                short_name="Code3",
+                short_name="Supply_Voltage_High",
                 trouble_code="123457",  # 0x01E241
                 text=Text(
-                    text="DTC Code 3",
+                    text="Supply voltage above operating threshold",
                 ),
             ),
             DiagnosticTroubleCode(
                 odx_id=derived_id(dlr, "DTC.Code4"),
-                short_name="Code4",
+                short_name="Bus_Off_Channel_A",
                 trouble_code="123458",  # 0x01E242
                 text=Text(
-                    text="DTC Code 4",
+                    text="Communication controller bus-off on channel A",
                 ),
             ),
             DiagnosticTroubleCode(
                 odx_id=derived_id(dlr, "DTC.Code5"),
-                short_name="Code5",
+                short_name="Config_Checksum_Error",
                 trouble_code="123459",  # 0x01E243
                 text=Text(
-                    text="DTC Code 5",
+                    text="Configuration block checksum mismatch",
                 ),
             ),
             DiagnosticTroubleCode(
                 odx_id=derived_id(dlr, "DTC.Code6"),
-                short_name="Code6",
+                short_name="Overtemperature_Warning",
                 trouble_code="123460",  # 0x01E244
                 text=Text(
-                    text="DTC Code 6",
+                    text="Internal temperature above warning threshold",
                 ),
             ),
         ],

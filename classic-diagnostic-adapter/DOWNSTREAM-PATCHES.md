@@ -248,6 +248,44 @@ passes locally on the primary workstation. Follow-up candidate: a
 mock-UdsEcu handler test or a docker-bench smoke that hits `/catalog`
 and asserts the payload contains known DIDs from `CVC00000.mdd`.
 
+### Patch 5 &mdash; realistic DTC names in the testcontainer demo ODX
+
+**Files.** [`testcontainer/odx/dtc_services.py`](testcontainer/odx/dtc_services.py)
+(six `DiagnosticTroubleCode` entries in the shared DTC DOP); regenerated
+`testcontainer/odx/*.mdd` / `*.pdx` artifacts.
+
+**What changed.** The upstream demo fault memory names its six DTCs
+`Code1`..`Code6` with texts `DTC Code 1`.. The Taktflow public SIL
+bench forwards these ECUs (FLXC1000 / FLXCNG1000) through the gateway
+onto a customer-facing dashboard, where placeholder names read as
+unfinished data. The `short_name` (which the CDA serves as
+`fault_name`) and `text` were renamed to plausible gateway-ECU faults
+(`Supply_Voltage_Low`, `Lost_Comm_Subnet_Node`, `Supply_Voltage_High`,
+`Bus_Off_Channel_A`, `Config_Checksum_Error`,
+`Overtemperature_Warning`). The `odx_id`s (`DTC.Code1`..) and
+`trouble_code` values are untouched, so ECU-sim byte streams, status
+masks, and every existing odx-link reference keep working.
+
+**Why.** The demo ODX is the only fault content the public bench can
+show for CDA-forwarded ECUs; the placeholder names undermined the
+credibility of an otherwise real pipeline. Root cause is upstream test
+data that was never meant to be shown to end users.
+
+**Real use cases beyond the Taktflow bench.** Any deployment that
+demos the CDA testcontainer to non-developers benefits from
+self-describing fault names; upstream demo quality issue.
+
+**Config shape.** None &mdash; data-only change in generated ODX.
+Upstream happy-path preserved: codes, ids, service structure and byte
+layout are identical.
+
+**Upstreamable?** Yes &mdash; cosmetic demo-data improvement, no
+behavioral change.
+
+**Tests.** No test references the old names (verified by grep); the
+CDA integration tests assert on trouble codes (`01E240` etc.), which
+are unchanged. MDDs regenerated via `generate_docker.sh`.
+
 ## Summary
 
 | # | Patch | Flag | Default | Upstream happy-path preserved? | Upstreamable? |
@@ -256,6 +294,7 @@ and asserts the payload contains known DIDs from `CVC00000.mdd`.
 | 2 | `enable_alive_check` toggle | `bool` | `true` | Yes | Yes |
 | 3 | Gateway-IP connection sharing | *(none)* | *(new behavior)* | Yes (collapses to upstream when 1:1) | Yes |
 | 4 | `/catalog` aggregated endpoint | *(none)* | *(additive route)* | Yes (new route, no existing surface changed) | Yes |
+| 5 | Realistic DTC names in demo ODX | *(none)* | *(data-only)* | Yes (codes/ids/layout unchanged) | Yes |
 
 **Net read.** None of these are Pi-stubborn. Each covers a real
 production use case that exists independently of the Taktflow bench.

@@ -1,7 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Reference strip: how a request and a fault travel through the SIL. -->
 <script lang="ts">
-	import { ChevronDown, GitBranch } from 'lucide-svelte';
+	import { GitBranch } from 'lucide-svelte';
+
+	import Panel from './Panel.svelte';
 
 	const FLOWS = [
 		{
@@ -15,18 +17,15 @@
 	];
 </script>
 
-<details class="group rounded-lg border border-border bg-card shadow-sm">
-	<summary class="flex cursor-pointer list-none items-center justify-between gap-2 p-5 [&::-webkit-details-marker]:hidden">
-		<h3 class="flex items-center gap-2 text-base font-semibold">
-			<span class="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">
-				<GitBranch class="h-3.5 w-3.5" />
-			</span>
-			Topology
-			<span class="text-sm font-normal text-muted-foreground">— how requests and faults travel</span>
-		</h3>
-		<ChevronDown class="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
-	</summary>
-	<div class="space-y-2.5 px-5 pb-5">
+<Panel
+	title="Topology"
+	meta="how requests and faults travel"
+	hint="The path your requests take through the bench, and the pipeline a fault passes before it lands in the DTC store."
+	open={false}
+	chip="bg-indigo-50 text-indigo-600"
+>
+	{#snippet icon()}<GitBranch class="h-3.5 w-3.5" />{/snippet}
+	<div class="space-y-2.5">
 		{#each FLOWS as flow (flow.label)}
 			<div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
 				<span class="w-28 shrink-0 text-xs text-muted-foreground">{flow.label}</span>
@@ -44,4 +43,4 @@
 			</div>
 		{/each}
 	</div>
-</details>
+</Panel>

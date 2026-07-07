@@ -5,6 +5,7 @@
 
 	import { listRoutines, pollRoutine, startRoutine } from '$lib/api/sovdClient';
 	import type { EcuId, RoutineEntry } from '$lib/types/sovd';
+	import Panel from './Panel.svelte';
 
 	interface Props {
 		componentId?: EcuId;
@@ -94,21 +95,18 @@
 	}
 </script>
 
-<div class="rounded-lg border border-border bg-card p-5 shadow-sm">
-	<div class="mb-1 flex items-center justify-between gap-2">
-		<h3 class="flex items-center gap-2 text-base font-semibold">
-			<span class="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
-				<Play class="h-3.5 w-3.5" />
-			</span>
-			Operations
-		</h3>
+<Panel
+	title="Operations"
+	meta={componentId}
+	hint="Diagnostic routines this component exposes — startable only on an operator build; the public build is read-only."
+	chip="bg-emerald-50 text-emerald-600"
+>
+	{#snippet icon()}<Play class="h-3.5 w-3.5" />{/snippet}
+	{#snippet actions()}
 		<span class="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
 			{controlEnabled ? 'Control enabled' : 'Read-only'}
 		</span>
-	</div>
-	<p class="mb-3 text-xs text-muted-foreground">
-		Routines this component exposes — startable only on an operator build.
-	</p>
+	{/snippet}
 
 	{#if actionError}
 		<p class="mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700">
@@ -158,4 +156,4 @@
 		{/each}
 	</div>
 	{/if}
-</div>
+</Panel>

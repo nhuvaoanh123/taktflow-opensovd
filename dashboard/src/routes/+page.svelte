@@ -2,7 +2,7 @@
 <!-- Taktflow OpenSOVD - Live SIL Operations Dashboard -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { Boxes, Gauge, RefreshCw, TriangleAlert } from 'lucide-svelte';
+	import { Boxes, Cpu, Gauge, RefreshCw, TriangleAlert } from 'lucide-svelte';
 
 	import { getGatewayHealth } from '$lib/api/sovdClient';
 	import { subscribe } from '$lib/api/wsClient';
@@ -21,6 +21,7 @@
 	import UC16AuditLog from '$lib/widgets/UC16AuditLog.svelte';
 	import UC18GatewayRouting from '$lib/widgets/UC18GatewayRouting.svelte';
 	import UC19Historical from '$lib/widgets/UC19Historical.svelte';
+	import Panel from '$lib/widgets/Panel.svelte';
 	import SystemTopology from '$lib/widgets/SystemTopology.svelte';
 
 	let selectedEcu = $state<EcuId>('cvc');
@@ -195,70 +196,71 @@
 			/>
 		</section>
 
-		<div class="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-			<!-- Faults -->
-			<div class="flex flex-col gap-6">
-				<section class="rounded-lg border border-border bg-card p-5 shadow-sm">
-					<UC01DtcList
-						componentId={selectedEcu}
-						page={dtcPage}
-						pageSize={PAGE_SIZE}
-						refreshNonce={faultRefreshNonce}
-						onSelect={(dtc) => (selectedDtc = dtc)}
-						onPage={(pageNumber) => (dtcPage = pageNumber)}
-						onTotalChange={(total) => (filteredCount = total)}
-					/>
-					<div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-						<UC03ClearFaults
-							componentId={selectedEcu}
-							mutationsEnabled={MUTATIONS_ENABLED}
-							onCleared={() => {
-								faultRefreshNonce += 1;
-								liveFaults = liveFaults.filter((fault) => fault.component !== selectedEcu);
-							}}
-						/>
-						<UC04Pagination
-							total={filteredCount}
-							pageSize={PAGE_SIZE}
-							page={dtcPage}
-							onPage={(pageNumber) => (dtcPage = pageNumber)}
-						/>
-					</div>
-				</section>
-
-				<UC05FaultsTimeline
-					extraFaults={liveFaults}
+		<div class="grid items-start gap-5 xl:grid-cols-3">
+			<!-- Row: the three primary panels -->
+			<Panel
+				title="Faults"
+				meta={`${selectedEcu} · ${filteredCount}`}
+				hint="Trouble codes reported by the selected component — click a row for severity, occurrences, and freeze-frame detail."
+				chip="bg-red-50 text-red-600"
+			>
+				{#snippet icon()}<TriangleAlert class="h-3.5 w-3.5" />{/snippet}
+				<UC01DtcList
+					componentId={selectedEcu}
+					page={dtcPage}
+					pageSize={PAGE_SIZE}
 					refreshNonce={faultRefreshNonce}
-					onCount={(count) => (activeFaultCount = count)}
+					onSelect={(dtc) => (selectedDtc = dtc)}
+					onPage={(pageNumber) => (dtcPage = pageNumber)}
+					onTotalChange={(total) => (filteredCount = total)}
 				/>
-			</div>
+				<div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+					<UC03ClearFaults
+						componentId={selectedEcu}
+						mutationsEnabled={MUTATIONS_ENABLED}
+						onCleared={() => {
+							faultRefreshNonce += 1;
+							liveFaults = liveFaults.filter((fault) => fault.component !== selectedEcu);
+						}}
+					/>
+					<UC04Pagination
+						total={filteredCount}
+						pageSize={PAGE_SIZE}
+						page={dtcPage}
+						onPage={(pageNumber) => (dtcPage = pageNumber)}
+					/>
+				</div>
+			</Panel>
 
-			<!-- Selected component -->
-			<div class="flex flex-col gap-6">
-				<section class="rounded-lg border border-border bg-card p-5 shadow-sm">
-					<h3 class="text-base font-semibold">
-						Component — <span class="font-mono text-indigo-700">{selectedEcu}</span>
-					</h3>
-					<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
-						Identity and live values — "--" just means the ECU doesn't publish it.
-					</p>
-					<UC09HwSwVersion componentId={selectedEcu} />
-					<div class="my-4 border-t border-border"></div>
-					<UC10LiveDidReads componentId={selectedEcu} />
-				</section>
+			<Panel
+				title="Component"
+				meta={selectedEcu}
+				hint={'Identity and live values for the selected component — "--" means the ECU does not publish that value.'}
+				chip="bg-indigo-50 text-indigo-600"
+			>
+				{#snippet icon()}<Cpu class="h-3.5 w-3.5" />{/snippet}
+				<UC09HwSwVersion componentId={selectedEcu} />
+				<div class="my-4 border-t border-border"></div>
+				<UC10LiveDidReads componentId={selectedEcu} />
+			</Panel>
 
-				<UC06Operations componentId={selectedEcu} controlEnabled={MUTATIONS_ENABLED} />
-			</div>
+			<UC18GatewayRouting />
 
-			<!-- System -->
-			<div class="flex flex-col gap-6">
-				<UC18GatewayRouting />
-				<UC16AuditLog />
-				<UC15Session />
+			<!-- Row: live feeds and controls -->
+			<UC05FaultsTimeline
+				extraFaults={liveFaults}
+				refreshNonce={faultRefreshNonce}
+				onCount={(count) => (activeFaultCount = count)}
+			/>
+			<UC06Operations componentId={selectedEcu} controlEnabled={MUTATIONS_ENABLED} />
+			<UC16AuditLog />
+
+			<!-- Row: reference panels, collapsed by default -->
+			<UC15Session />
+			<div class="xl:col-span-2">
+				<SystemTopology />
 			</div>
 		</div>
-
-		<SystemTopology />
 
 		<section class="space-y-3">
 			<div class="flex items-center justify-between gap-3">

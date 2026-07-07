@@ -6,6 +6,7 @@
 
 	import { getAuditLog } from '$lib/api/sovdClient';
 	import type { AuditEntry } from '$lib/types/sovd';
+	import Panel from './Panel.svelte';
 
 	interface Props {
 		extraEntries?: AuditEntry[];
@@ -61,16 +62,14 @@
 	const RESULT_COLOR = { ok: 'text-emerald-400', denied: 'text-red-400', error: 'text-orange-400' };
 </script>
 
-<div class="rounded-lg border border-slate-800 bg-slate-900 p-5 text-slate-300 shadow-sm">
-	<h3 class="flex items-center gap-2 text-base font-semibold text-white">
-		<span class="flex h-6 w-6 items-center justify-center rounded-md bg-slate-800 text-emerald-400">
-			<Terminal class="h-3.5 w-3.5" />
-		</span>
-		Audit log
-	</h3>
-	<p class="mb-3 mt-0.5 text-xs text-slate-400">
-		Every API call the gateway serves — including the ones this page is making right now.
-	</p>
+<Panel
+	title="Audit log"
+	meta="live"
+	hint="Append-only record of every API call the gateway serves — including the reads this page is making right now. Repeats collapse into one row with a count."
+	dark
+	chip="bg-slate-800 text-emerald-400"
+>
+	{#snippet icon()}<Terminal class="h-3.5 w-3.5" />{/snippet}
 	{#if allEntries.length === 0}
 		<p class="py-2 text-center text-xs text-slate-400">
 			{#if loading}
@@ -98,4 +97,4 @@
 			</div>
 		{/each}
 	</div>
-</div>
+</Panel>

@@ -5,6 +5,7 @@
 
 	import { listAllFaults } from '$lib/api/sovdClient';
 	import type { DtcEntry } from '$lib/types/sovd';
+	import Panel from './Panel.svelte';
 
 	interface Props {
 		extraFaults?: DtcEntry[];
@@ -64,17 +65,13 @@
 	}
 </script>
 
-<div class="rounded-lg border border-border bg-card p-5 shadow-sm">
-	<h3 class="flex items-center gap-2 text-base font-semibold">
-		<span class="flex h-6 w-6 items-center justify-center rounded-md bg-amber-50 text-amber-600">
-			<Activity class="h-3.5 w-3.5" />
-		</span>
-		Fault feed — all components
-		<span class="text-sm font-normal text-muted-foreground">({all.length})</span>
-	</h3>
-	<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
-		Everything on the bench right now, newest first — dot color is severity.
-	</p>
+<Panel
+	title="Fault feed"
+	meta={`all components · ${all.length}`}
+	hint="Every fault on the bench right now, newest first — dot color is severity. New events stream in live."
+	chip="bg-amber-50 text-amber-600"
+>
+	{#snippet icon()}<Activity class="h-3.5 w-3.5" />{/snippet}
 	{#if all.length === 0}
 		<p class="py-2 text-center text-xs text-muted-foreground">
 			{#if loading}
@@ -99,4 +96,4 @@
 			</li>
 		{/each}
 	</ol>
-</div>
+</Panel>

@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 
 	import { getGatewayHealth, listGatewayBackends } from '$lib/api/sovdClient';
+	import Panel from './Panel.svelte';
 	import type { GatewayBackend, GatewayHealth } from '$lib/types/sovd';
 
 	let backends = $state<GatewayBackend[] | null>(null);
@@ -32,16 +33,13 @@
 	}
 </script>
 
-<div class="rounded-lg border border-border bg-card p-5 shadow-sm">
-	<h3 class="flex items-center gap-2 text-base font-semibold">
-		<span class="flex h-6 w-6 items-center justify-center rounded-md bg-sky-50 text-sky-600">
-			<Network class="h-3.5 w-3.5" />
-		</span>
-		Gateway
-	</h3>
-	<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
-		sovd-main health, and how it reaches each component.
-	</p>
+<Panel
+	title="Gateway"
+	meta={health ? `v${health.version} · ${health.status}` : undefined}
+	hint="Health of the sovd-main gateway, and the routing table that says how it reaches each component."
+	chip="bg-sky-50 text-sky-600"
+>
+	{#snippet icon()}<Network class="h-3.5 w-3.5" />{/snippet}
 	{#if health}
 		<div class="mb-3 grid gap-2 text-[11px] md:grid-cols-4">
 			<div class="rounded-md border border-border bg-muted/40 p-2">
@@ -129,4 +127,4 @@
 			{/if}
 		</p>
 	{/if}
-</div>
+</Panel>

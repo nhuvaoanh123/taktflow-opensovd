@@ -9,7 +9,7 @@
 	interface Props {
 		onSelect?: (id: EcuId) => void;
 		selectedId?: EcuId;
-		onLoaded?: (count: number | null) => void;
+		onLoaded?: (count: number | null, duplicates?: number) => void;
 	}
 
 	let { onSelect, selectedId, onLoaded }: Props = $props();
@@ -28,7 +28,10 @@
 			const discovered = await listComponents();
 			unavailable = discovered === null;
 			components = discovered ?? [];
-			onLoaded?.(discovered === null ? null : discovered.length);
+			onLoaded?.(
+				discovered === null ? null : discovered.length,
+				discovered?.filter((comp) => comp.state === 'Duplicate').length ?? 0
+			);
 		} finally {
 			loading = false;
 		}
@@ -66,7 +69,11 @@
 	{#each components as comp (comp.id)}
 		<button
 			onclick={() => onSelect?.(comp.id)}
+			title={comp.state === 'Duplicate'
+				? 'Same logical address as the detected variant — the CDA addresses only one of them, so this entry serves no live data.'
+				: undefined}
 			class="flex min-h-28 flex-col gap-1.5 rounded-lg border px-3 py-2.5 text-left shadow-sm transition-colors
+				{comp.state === 'Duplicate' ? 'opacity-60' : ''}
 				{selectedId === comp.id
 				? 'border-indigo-600 bg-indigo-50/60 ring-1 ring-indigo-600'
 				: 'border-border bg-card hover:border-indigo-300'}"

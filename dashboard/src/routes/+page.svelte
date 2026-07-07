@@ -35,6 +35,7 @@
 	let healthChecked = $state(false);
 	let healthTimer: ReturnType<typeof setInterval> | null = null;
 	let componentCount = $state<number | null>(null);
+	let duplicateCount = $state(0);
 	let activeFaultCount = $state<number | null>(null);
 
 	const PAGE_SIZE = 5;
@@ -136,7 +137,11 @@
 				<div>
 					<p class="text-xs font-medium text-muted-foreground">Components registered</p>
 					<p class="mt-0.5 text-3xl font-semibold">{componentCount ?? '--'}</p>
-					<p class="mt-0.5 text-xs text-muted-foreground">discovered via /sovd/v1/components</p>
+					<p class="mt-0.5 text-xs text-muted-foreground">
+						discovered via /sovd/v1/components{duplicateCount
+							? ` · includes ${duplicateCount} duplicate variant`
+							: ''}
+					</p>
 				</div>
 			</div>
 			<div class="flex items-start gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -196,7 +201,10 @@
 					selectedEcu = id;
 					dtcPage = 0;
 				}}
-				onLoaded={(count) => (componentCount = count)}
+				onLoaded={(count, duplicates) => {
+					componentCount = count;
+					duplicateCount = duplicates ?? 0;
+				}}
 			/>
 		</section>
 

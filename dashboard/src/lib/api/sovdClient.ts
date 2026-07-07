@@ -352,10 +352,13 @@ function freezeFrameFromEnvironment(environment: unknown): Record<string, string
 
 function mapFault(componentId: EcuId, fault: FaultResponse, detail?: FaultDetailsResponse): DtcEntry {
 	const code = fault.display_code ?? fault.code ?? 'UNKNOWN';
+	// fault_name is an ODX short-name (identifier, underscores instead of
+	// spaces); render it as prose without altering the underlying record.
+	const description = fault.fault_name?.replaceAll('_', ' ') ?? 'Reported fault';
 	return {
 		id: `${componentId}:${fault.code ?? code}`,
 		code,
-		description: fault.fault_name ?? 'Reported fault',
+		description,
 		severity: severityFromValue(fault.severity),
 		status: statusFromValue(fault.status),
 		component: componentId,

@@ -116,10 +116,13 @@
 		<!-- What this is / how to use it -->
 		<section class="rounded-lg border border-indigo-200 bg-indigo-50/80 px-4 py-3 shadow-sm">
 			<p class="text-sm text-slate-800">
-				This bench is real — a <span class="font-medium">sovd-main</span> gateway, a classic
-				diagnostic adapter, and simulated ECUs run on this server, and every number on this
-				page comes straight from their API. Pick a component, click a fault, and the audit
-				log will catch you doing it. It's read-only, so click anything.
+				This dashboard operates against a live software-in-the-loop diagnostic bench: an
+				OpenSOVD gateway (<span class="font-medium">sovd-main</span>), a classic diagnostic
+				adapter, and simulated ECUs hosted on this server. Every value shown is retrieved
+				from the public SOVD API in real time; no data is mocked. The deployment is
+				read-only — selecting a component scopes the fault and component panels, each fault
+				row opens its detail record, and every request this page issues is captured in the
+				audit log.
 			</p>
 		</section>
 
@@ -244,7 +247,7 @@
 				<UC10LiveDidReads componentId={selectedEcu} />
 			</Panel>
 
-			<UC18GatewayRouting />
+			<UC16AuditLog />
 
 			<!-- Row: live feeds and controls -->
 			<UC05FaultsTimeline
@@ -253,7 +256,7 @@
 				onCount={(count) => (activeFaultCount = count)}
 			/>
 			<UC06Operations componentId={selectedEcu} controlEnabled={MUTATIONS_ENABLED} />
-			<UC16AuditLog />
+			<UC18GatewayRouting />
 
 			<!-- Row: reference panels, collapsed by default -->
 			<UC15Session />

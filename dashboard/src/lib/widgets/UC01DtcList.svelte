@@ -116,9 +116,9 @@
 
 <div class="text-card-foreground">
 	<div class="mb-2 flex items-center justify-between gap-2">
-		<h3 class="text-sm font-semibold">
-			Faults — <span class="font-mono text-muted-foreground">{componentId}</span>
-			<span class="ml-1 font-normal text-muted-foreground">({filtered.length})</span>
+		<h3 class="text-base font-semibold">
+			Faults — <span class="font-mono text-indigo-700">{componentId}</span>
+			<span class="ml-1 text-sm font-normal text-muted-foreground">({filtered.length})</span>
 		</h3>
 		<select
 			bind:value={statusMask}
@@ -141,35 +141,35 @@
 			{/if}
 		</p>
 	{:else}
-		<table class="w-full text-xs">
+		<table class="w-full text-sm">
 			<thead>
-				<tr class="border-b border-border">
-					<th class="py-1 text-left font-medium text-muted-foreground">Code</th>
-					<th class="py-1 text-left font-medium text-muted-foreground">Description</th>
-					<th class="py-1 text-left font-medium text-muted-foreground">Sev</th>
-					<th class="py-1 text-left font-medium text-muted-foreground">Status</th>
-					<th class="py-1 text-right font-medium text-muted-foreground">#</th>
+				<tr class="border-b border-border text-xs">
+					<th class="py-1.5 text-left font-medium text-muted-foreground">Code</th>
+					<th class="py-1.5 text-left font-medium text-muted-foreground">Description</th>
+					<th class="py-1.5 text-left font-medium text-muted-foreground">Sev</th>
+					<th class="py-1.5 text-left font-medium text-muted-foreground">Status</th>
+					<th class="py-1.5 text-right font-medium text-muted-foreground">#</th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each visible as dtc (dtc.id)}
 					<tr
-						class="cursor-pointer border-b border-border/60 hover:bg-muted"
+						class="cursor-pointer border-b border-border/60 hover:bg-indigo-50/40"
 						onclick={() => onSelect?.(dtc)}
 					>
-						<td class="py-1 font-mono font-semibold">{dtc.code}</td>
-						<td class="max-w-[120px] truncate py-1 text-muted-foreground">{dtc.description}</td>
-						<td class="py-1">
+						<td class="py-1.5 font-mono font-semibold">{dtc.code}</td>
+						<td class="max-w-[140px] truncate py-1.5 text-muted-foreground">{dtc.description}</td>
+						<td class="py-1.5">
 							<span
-								class="rounded border px-1.5 py-0.5 text-[10px] font-medium {SEVERITY_COLOR[
+								class="rounded border px-1.5 py-0.5 text-[11px] font-medium {SEVERITY_COLOR[
 									dtc.severity
 								]}"
 							>
 								{dtc.severity}
 							</span>
 						</td>
-						<td class="py-1 {STATUS_COLOR[dtc.status]}">{dtc.status}</td>
-						<td class="py-1 text-right tabular-nums">{dtc.occurrences ?? '--'}</td>
+						<td class="py-1.5 text-xs {STATUS_COLOR[dtc.status]}">{dtc.status}</td>
+						<td class="py-1.5 text-right tabular-nums">{dtc.occurrences ?? '--'}</td>
 					</tr>
 				{/each}
 			</tbody>

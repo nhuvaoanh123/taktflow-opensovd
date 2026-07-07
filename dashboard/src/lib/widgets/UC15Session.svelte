@@ -54,13 +54,13 @@
 	}
 </script>
 
-<div class="rounded-md border border-border bg-card p-4 text-xs">
-	<h3 class="mb-2 text-sm font-semibold">Session</h3>
+<div class="rounded-lg border border-border bg-card p-5 text-sm shadow-sm">
+	<h3 class="mb-3 text-base font-semibold">Session</h3>
 	{#if session}
-		<dl class="space-y-0.5">
-			<div class="flex justify-between">
+		<dl class="space-y-1">
+			<div class="flex justify-between gap-3">
 				<dt class="text-muted-foreground">Session ID</dt>
-				<dd class="font-mono">{session.sessionId}</dd>
+				<dd class="truncate font-mono text-xs leading-5">{session.sessionId}</dd>
 			</div>
 			<div class="flex justify-between">
 				<dt class="text-muted-foreground">Level</dt>

@@ -60,8 +60,8 @@
 	const RESULT_COLOR = { ok: 'text-emerald-700', denied: 'text-red-700', error: 'text-orange-700' };
 </script>
 
-<div class="rounded-md border border-border bg-card p-4">
-	<h3 class="mb-2 text-sm font-semibold">Audit log</h3>
+<div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+	<h3 class="mb-3 text-base font-semibold">Audit log</h3>
 	{#if allEntries.length === 0}
 		<p class="py-2 text-center text-xs text-muted-foreground">
 			{#if loading}
@@ -73,7 +73,7 @@
 			{/if}
 		</p>
 	{/if}
-	<div class="max-h-40 overflow-y-auto space-y-px font-mono text-[10px]">
+	<div class="max-h-40 overflow-y-auto space-y-px font-mono text-[11px]">
 		{#each grouped as entry, i (i)}
 			<div class="flex gap-2 border-b border-border/50 py-0.5">
 				<span class="shrink-0 tabular-nums text-muted-foreground">

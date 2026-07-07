@@ -9,9 +9,10 @@
 	interface Props {
 		onSelect?: (id: EcuId) => void;
 		selectedId?: EcuId;
+		onLoaded?: (count: number | null) => void;
 	}
 
-	let { onSelect, selectedId }: Props = $props();
+	let { onSelect, selectedId, onLoaded }: Props = $props();
 
 	let components = $state<SovdComponent[]>([]);
 	let loading = $state(true);
@@ -27,28 +28,31 @@
 			const discovered = await listComponents();
 			unavailable = discovered === null;
 			components = discovered ?? [];
+			onLoaded?.(discovered === null ? null : discovered.length);
 		} finally {
 			loading = false;
 		}
 	}
 
 	const CAP_COLOR: Record<string, string> = {
-		faults: 'border-slate-300 bg-white text-slate-700',
-		operations: 'border-slate-300 bg-white text-slate-700',
-		data: 'border-slate-300 bg-white text-slate-700',
-		modes: 'border-slate-300 bg-white text-slate-700'
+		faults: 'border-slate-200 bg-slate-50 text-slate-600',
+		operations: 'border-slate-200 bg-slate-50 text-slate-600',
+		data: 'border-slate-200 bg-slate-50 text-slate-600',
+		modes: 'border-slate-200 bg-slate-50 text-slate-600'
 	};
 
+	// Source identity carries a fixed tint per origin; the text label is the
+	// identity channel, the tint is reinforcement.
 	const SOURCE_COLOR: Record<string, string> = {
-		local: 'border-slate-300 bg-slate-50 text-slate-700',
-		cda: 'border-slate-300 bg-slate-50 text-slate-700',
-		dfm: 'border-slate-300 bg-slate-50 text-slate-700',
-		unknown: 'border-slate-300 bg-slate-50 text-slate-700'
+		local: 'border-slate-300 bg-slate-100 text-slate-700',
+		cda: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+		dfm: 'border-violet-200 bg-violet-50 text-violet-700',
+		unknown: 'border-slate-200 bg-slate-50 text-slate-500'
 	};
 </script>
 
 {#if components.length === 0}
-	<p class="rounded-md border border-border bg-card px-3 py-4 text-center text-xs text-muted-foreground">
+	<p class="rounded-lg border border-border bg-card px-3 py-4 text-center text-xs text-muted-foreground shadow-sm">
 		{#if loading}
 			Discovering components...
 		{:else if unavailable}
@@ -58,14 +62,14 @@
 		{/if}
 	</p>
 {:else}
-<div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
 	{#each components as comp (comp.id)}
 		<button
 			onclick={() => onSelect?.(comp.id)}
-			class="flex min-h-28 flex-col gap-1 rounded-md border px-3 py-2 text-left transition-colors
+			class="flex min-h-28 flex-col gap-1.5 rounded-lg border px-3 py-2.5 text-left shadow-sm transition-colors
 				{selectedId === comp.id
-				? 'border-slate-900 bg-slate-50 shadow-sm'
-				: 'border-border bg-card hover:bg-muted'}"
+				? 'border-indigo-600 bg-indigo-50/60 ring-1 ring-indigo-600'
+				: 'border-border bg-card hover:border-indigo-300'}"
 		>
 			<span class="truncate text-sm font-semibold">{comp.label}</span>
 			<div class="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">

@@ -31,30 +31,30 @@
 	}
 </script>
 
-<div class="rounded-md border border-border bg-card p-4">
-	<h3 class="mb-3 text-sm font-semibold">Gateway</h3>
+<div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+	<h3 class="mb-3 text-base font-semibold">Gateway</h3>
 	{#if health}
-		<div class="mb-3 grid gap-2 text-[10px] md:grid-cols-4">
-			<div class="rounded border border-border bg-muted/30 p-2">
+		<div class="mb-3 grid gap-2 text-[11px] md:grid-cols-4">
+			<div class="rounded-md border border-border bg-muted/40 p-2">
 				<div class="text-muted-foreground">Server</div>
-				<div class="text-xs font-semibold">v{health.version}</div>
+				<div class="text-sm font-semibold">v{health.version}</div>
 			</div>
-			<div class="rounded border border-border bg-muted/30 p-2">
+			<div class="rounded-md border border-border bg-muted/40 p-2">
 				<div class="text-muted-foreground">Cycle</div>
-				<div class="text-xs font-semibold">{health.operationCycle ?? 'idle'}</div>
+				<div class="text-sm font-semibold capitalize">{health.operationCycle ?? 'idle'}</div>
 			</div>
-			<div class="rounded border border-border bg-muted/30 p-2">
+			<div class="rounded-md border border-border bg-muted/40 p-2">
 				<div class="text-muted-foreground">SOVD DB</div>
-				<div class="text-xs font-semibold {probeTone(health.sovdDb.status)}">
+				<div class="text-sm font-semibold {probeTone(health.sovdDb.status)}">
 					{health.sovdDb.status}
 				</div>
 				{#if health.sovdDb.reason}
 					<div class="truncate text-muted-foreground">{health.sovdDb.reason}</div>
 				{/if}
 			</div>
-			<div class="rounded border border-border bg-muted/30 p-2">
+			<div class="rounded-md border border-border bg-muted/40 p-2">
 				<div class="text-muted-foreground">Fault sink</div>
-				<div class="text-xs font-semibold {probeTone(health.faultSink.status)}">
+				<div class="text-sm font-semibold {probeTone(health.faultSink.status)}">
 					{health.faultSink.status}
 				</div>
 				{#if health.faultSink.reason}
@@ -62,37 +62,37 @@
 				{/if}
 			</div>
 		</div>
-		<p class="mb-2 text-[10px] text-muted-foreground">
+		<p class="mb-2 text-[11px] text-muted-foreground">
 			Health latency {health.latencyMs} ms
 		</p>
 	{:else if !loading}
-		<p class="mb-2 text-[10px] text-muted-foreground">Health route unavailable.</p>
+		<p class="mb-2 text-[11px] text-muted-foreground">Health route unavailable.</p>
 	{/if}
 	{#if backends && backends.length > 0}
 		<table class="w-full text-xs">
 			<thead>
 				<tr class="border-b border-border">
-					<th class="py-1 text-left font-medium text-muted-foreground">Backend</th>
-					<th class="py-1 text-left font-medium text-muted-foreground">Address</th>
-					<th class="py-1 text-left font-medium text-muted-foreground">Proto</th>
-					<th class="py-1 text-right font-medium text-muted-foreground">Latency</th>
-					<th class="py-1 text-right font-medium text-muted-foreground">Status</th>
+					<th class="py-1.5 text-left font-medium text-muted-foreground">Backend</th>
+					<th class="py-1.5 text-left font-medium text-muted-foreground">Address</th>
+					<th class="py-1.5 text-left font-medium text-muted-foreground">Proto</th>
+					<th class="py-1.5 text-right font-medium text-muted-foreground">Latency</th>
+					<th class="py-1.5 text-right font-medium text-muted-foreground">Status</th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each backends as b (b.id)}
 					<tr class="border-b border-border/60">
-						<td class="py-1 font-mono">{b.id}</td>
-						<td class="py-1 font-mono text-muted-foreground">{b.address}</td>
-						<td class="py-1 uppercase">{b.protocol}</td>
-						<td class="py-1 text-right tabular-nums">
+						<td class="py-1.5 font-mono font-medium">{b.id}</td>
+						<td class="py-1.5 font-mono text-muted-foreground">{b.address}</td>
+						<td class="py-1.5 uppercase">{b.protocol}</td>
+						<td class="py-1.5 text-right tabular-nums">
 							{b.reachable ? `${b.latencyMs} ms` : '--'}
 						</td>
-						<td class="py-1 text-right">
+						<td class="py-1.5 text-right">
 							{#if b.reachable}
-								<span class="text-emerald-700">up</span>
+								<span class="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">up</span>
 							{:else}
-								<span class="text-red-700">down</span>
+								<span class="rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">down</span>
 							{/if}
 						</td>
 					</tr>

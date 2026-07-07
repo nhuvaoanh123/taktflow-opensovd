@@ -33,18 +33,21 @@
 	});
 </script>
 
-<div class="text-xs">
+<div class="text-sm">
 	<p class="mb-2 flex items-baseline justify-between gap-2">
-		<span class="font-medium text-muted-foreground">Live data</span>
-		<span class="text-[10px] text-muted-foreground">polled at 1 Hz</span>
+		<span class="font-medium">Live data</span>
+		<span class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+			<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500"></span>
+			polled at 1 Hz
+		</span>
 	</p>
 	{#if data}
-		<dl class="grid grid-cols-2 gap-x-3 gap-y-0.5">
+		<dl class="grid grid-cols-2 gap-x-3 gap-y-1">
 			<dt class="text-muted-foreground">VIN</dt>
 			<dd class="font-mono">{data.vin ?? '--'}</dd>
 
 			<dt class="text-muted-foreground">Battery</dt>
-			<dd class="font-mono font-semibold">
+			<dd class="font-mono text-base font-semibold">
 				{data.batteryVoltage !== undefined ? `${data.batteryVoltage.toFixed(2)} V` : '--'}
 			</dd>
 

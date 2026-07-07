@@ -92,10 +92,10 @@
 	}
 </script>
 
-<div class="rounded-md border border-border bg-card p-4">
+<div class="rounded-lg border border-border bg-card p-5 shadow-sm">
 	<div class="mb-3 flex items-center justify-between gap-2">
-		<h3 class="text-sm font-semibold">Operations</h3>
-		<span class="text-[10px] font-medium text-muted-foreground">
+		<h3 class="text-base font-semibold">Operations</h3>
+		<span class="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
 			{controlEnabled ? 'Control enabled' : 'Read-only'}
 		</span>
 	</div>
@@ -117,9 +117,9 @@
 			{/if}
 		</p>
 	{:else}
-	<div class="divide-y divide-border rounded border border-border">
+	<div class="divide-y divide-border rounded-md border border-border">
 		{#each routines as rt (rt.id)}
-			<div class="flex items-center gap-3 px-3 py-2 text-xs">
+			<div class="flex items-center gap-3 px-3 py-2.5 text-sm">
 				<div class="min-w-0 grow">
 					<p class="truncate font-medium">{rt.name}</p>
 					{#if rt.name !== rt.id}
@@ -130,7 +130,7 @@
 					{/if}
 				</div>
 				<span
-					class="rounded border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide {STATUS_CHIP[
+					class="rounded border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide {STATUS_CHIP[
 						rt.status
 					]}"
 				>

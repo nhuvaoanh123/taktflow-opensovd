@@ -32,6 +32,8 @@
 	let health = $state<GatewayHealth | null>(null);
 	let healthChecked = $state(false);
 	let healthTimer: ReturnType<typeof setInterval> | null = null;
+	let componentCount = $state<number | null>(null);
+	let activeFaultCount = $state<number | null>(null);
 
 	const PAGE_SIZE = 5;
 	const MUTATIONS_ENABLED = import.meta.env.VITE_SIL_MUTATIONS_ENABLED === 'true';
@@ -66,33 +68,41 @@
 <UC02DtcDetail dtc={selectedDtc} onClose={() => (selectedDtc = null)} />
 
 <div class="min-h-screen bg-background text-foreground">
-	<header class="border-b border-border bg-card">
+	<header class="bg-slate-900 text-white">
 		<div class="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4 px-6 py-4">
-			<div>
-				<h1 class="text-lg font-semibold tracking-tight">OpenSOVD SIL Operations</h1>
-				<p class="text-xs text-muted-foreground">
-					Public simulator environment — sovd-main, CDA, ECU simulator, MQTT
-				</p>
+			<div class="flex items-center gap-3">
+				<div
+					class="flex h-9 w-9 items-center justify-center rounded-md bg-indigo-500 text-sm font-bold tracking-tight"
+					aria-hidden="true"
+				>
+					TF
+				</div>
+				<div>
+					<h1 class="text-lg font-semibold tracking-tight">OpenSOVD SIL Operations</h1>
+					<p class="text-xs text-slate-400">
+						Live software-in-the-loop bench — sovd-main · CDA · ECU simulator · MQTT
+					</p>
+				</div>
 			</div>
 			<div class="flex flex-wrap items-center gap-5">
-				<nav class="flex items-center gap-4 text-xs font-medium text-muted-foreground">
-					<a href="https://taktflow-systems.com/" class="hover:text-foreground">Taktflow Systems</a>
-					<a href="/sovd/" class="hover:text-foreground">Engineering spec</a>
-					<a href="/sovd/grafana/" class="hover:text-foreground">Grafana</a>
+				<nav class="flex items-center gap-4 text-sm font-medium text-slate-300">
+					<a href="https://taktflow-systems.com/" class="hover:text-white">Taktflow Systems</a>
+					<a href="/sovd/" class="hover:text-white">Engineering spec</a>
+					<a href="/sovd/grafana/" class="hover:text-white">Grafana</a>
 				</nav>
 				{#if health}
 					<span
-						class="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs"
+						class="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium"
 					>
-						<span class="h-2 w-2 rounded-full bg-emerald-600"></span>
+						<span class="h-2 w-2 rounded-full bg-emerald-400"></span>
 						<span>API healthy</span>
-						<span class="text-muted-foreground">v{health.version} · {health.latencyMs} ms</span>
+						<span class="font-normal text-slate-400">v{health.version} · {health.latencyMs} ms</span>
 					</span>
 				{:else if healthChecked}
 					<span
-						class="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs"
+						class="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium"
 					>
-						<span class="h-2 w-2 rounded-full bg-red-600"></span>
+						<span class="h-2 w-2 rounded-full bg-red-400"></span>
 						<span>API unreachable</span>
 					</span>
 				{/if}
@@ -100,27 +110,59 @@
 		</div>
 	</header>
 
-	<main class="mx-auto flex max-w-[1600px] flex-col gap-6 px-6 py-5">
-		<section class="space-y-2">
-			<div class="flex flex-wrap items-baseline justify-between gap-2">
-				<h2 class="text-sm font-semibold">Components</h2>
-				<span class="text-xs text-muted-foreground">
-					{MUTATIONS_ENABLED ? 'Operator controls enabled' : 'Public read-only mode'}
-				</span>
+	<main class="mx-auto flex max-w-[1600px] flex-col gap-6 px-6 py-6">
+		<!-- Hero stats -->
+		<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+			<div class="rounded-lg border border-border bg-card p-4 shadow-sm">
+				<p class="text-xs font-medium text-muted-foreground">Components online</p>
+				<p class="mt-1 text-3xl font-semibold">{componentCount ?? '--'}</p>
+				<p class="mt-1 text-xs text-muted-foreground">discovered via /sovd/v1/components</p>
 			</div>
+			<div class="rounded-lg border border-border bg-card p-4 shadow-sm">
+				<p class="text-xs font-medium text-muted-foreground">Active faults</p>
+				<p class="mt-1 text-3xl font-semibold {activeFaultCount ? 'text-red-700' : ''}">
+					{activeFaultCount ?? '--'}
+				</p>
+				<p class="mt-1 text-xs text-muted-foreground">across all components on the bench</p>
+			</div>
+			<div class="rounded-lg border border-border bg-card p-4 shadow-sm">
+				<p class="text-xs font-medium text-muted-foreground">API latency</p>
+				<p class="mt-1 text-3xl font-semibold">
+					{health ? `${health.latencyMs}` : '--'}<span class="ml-1 text-base font-normal text-muted-foreground">ms</span>
+				</p>
+				<p class="mt-1 text-xs text-muted-foreground">
+					{health
+						? `SOVD DB ${health.sovdDb.status} · fault sink ${health.faultSink.status}`
+						: 'gateway health probe'}
+				</p>
+			</div>
+			<div class="rounded-lg border border-border bg-card p-4 shadow-sm">
+				<p class="text-xs font-medium text-muted-foreground">Operation cycle</p>
+				<p class="mt-1 text-3xl font-semibold capitalize">
+					{health ? (health.operationCycle ?? 'idle') : '--'}
+				</p>
+				<p class="mt-1 text-xs text-muted-foreground">
+					{MUTATIONS_ENABLED ? 'operator controls enabled' : 'public read-only mode'}
+				</p>
+			</div>
+		</section>
+
+		<section class="space-y-3">
+			<h2 class="text-base font-semibold">Components</h2>
 			<UC08ComponentCards
 				selectedId={selectedEcu}
 				onSelect={(id) => {
 					selectedEcu = id;
 					dtcPage = 0;
 				}}
+				onLoaded={(count) => (componentCount = count)}
 			/>
 		</section>
 
 		<div class="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]">
 			<!-- Faults -->
 			<div class="flex flex-col gap-6">
-				<section class="rounded-md border border-border bg-card p-4">
+				<section class="rounded-lg border border-border bg-card p-5 shadow-sm">
 					<UC01DtcList
 						componentId={selectedEcu}
 						page={dtcPage}
@@ -148,17 +190,21 @@
 					</div>
 				</section>
 
-				<UC05FaultsTimeline extraFaults={liveFaults} refreshNonce={faultRefreshNonce} />
+				<UC05FaultsTimeline
+					extraFaults={liveFaults}
+					refreshNonce={faultRefreshNonce}
+					onCount={(count) => (activeFaultCount = count)}
+				/>
 			</div>
 
 			<!-- Selected component -->
 			<div class="flex flex-col gap-6">
-				<section class="rounded-md border border-border bg-card p-4">
-					<h3 class="mb-3 text-sm font-semibold">
-						Component — <span class="font-mono text-muted-foreground">{selectedEcu}</span>
+				<section class="rounded-lg border border-border bg-card p-5 shadow-sm">
+					<h3 class="mb-3 text-base font-semibold">
+						Component — <span class="font-mono text-indigo-700">{selectedEcu}</span>
 					</h3>
 					<UC09HwSwVersion componentId={selectedEcu} />
-					<div class="my-3 border-t border-border"></div>
+					<div class="my-4 border-t border-border"></div>
 					<UC10LiveDidReads componentId={selectedEcu} />
 				</section>
 
@@ -175,12 +221,12 @@
 
 		<SystemTopology />
 
-		<section class="space-y-2">
+		<section class="space-y-3">
 			<div class="flex items-center justify-between gap-3">
-				<h2 class="text-sm font-semibold">Historical trends</h2>
+				<h2 class="text-base font-semibold">Historical trends</h2>
 				<button
 					onclick={() => (showHistorical = !showHistorical)}
-					class="rounded border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted"
+					class="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-muted"
 				>
 					{showHistorical ? 'Hide panel' : 'Show panel'}
 				</button>

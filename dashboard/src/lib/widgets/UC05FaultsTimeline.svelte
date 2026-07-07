@@ -7,9 +7,10 @@
 	interface Props {
 		extraFaults?: DtcEntry[];
 		refreshNonce?: number;
+		onCount?: (count: number | null) => void;
 	}
 
-	let { extraFaults = [], refreshNonce = 0 }: Props = $props();
+	let { extraFaults = [], refreshNonce = 0, onCount }: Props = $props();
 
 	let baseFaults = $state<DtcEntry[]>([]);
 	let loading = $state(true);
@@ -39,6 +40,12 @@
 		[...baseFaults, ...extraFaults].sort((left, right) => timeMs(right.lastSeen) - timeMs(left.lastSeen))
 	);
 
+	$effect(() => {
+		// Report null while loading or when the routes are unavailable so the
+		// hero tile shows -- instead of a false zero.
+		onCount?.(loading || (unavailable && all.length === 0) ? null : all.length);
+	});
+
 	const SEV_DOT: Record<string, string> = {
 		critical: 'bg-red-600',
 		high: 'bg-orange-500',
@@ -55,10 +62,10 @@
 	}
 </script>
 
-<div class="rounded-md border border-border bg-card p-4">
-	<h3 class="mb-2 text-sm font-semibold">
+<div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+	<h3 class="mb-3 text-base font-semibold">
 		Fault feed — all components
-		<span class="ml-1 font-normal text-muted-foreground">({all.length})</span>
+		<span class="ml-1 text-sm font-normal text-muted-foreground">({all.length})</span>
 	</h3>
 	{#if all.length === 0}
 		<p class="py-2 text-center text-xs text-muted-foreground">
@@ -73,13 +80,13 @@
 	{/if}
 	<ol class="space-y-0.5">
 		{#each all as dtc (dtc.id)}
-			<li class="flex items-start gap-2 border-b border-border/50 py-1 text-xs last:border-b-0">
-				<span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {SEV_DOT[dtc.severity]}"></span>
-				<span class="w-16 shrink-0 font-mono font-semibold">{dtc.code}</span>
+			<li class="flex items-start gap-2.5 border-b border-border/50 py-1.5 text-sm last:border-b-0">
+				<span class="mt-[7px] h-2 w-2 shrink-0 rounded-full {SEV_DOT[dtc.severity]}"></span>
+				<span class="w-20 shrink-0 font-mono font-semibold">{dtc.code}</span>
 				<span class="grow truncate text-muted-foreground">{dtc.description}</span>
-				<span class="shrink-0 font-mono text-[10px] text-muted-foreground">{dtc.component}</span>
+				<span class="shrink-0 rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">{dtc.component}</span>
 				{#if dtc.lastSeen}
-					<span class="shrink-0 text-[10px] tabular-nums text-muted-foreground">{rel(dtc.lastSeen)}</span>
+					<span class="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted-foreground">{rel(dtc.lastSeen)}</span>
 				{/if}
 			</li>
 		{/each}

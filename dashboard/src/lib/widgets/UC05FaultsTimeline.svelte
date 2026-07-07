@@ -73,8 +73,7 @@
 		<span class="text-sm font-normal text-muted-foreground">({all.length})</span>
 	</h3>
 	<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
-		Every fault currently on the bench, newest first — dot color is severity. New fault
-		events stream in live over the MQTT bridge.
+		Everything on the bench right now, newest first — dot color is severity.
 	</p>
 	{#if all.length === 0}
 		<p class="py-2 text-center text-xs text-muted-foreground">

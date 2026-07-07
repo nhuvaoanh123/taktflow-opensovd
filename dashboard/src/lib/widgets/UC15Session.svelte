@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- UC15 - Session id, security level, timeout countdown (FR-7.1, FR-7.2) -->
 <script lang="ts">
-	import { KeyRound } from 'lucide-svelte';
+	import { ChevronDown, KeyRound } from 'lucide-svelte';
 	import { onDestroy, onMount } from 'svelte';
 
 	import { getSession } from '$lib/api/sovdClient';
@@ -55,16 +55,22 @@
 	}
 </script>
 
-<div class="rounded-lg border border-border bg-card p-5 text-sm shadow-sm">
-	<h3 class="flex items-center gap-2 text-base font-semibold">
-		<span class="flex h-6 w-6 items-center justify-center rounded-md bg-violet-50 text-violet-600">
-			<KeyRound class="h-3.5 w-3.5" />
-		</span>
-		Session
-	</h3>
-	<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
-		The observer diagnostic session the gateway issued for this page — level and security
-		clearance decide which actions are allowed.
+<details class="group rounded-lg border border-border bg-card text-sm shadow-sm">
+	<summary class="flex cursor-pointer list-none items-center justify-between gap-2 p-5 [&::-webkit-details-marker]:hidden">
+		<h3 class="flex items-center gap-2 text-base font-semibold">
+			<span class="flex h-6 w-6 items-center justify-center rounded-md bg-violet-50 text-violet-600">
+				<KeyRound class="h-3.5 w-3.5" />
+			</span>
+			Session
+			{#if session}
+				<span class="text-sm font-normal text-muted-foreground">— {session.level}, L{session.securityLevel}</span>
+			{/if}
+		</h3>
+		<ChevronDown class="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+	</summary>
+	<div class="px-5 pb-5">
+	<p class="mb-3 text-xs text-muted-foreground">
+		Your observer session, issued by the gateway — level and security decide what's allowed.
 	</p>
 	{#if session}
 		<dl class="space-y-1">
@@ -100,4 +106,5 @@
 			{loading ? 'Loading session...' : 'Session route unavailable.'}
 		</p>
 	{/if}
-</div>
+	</div>
+</details>

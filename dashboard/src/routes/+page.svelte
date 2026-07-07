@@ -115,17 +115,10 @@
 		<!-- What this is / how to use it -->
 		<section class="rounded-lg border border-indigo-200 bg-indigo-50/80 px-4 py-3 shadow-sm">
 			<p class="text-sm text-slate-800">
-				<span class="font-semibold text-indigo-900">What you're looking at:</span>
-				a live software-in-the-loop diagnostic bench. A real
-				<span class="font-medium">sovd-main</span> gateway, a classic diagnostic adapter (CDA),
-				and simulated ECUs run on this host — every panel below reads the public SOVD API in
-				real time, nothing is mocked.
-			</p>
-			<p class="mt-1 text-xs text-slate-600">
-				<span class="font-semibold">Try it:</span> select a component card below to scope the
-				fault and component panels · click a fault row to open its freeze-frame detail ·
-				watch your own reads appear in the audit log on the right. The public build is
-				read-only; destructive actions are disabled.
+				This bench is real — a <span class="font-medium">sovd-main</span> gateway, a classic
+				diagnostic adapter, and simulated ECUs run on this server, and every number on this
+				page comes straight from their API. Pick a component, click a fault, and the audit
+				log will catch you doing it. It's read-only, so click anything.
 			</p>
 		</section>
 
@@ -189,9 +182,7 @@
 			<div>
 				<h2 class="text-base font-semibold">Components</h2>
 				<p class="text-xs text-muted-foreground">
-					Discovered live from the gateway — LOCAL components are served by sovd-main itself,
-					CDA components are routed through the classic diagnostic adapter. Select one to
-					scope the panels below.
+					Discovered live from the gateway. Select one — the fault and component panels follow it.
 				</p>
 			</div>
 			<UC08ComponentCards
@@ -249,8 +240,7 @@
 						Component — <span class="font-mono text-indigo-700">{selectedEcu}</span>
 					</h3>
 					<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
-						Identity read from the entity's capability response; live values are polled
-						data identifiers (DIDs). "--" means the component does not publish that value.
+						Identity and live values — "--" just means the ECU doesn't publish it.
 					</p>
 					<UC09HwSwVersion componentId={selectedEcu} />
 					<div class="my-4 border-t border-border"></div>
@@ -263,8 +253,8 @@
 			<!-- System -->
 			<div class="flex flex-col gap-6">
 				<UC18GatewayRouting />
-				<UC15Session />
 				<UC16AuditLog />
+				<UC15Session />
 			</div>
 		</div>
 
@@ -274,9 +264,7 @@
 			<div class="flex items-center justify-between gap-3">
 				<div>
 					<h2 class="text-base font-semibold">Historical trends</h2>
-					<p class="text-xs text-muted-foreground">
-						Grafana view of bench telemetry over time (opens embedded, or via the header link).
-					</p>
+					<p class="text-xs text-muted-foreground">Bench telemetry over time, via Grafana.</p>
 				</div>
 				<button
 					onclick={() => (showHistorical = !showHistorical)}

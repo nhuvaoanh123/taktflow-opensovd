@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- UC18 - Gateway routing / backend registry topology (FR-6.1, FR-6.2) -->
 <script lang="ts">
-	import { Network } from 'lucide-svelte';
+	import { ChevronDown, Network } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 
 	import { getGatewayHealth, listGatewayBackends } from '$lib/api/sovdClient';
@@ -40,8 +40,7 @@
 		Gateway
 	</h3>
 	<p class="mb-3 mt-0.5 text-xs text-muted-foreground">
-		Health of the sovd-main gateway and its routing table — how each component is reached
-		(local simulator vs. CDA over the sim network).
+		sovd-main health, and how it reaches each component.
 	</p>
 	{#if health}
 		<div class="mb-3 grid gap-2 text-[11px] md:grid-cols-4">
@@ -79,6 +78,15 @@
 		<p class="mb-2 text-[11px] text-muted-foreground">Health route unavailable.</p>
 	{/if}
 	{#if backends && backends.length > 0}
+		{@const upCount = backends.filter((b) => b.reachable).length}
+		<details class="group">
+			<summary class="flex cursor-pointer list-none items-center justify-between gap-2 py-1 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+				<span>
+					Backend routes ({backends.length}) —
+					{upCount === backends.length ? 'all up' : `${upCount} up, ${backends.length - upCount} down`}
+				</span>
+				<ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+			</summary>
 		<table class="w-full text-xs">
 			<thead>
 				<tr class="border-b border-border">
@@ -109,6 +117,7 @@
 				{/each}
 			</tbody>
 		</table>
+		</details>
 	{:else}
 		<p class="py-2 text-center text-xs text-muted-foreground">
 			{#if loading}

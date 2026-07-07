@@ -135,8 +135,7 @@
 		</select>
 	</div>
 	<p class="mb-2 text-xs text-muted-foreground">
-		Diagnostic trouble codes this component reports. Filter by status, or click a row for
-		severity, occurrence, and freeze-frame detail.
+		Trouble codes from this component — click a row for the full detail.
 	</p>
 
 	{#if visible.length === 0}

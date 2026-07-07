@@ -69,8 +69,7 @@
 		Audit log
 	</h3>
 	<p class="mb-3 mt-0.5 text-xs text-slate-400">
-		Append-only record of every API call the gateway serves — the reads this page makes show
-		up here as anonymous observer actions. Repeats collapse into one row with a count.
+		Every API call the gateway serves — including the ones this page is making right now.
 	</p>
 	{#if allEntries.length === 0}
 		<p class="py-2 text-center text-xs text-slate-400">

@@ -107,8 +107,7 @@
 		</span>
 	</div>
 	<p class="mb-3 text-xs text-muted-foreground">
-		Diagnostic routines this component exposes. On the public build they are listed but not
-		startable — an operator build enables the Start controls.
+		Routines this component exposes — startable only on an operator build.
 	</p>
 
 	{#if actionError}

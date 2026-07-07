@@ -291,7 +291,9 @@ async fn build_in_memory_server(
     if let Some(component_id) = configured_dfm_component_id(config) {
         let dfm = Arc::new(build_dfm(config, component_id).await?);
         tracing::info!(component = %component_id, "Registering DFM as forward backend");
-        server.register_forward(Arc::clone(&dfm) as Arc<_>).await?;
+        server
+            .register_forward_named(Arc::clone(&dfm) as Arc<_>, config.dfm_display_name.clone())
+            .await?;
         dfm_arc = Some(dfm);
     }
 
@@ -303,7 +305,9 @@ async fn build_in_memory_server(
             path_prefix = backend.path_prefix(),
             "Registering CDA forward backend"
         );
-        server.register_forward(Arc::new(backend)).await?;
+        server
+            .register_forward_named(Arc::new(backend), forward.display_name.clone())
+            .await?;
     }
 
     Ok(AssembledServer {
@@ -725,6 +729,7 @@ mod tests {
             server: defaults.server,
             backend: defaults.backend,
             dfm_component_id: Some(String::new()),
+            dfm_display_name: None,
             local_demo_components: vec!["cvc".to_owned()],
             cda_forwards: Vec::new(),
             bench_fault_injection: defaults.bench_fault_injection,
@@ -756,12 +761,14 @@ mod tests {
             server: defaults.server,
             backend: defaults.backend,
             dfm_component_id: Some(String::new()),
+            dfm_display_name: None,
             local_demo_components: vec!["bcm".to_owned()],
             cda_forwards: vec![CdaForwardConfig {
                 component_id: "cvc".to_owned(),
                 remote_component_id: None,
                 base_url: base_url.to_string(),
                 path_prefix: "sovd/v1".to_owned(),
+                display_name: Some("CVC via CDA".to_owned()),
             }],
             bench_fault_injection: defaults.bench_fault_injection,
             mqtt: None,
@@ -783,12 +790,13 @@ mod tests {
             .iter()
             .map(|item| (item.id.clone(), item.name.clone()))
             .collect();
-        // list_entities returns in alphabetical order (bcm, cvc).
+        // list_entities returns in alphabetical order (bcm, cvc). The CDA
+        // forward carries its configured display name instead of the raw id.
         assert_eq!(
             ids,
             vec![
                 ("bcm".to_owned(), "Body Control Module".to_owned()),
-                ("cvc".to_owned(), "cvc".to_owned()),
+                ("cvc".to_owned(), "CVC via CDA".to_owned()),
             ]
         );
 
@@ -811,7 +819,10 @@ mod tests {
             )
             .await
             .expect("local bcm faults");
-        assert!(bcm_faults.items.is_empty());
+        assert!(
+            bcm_faults.items.iter().any(|fault| fault.code == "B1234"),
+            "local bcm should serve the seeded demo fault"
+        );
         assert!(!server.bench_fault_injection_enabled());
 
         handle.abort();
@@ -825,12 +836,14 @@ mod tests {
             server: defaults.server,
             backend: defaults.backend,
             dfm_component_id: Some(String::new()),
+            dfm_display_name: None,
             local_demo_components: vec!["cvc".to_owned()],
             cda_forwards: vec![CdaForwardConfig {
                 component_id: "cvc".to_owned(),
                 remote_component_id: None,
                 base_url: base_url.to_string(),
                 path_prefix: "sovd/v1".to_owned(),
+                display_name: None,
             }],
             bench_fault_injection: defaults.bench_fault_injection,
             mqtt: None,

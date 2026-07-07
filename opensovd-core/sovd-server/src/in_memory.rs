@@ -445,6 +445,7 @@ impl BenchFaultOverride {
 pub struct InMemoryServer {
     components: Arc<RwLock<HashMap<ComponentId, ComponentState>>>,
     forwards: Arc<RwLock<HashMap<ComponentId, Arc<dyn SovdBackend + Send + Sync>>>>,
+    forward_display_names: Arc<RwLock<HashMap<ComponentId, String>>>,
     fault_overrides: Arc<RwLock<HashMap<ComponentId, BenchFaultOverride>>>,
     extended_vehicle_subscriptions: Arc<RwLock<HashMap<String, ExtendedVehicleSubscription>>>,
     extended_vehicle_publisher: Option<Arc<dyn ExtendedVehiclePublisher>>,
@@ -485,6 +486,7 @@ impl InMemoryServer {
         Self {
             components: Arc::new(RwLock::new(HashMap::new())),
             forwards: Arc::new(RwLock::new(HashMap::new())),
+            forward_display_names: Arc::new(RwLock::new(HashMap::new())),
             fault_overrides: Arc::new(RwLock::new(HashMap::new())),
             extended_vehicle_subscriptions: Arc::new(RwLock::new(HashMap::new())),
             extended_vehicle_publisher: None,
@@ -548,6 +550,7 @@ impl InMemoryServer {
         Ok(Self {
             components: Arc::new(RwLock::new(components)),
             forwards: Arc::new(RwLock::new(HashMap::new())),
+            forward_display_names: Arc::new(RwLock::new(HashMap::new())),
             fault_overrides: Arc::new(RwLock::new(HashMap::new())),
             extended_vehicle_subscriptions: Arc::new(RwLock::new(HashMap::new())),
             extended_vehicle_publisher: None,
@@ -603,12 +606,39 @@ impl InMemoryServer {
         &self,
         backend: Arc<dyn SovdBackend + Send + Sync>,
     ) -> Result<()> {
+        self.register_forward_named(backend, None).await
+    }
+
+    /// Register a forward backend with an optional human-readable display
+    /// name. The display name is surfaced in discovery responses
+    /// (`list_entities` and `entity_capabilities`) instead of the raw
+    /// component id; the id itself stays authoritative for routing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SovdError::InvalidRequest`] if a forward backend is
+    /// already registered for the same component — forwards are
+    /// write-once, per the gateway pattern (ADR-0015).
+    pub async fn register_forward_named(
+        &self,
+        backend: Arc<dyn SovdBackend + Send + Sync>,
+        display_name: Option<String>,
+    ) -> Result<()> {
         let component = backend.component_id();
         let mut guard = self.forwards.write().await;
         if guard.contains_key(&component) {
             return Err(SovdError::InvalidRequest(format!(
                 "forward backend already registered for \"{component}\""
             )));
+        }
+        if let Some(name) = display_name
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty())
+        {
+            self.forward_display_names
+                .write()
+                .await
+                .insert(component.clone(), name);
         }
         guard.insert(component, backend);
         Ok(())
@@ -732,12 +762,16 @@ impl InMemoryServer {
         }
         {
             let guard = self.forwards.read().await;
+            let names = self.forward_display_names.read().await;
             for component in guard.keys() {
                 // Only include forwards that are NOT already served locally.
                 if !items.iter().any(|e| e.id == component.as_str()) {
                     items.push(EntityReference {
                         id: component.as_str().to_owned(),
-                        name: component.as_str().to_owned(),
+                        name: names
+                            .get(component)
+                            .cloned()
+                            .unwrap_or_else(|| component.as_str().to_owned()),
                         translation_id: None,
                         href: format!("{BASE_URI}/components/{component}"),
                         tags: None,
@@ -1043,7 +1077,11 @@ impl InMemoryServer {
         component: &ComponentId,
     ) -> Result<EntityCapabilities> {
         if let Some(backend) = self.forward(component).await {
-            return backend.entity_capabilities().await;
+            let mut capabilities = backend.entity_capabilities().await?;
+            if let Some(name) = self.forward_display_names.read().await.get(component) {
+                capabilities.name.clone_from(name);
+            }
+            return Ok(capabilities);
         }
         let view = self.component_server(component).await?;
         view.entity_capabilities().await
@@ -1767,7 +1805,12 @@ fn demo_component_state(id: &str) -> Option<ComponentState> {
         "bcm" => Some(demo_component(
             "bcm",
             "Body Control Module",
-            &[],
+            &[demo_fault(
+                "B1234",
+                "Driver door ajar switch circuit open",
+                4,
+                "pending",
+            )],
             &[
                 demo_op("relay_self_test", "Relay self test", true),
                 demo_op("read_vin", "Read VIN", false),
@@ -1782,6 +1825,12 @@ fn demo_component_state(id: &str) -> Option<ComponentState> {
 }
 
 fn demo_fault(code: &str, name: &str, severity: i32, aggregated_status: &str) -> Fault {
+    // Per-bit status flags mirror the aggregated status so consumers that
+    // read individual UDS-style bits (status-mask filters, the dashboard)
+    // see the same story as the aggregate: a pending fault is not also
+    // confirmed.
+    let confirmed = matches!(aggregated_status, "active" | "confirmed");
+    let pending = aggregated_status == "pending";
     Fault {
         code: code.to_owned(),
         scope: Some("Default".to_owned()),
@@ -1791,7 +1840,8 @@ fn demo_fault(code: &str, name: &str, severity: i32, aggregated_status: &str) ->
         severity: Some(severity),
         status: Some(serde_json::json!({
             "aggregatedStatus": aggregated_status,
-            "confirmedDTC": "1",
+            "confirmedDTC": if confirmed { "1" } else { "0" },
+            "pendingDTC": if pending { "1" } else { "0" },
         })),
         symptom: None,
         symptom_translation_id: None,

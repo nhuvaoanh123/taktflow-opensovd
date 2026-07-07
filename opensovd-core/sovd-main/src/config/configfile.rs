@@ -237,6 +237,10 @@ pub struct Configuration {
     /// `null` syntax in deployment configs.
     #[serde(default = "default_dfm_component_id")]
     pub dfm_component_id: Option<String>,
+    /// Optional human-readable name for the DFM component in discovery
+    /// responses. Falls back to the raw component id when absent.
+    #[serde(default)]
+    pub dfm_display_name: Option<String>,
     /// Which demo components should stay local to the in-process
     /// `InMemoryServer`. Defaults to the legacy demo trio so existing
     /// D1 deployments stay stable until they opt into a narrower surface.
@@ -299,6 +303,10 @@ pub struct CdaForwardConfig {
     pub base_url: String,
     #[serde(default = "default_cda_path_prefix")]
     pub path_prefix: String,
+    /// Optional human-readable name for this component in discovery
+    /// responses. Falls back to the raw component id when absent.
+    #[serde(default)]
+    pub display_name: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -335,6 +343,7 @@ impl Default for Configuration {
             },
             backend: DfmBackendConfig::default(),
             dfm_component_id: default_dfm_component_id(),
+            dfm_display_name: None,
             local_demo_components: default_local_demo_components(),
             cda_forwards: Vec::new(),
             bench_fault_injection: BenchFaultInjectionConfig::default(),

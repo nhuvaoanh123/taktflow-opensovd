@@ -282,7 +282,10 @@ async fn phase5_hybrid_alias_routing_keeps_external_ids_and_uses_remote_aliases(
         .await
         .expect("local BCM faults");
     assert!(
-        local_bcm_faults.items.is_empty(),
-        "local BCM component should still be served by the in-memory store"
+        local_bcm_faults
+            .items
+            .iter()
+            .any(|fault| fault.code == "B1234"),
+        "local BCM component should still be served by the in-memory store (seeded demo fault)"
     );
 }

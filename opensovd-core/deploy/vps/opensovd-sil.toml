@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
 
 dfm_component_id = "dfm"
+dfm_display_name = "Diagnostic Fault Memory"
 local_demo_components = ["bcm", "cvc", "sc"]
 
 [server]
@@ -18,11 +19,13 @@ sqlite_path = "/var/lib/opensovd/dfm.db"
 
 [[cda_forward]]
 component_id = "flxc1000"
+display_name = "FLXC1000 Demo Gateway"
 base_url = "http://cda:20002"
 path_prefix = "vehicle/v15"
 
 [[cda_forward]]
 component_id = "flxcng1000"
+display_name = "FLXC1000-NG Demo Gateway"
 base_url = "http://cda:20002"
 path_prefix = "vehicle/v15"
 

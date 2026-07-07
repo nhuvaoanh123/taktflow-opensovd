@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- UC05 - Aggregated DTC timeline across all ECUs (FR-1.5) -->
 <script lang="ts">
-	import { CANNED_DTCS, listAllFaults } from '$lib/api/sovdClient';
+	import { listAllFaults } from '$lib/api/sovdClient';
 	import type { DtcEntry } from '$lib/types/sovd';
 
 	interface Props {
@@ -11,20 +11,32 @@
 
 	let { extraFaults = [], refreshNonce = 0 }: Props = $props();
 
-	let baseFaults = $state<DtcEntry[]>([...CANNED_DTCS]);
+	let baseFaults = $state<DtcEntry[]>([]);
+	let loading = $state(true);
+	let unavailable = $state(false);
 
 	$effect(() => {
 		void load(refreshNonce);
 	});
 
 	async function load(_refreshNonce: number) {
-		baseFaults = await listAllFaults();
+		loading = true;
+		try {
+			const faults = await listAllFaults();
+			unavailable = faults === null;
+			baseFaults = faults ?? [];
+		} finally {
+			loading = false;
+		}
+	}
+
+	function timeMs(iso?: string): number {
+		const parsed = iso ? Date.parse(iso) : Number.NaN;
+		return Number.isFinite(parsed) ? parsed : 0;
 	}
 
 	const all = $derived(
-		[...baseFaults, ...extraFaults].sort(
-			(left, right) => new Date(right.lastSeen).getTime() - new Date(left.lastSeen).getTime()
-		)
+		[...baseFaults, ...extraFaults].sort((left, right) => timeMs(right.lastSeen) - timeMs(left.lastSeen))
 	);
 
 	const SEV_DOT: Record<string, string> = {
@@ -34,7 +46,8 @@
 		low: 'bg-slate-400'
 	};
 
-	function rel(iso: string): string {
+	function rel(iso?: string): string {
+		if (!iso) return '--';
 		const diff = Date.now() - new Date(iso).getTime();
 		const seconds = Math.floor(diff / 1000);
 		if (seconds < 60) return `${seconds}s ago`;
@@ -47,6 +60,17 @@
 	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 		Fault timeline ({all.length})
 	</h3>
+	{#if all.length === 0}
+		<p class="py-2 text-center text-xs text-muted-foreground">
+			{#if loading}
+				Loading fault timeline...
+			{:else if unavailable}
+				Fault routes unavailable.
+			{:else}
+				No faults reported.
+			{/if}
+		</p>
+	{/if}
 	<ol class="space-y-0.5">
 		{#each all as dtc (dtc.id)}
 			<li class="flex items-start gap-2 border-b border-border/50 py-1 text-xs last:border-b-0">

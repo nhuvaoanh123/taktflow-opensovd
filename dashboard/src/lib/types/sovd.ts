@@ -8,10 +8,12 @@ export type ComponentSource = 'local' | 'cda' | 'dfm' | 'unknown';
 export interface SovdComponent {
 	id: EcuId;
 	label: string;
-	hwVersion: string;
-	swVersion: string;
-	serial: string;
-	vin: string;
+	// Identity fields are optional: live capability responses do not carry
+	// them, and absent values must render as absent instead of canned.
+	hwVersion?: string;
+	swVersion?: string;
+	serial?: string;
+	vin?: string;
 	capabilities: ComponentCapability[];
 	source: ComponentSource;
 	logicalAddress?: string;
@@ -32,11 +34,13 @@ export interface DtcEntry {
 	description: string;
 	severity: 'low' | 'medium' | 'high' | 'critical';
 	status: DtcStatus;
-	firstSeen: string; // ISO 8601
-	lastSeen: string;
-	occurrences: number;
+	// History fields are optional: the live fault routes do not report them,
+	// and fabricating timestamps or counts misrepresents the bench.
+	firstSeen?: string; // ISO 8601
+	lastSeen?: string;
+	occurrences?: number;
 	component: EcuId;
-	ecuAddress: number;
+	ecuAddress?: number;
 	freezeFrame?: Record<string, string>;
 }
 
@@ -57,7 +61,7 @@ export interface SessionInfo {
 	sessionId: string;
 	level: SessionLevel;
 	securityLevel: SecurityLevel;
-	expiresAt: string; // ISO 8601
+	expiresAt?: string; // ISO 8601; absent when the backend reports no expiry
 	active?: boolean;
 }
 
@@ -71,9 +75,11 @@ export interface AuditEntry {
 
 export interface LiveDid {
 	component: EcuId;
-	vin: string;
-	batteryVoltage: number; // V
-	temperature: number; // °C
+	// Each field is optional: a component may not publish the matching DID,
+	// in which case the widget shows the value as absent.
+	vin?: string;
+	batteryVoltage?: number; // V
+	temperature?: number; // °C
 	timestamp: string;
 }
 

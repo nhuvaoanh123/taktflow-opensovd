@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Typed fetch wrappers for the OpenSOVD REST API.
-// Where the Phase 5 backend already exposes a live endpoint, we use it.
-// For slices that are still scaffold-only, we fall back to canned data so
-// the Stage 1 dashboard stays usable on a partially wired bench.
+// Every function returns live backend data, or `null` when the route is
+// unavailable so widgets can render an explicit unavailable state. Canned
+// data is never substituted for a live route; the remaining canned
+// constants exist only for unmounted showcase widgets and the explicitly
+// labelled UC21 stub path.
 
 import type {
 	AuditEntry,
@@ -151,7 +153,9 @@ type BackendRoutesResponse = {
 const DEFAULT_BASE = 'http://localhost:21002';
 const EXECUTION_IDS = new Map<string, string>();
 
-export const FALLBACK_COMPONENT_IDS: readonly EcuId[] = ['cvc', 'sc', 'bcm'];
+// Components served by the local sovd-server simulators (as opposed to
+// CDA-forwarded entities); used only for source classification.
+const LOCAL_COMPONENT_IDS: readonly EcuId[] = ['cvc', 'sc', 'bcm'];
 
 function apiBase(): string {
 	if (typeof window === 'undefined') {
@@ -220,21 +224,6 @@ function isComponentId(value: unknown): value is EcuId {
 	return typeof value === 'string' && value.trim().length > 0;
 }
 
-function cannedComponent(id: EcuId): SovdComponent {
-	return (
-		CANNED_COMPONENTS.find((component) => component.id === id) ?? {
-			id,
-			label: id.toUpperCase(),
-			hwVersion: '--',
-			swVersion: '--',
-			serial: '--',
-			vin: '--',
-			capabilities: [],
-			source: 'unknown'
-		}
-	);
-}
-
 function capabilitiesFromEntity(entity?: EntityCapabilitiesResponse): SovdComponent['capabilities'] {
 	const capabilities: SovdComponent['capabilities'] = [];
 	if (entity?.faults) capabilities.push('faults');
@@ -249,17 +238,13 @@ function mapComponent(
 	name: string | undefined,
 	entity?: EntityCapabilitiesResponse
 ): SovdComponent {
-	const fallback = cannedComponent(id);
-	const capabilities = capabilitiesFromEntity(entity);
-	const source = componentSource(id, entity);
 	return {
-		...fallback,
 		id,
-		label: name?.trim() || fallback.label,
-		capabilities: capabilities.length > 0 ? capabilities : fallback.capabilities,
-		source,
-		logicalAddress: entity?.variant?.logical_address ?? fallback.logicalAddress,
-		state: entity?.variant?.state ?? fallback.state
+		label: name?.trim() || entity?.name?.trim() || id.toUpperCase(),
+		capabilities: capabilitiesFromEntity(entity),
+		source: componentSource(id, entity),
+		logicalAddress: entity?.variant?.logical_address ?? undefined,
+		state: entity?.variant?.state ?? undefined
 	};
 }
 
@@ -273,7 +258,7 @@ function componentSource(
 	if (entity?.variant || entity?.faults?.includes('/vehicle/v15/')) {
 		return 'cda';
 	}
-	if (FALLBACK_COMPONENT_IDS.includes(id)) {
+	if (LOCAL_COMPONENT_IDS.includes(id)) {
 		return 'local';
 	}
 	return 'unknown';
@@ -365,30 +350,16 @@ function freezeFrameFromEnvironment(environment: unknown): Record<string, string
 	return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-function cannedFault(componentId: EcuId, code: string): DtcEntry | undefined {
-	return CANNED_DTCS.find(
-		(fault) =>
-			fault.component === componentId &&
-			(fault.code === code || fault.id === code || fault.id === `${componentId}:${code}`)
-	);
-}
-
 function mapFault(componentId: EcuId, fault: FaultResponse, detail?: FaultDetailsResponse): DtcEntry {
 	const code = fault.display_code ?? fault.code ?? 'UNKNOWN';
-	const fallback = cannedFault(componentId, code) ?? cannedFault(componentId, fault.code ?? code);
-	const timestamp = fallback?.lastSeen ?? new Date().toISOString();
 	return {
 		id: `${componentId}:${fault.code ?? code}`,
 		code,
-		description: fault.fault_name ?? fallback?.description ?? 'Reported fault',
-		severity: severityFromValue(fault.severity ?? fallback?.severity),
-		status: statusFromValue(fault.status ?? fallback?.status),
-		firstSeen: fallback?.firstSeen ?? timestamp,
-		lastSeen: fallback?.lastSeen ?? timestamp,
-		occurrences: fallback?.occurrences ?? 1,
+		description: fault.fault_name ?? 'Reported fault',
+		severity: severityFromValue(fault.severity),
+		status: statusFromValue(fault.status),
 		component: componentId,
-		ecuAddress: fallback?.ecuAddress ?? 0,
-		freezeFrame: freezeFrameFromEnvironment(detail?.environment_data) ?? fallback?.freezeFrame
+		freezeFrame: freezeFrameFromEnvironment(detail?.environment_data)
 	};
 }
 
@@ -396,15 +367,13 @@ function executionKey(componentId: EcuId, routineId: string): string {
 	return `${componentId}:${routineId}`;
 }
 
-function fallbackRoutine(componentId: EcuId, routineId: string): RoutineEntry {
-	return (
-		CANNED_ROUTINES.find((routine) => routine.component === componentId && routine.id === routineId) ?? {
-			id: routineId,
-			name: routineId,
-			component: componentId,
-			status: 'idle'
-		}
-	);
+function plainRoutine(componentId: EcuId, routineId: string): RoutineEntry {
+	return {
+		id: routineId,
+		name: routineId,
+		component: componentId,
+		status: 'idle'
+	};
 }
 
 function findDataId(
@@ -599,16 +568,13 @@ function mapMlInferenceResult(
 	};
 }
 
-export async function listComponents(): Promise<SovdComponent[]> {
+export async function listComponents(): Promise<SovdComponent[] | null> {
 	try {
 		const discovered = await fetchJson<DiscoveredEntitiesResponse>('/sovd/v1/components');
 		const items = discovered.items ?? [];
 		const liveItems = items.filter(
 			(item): item is { id: EcuId; name?: string } => isComponentId(item.id)
 		);
-		if (liveItems.length === 0) {
-			return CANNED_COMPONENTS;
-		}
 		const capabilities = await Promise.all(
 			liveItems.map(async (item) => {
 				try {
@@ -620,20 +586,23 @@ export async function listComponents(): Promise<SovdComponent[]> {
 		);
 		return liveItems.map((item, index) => mapComponent(item.id, item.name, capabilities[index]));
 	} catch {
-		return CANNED_COMPONENTS;
+		return null;
 	}
 }
 
-export async function getComponent(id: EcuId): Promise<SovdComponent> {
+export async function getComponent(id: EcuId): Promise<SovdComponent | null> {
 	try {
 		const entity = await fetchJson<EntityCapabilitiesResponse>(`/sovd/v1/components/${id}`);
 		return mapComponent(id, entity.name, entity);
 	} catch {
-		return cannedComponent(id);
+		return null;
 	}
 }
 
-export async function listFaults(componentId: EcuId, statusMask?: DtcStatus): Promise<DtcEntry[]> {
+export async function listFaults(
+	componentId: EcuId,
+	statusMask?: DtcStatus
+): Promise<DtcEntry[] | null> {
 	try {
 		const response = await fetchJson<ListOfFaultsResponse>(
 			`/sovd/v1/components/${componentId}/faults?page=1&page-size=200`
@@ -641,20 +610,31 @@ export async function listFaults(componentId: EcuId, statusMask?: DtcStatus): Pr
 		const faults = (response.items ?? []).map((fault) => mapFault(componentId, fault));
 		return statusMask ? faults.filter((fault) => fault.status === statusMask) : faults;
 	} catch {
-		const fallback = CANNED_DTCS.filter((fault) => fault.component === componentId);
-		return statusMask ? fallback.filter((fault) => fault.status === statusMask) : fallback;
+		return null;
 	}
 }
 
-export async function listAllFaults(componentIds?: readonly EcuId[]): Promise<DtcEntry[]> {
-	const ids = componentIds ?? (await listComponents()).map((component) => component.id);
-	const batches = await Promise.all(ids.map((componentId) => listFaults(componentId)));
-	return batches
-		.flat()
-		.sort((left, right) => new Date(right.lastSeen).getTime() - new Date(left.lastSeen).getTime());
+function faultTimeMs(value: string | undefined): number {
+	const parsed = value ? Date.parse(value) : Number.NaN;
+	return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export async function getFaultDetail(componentId: EcuId, dtcId: string): Promise<DtcEntry> {
+export async function listAllFaults(componentIds?: readonly EcuId[]): Promise<DtcEntry[] | null> {
+	const ids = componentIds ?? (await listComponents())?.map((component) => component.id);
+	if (!ids) {
+		return null;
+	}
+	const batches = await Promise.all(ids.map((componentId) => listFaults(componentId)));
+	const reachable = batches.filter((batch): batch is DtcEntry[] => batch !== null);
+	if (ids.length > 0 && reachable.length === 0) {
+		return null;
+	}
+	return reachable
+		.flat()
+		.sort((left, right) => faultTimeMs(right.lastSeen) - faultTimeMs(left.lastSeen));
+}
+
+export async function getFaultDetail(componentId: EcuId, dtcId: string): Promise<DtcEntry | null> {
 	const code = dtcId.includes(':') ? dtcId.split(':').pop() ?? dtcId : dtcId;
 	try {
 		const detail = await fetchJson<FaultDetailsResponse>(
@@ -662,7 +642,7 @@ export async function getFaultDetail(componentId: EcuId, dtcId: string): Promise
 		);
 		return mapFault(componentId, detail.item ?? { code }, detail);
 	} catch {
-		return cannedFault(componentId, code) ?? mapFault(componentId, { code });
+		return null;
 	}
 }
 
@@ -673,25 +653,20 @@ export async function clearFaults(componentId: EcuId, group?: string): Promise<v
 	await fetchJson<void>(path, { method: 'DELETE' });
 }
 
-export async function listRoutines(componentId: EcuId): Promise<RoutineEntry[]> {
+export async function listRoutines(componentId: EcuId): Promise<RoutineEntry[] | null> {
 	try {
 		const response = await fetchJson<OperationsListResponse>(
 			`/sovd/v1/components/${componentId}/operations`
 		);
-		const routines = (response.items ?? []).map((operation) => {
-			const fallback = fallbackRoutine(componentId, operation.id ?? 'unknown-operation');
+		return (response.items ?? []).map((operation) => {
+			const base = plainRoutine(componentId, operation.id ?? 'unknown-operation');
 			return {
-				...fallback,
-				id: operation.id ?? fallback.id,
-				name: operation.name?.trim() || fallback.name,
-				component: componentId
+				...base,
+				name: operation.name?.trim() || base.name
 			};
 		});
-		return routines.length > 0
-			? routines
-			: CANNED_ROUTINES.filter((routine) => routine.component === componentId);
 	} catch {
-		return CANNED_ROUTINES.filter((routine) => routine.component === componentId);
+		return null;
 	}
 }
 
@@ -715,18 +690,21 @@ export async function stopRoutine(componentId: EcuId, routineId: string): Promis
 	EXECUTION_IDS.delete(executionKey(componentId, routineId));
 }
 
-export async function pollRoutine(componentId: EcuId, routineId: string): Promise<RoutineEntry> {
+export async function pollRoutine(
+	componentId: EcuId,
+	routineId: string
+): Promise<RoutineEntry | null> {
 	const key = executionKey(componentId, routineId);
 	const executionId = EXECUTION_IDS.get(key);
 	if (!executionId) {
-		return fallbackRoutine(componentId, routineId);
+		return plainRoutine(componentId, routineId);
 	}
 	try {
 		const response = await fetchJson<ExecutionStatusResponse>(
 			`/sovd/v1/components/${componentId}/operations/${encodeURIComponent(routineId)}/executions/${encodeURIComponent(executionId)}`
 		);
 		return {
-			...fallbackRoutine(componentId, routineId),
+			...plainRoutine(componentId, routineId),
 			status: routineStatusFromExecution(response.status),
 			lastResult:
 				response.error && response.error.length > 0
@@ -734,20 +712,16 @@ export async function pollRoutine(componentId: EcuId, routineId: string): Promis
 					: undefined
 		};
 	} catch {
-		return fallbackRoutine(componentId, routineId);
+		return null;
 	}
 }
 
-export async function readDid(componentId: EcuId): Promise<LiveDid> {
-	const fallback = cannedDid(componentId);
+export async function readDid(componentId: EcuId): Promise<LiveDid | null> {
 	try {
 		const listing = await fetchJson<DatasResponse>(`/sovd/v1/components/${componentId}/data`);
 		const items = (listing.items ?? []).filter(
 			(item): item is DataMetadataResponse & { id: string } => typeof item.id === 'string'
 		);
-		if (items.length === 0) {
-			return fallback;
-		}
 		const vinId = findDataId(items, [/^vin$/i, /\bvin\b/i, /vehicle identification/i]);
 		const batteryId = findDataId(items, [
 			/^battery_voltage$/i,
@@ -774,13 +748,13 @@ export async function readDid(componentId: EcuId): Promise<LiveDid> {
 		]);
 		return {
 			component: componentId,
-			vin: extractStringValue(vinValue?.data) ?? fallback.vin,
-			batteryVoltage: extractNumberValue(batteryValue?.data) ?? fallback.batteryVoltage,
-			temperature: extractNumberValue(temperatureValue?.data) ?? fallback.temperature,
+			vin: extractStringValue(vinValue?.data),
+			batteryVoltage: extractNumberValue(batteryValue?.data),
+			temperature: extractNumberValue(temperatureValue?.data),
 			timestamp: new Date().toISOString()
 		};
 	} catch {
-		return fallback;
+		return null;
 	}
 }
 
@@ -832,21 +806,21 @@ export async function runMlInference(
 	return cannedMlInference(componentId);
 }
 
-export async function getSession(): Promise<SessionInfo> {
+export async function getSession(): Promise<SessionInfo | null> {
 	try {
 		const response = await fetchJson<SessionResponse>('/sovd/v1/session');
 		return {
-			sessionId: response.session_id?.trim() || CANNED_SESSION.sessionId,
+			sessionId: response.session_id?.trim() || '--',
 			level: mapSessionLevel(response.level),
 			securityLevel: clampSecurityLevel(response.security_level),
 			expiresAt:
 				typeof response.expires_at_ms === 'number'
 					? new Date(response.expires_at_ms).toISOString()
-					: CANNED_SESSION.expiresAt,
+					: undefined,
 			active: response.active ?? true
 		};
 	} catch {
-		return CANNED_SESSION;
+		return null;
 	}
 }
 
@@ -867,11 +841,11 @@ export async function getGatewayHealth(): Promise<GatewayHealth | null> {
 	}
 }
 
-export async function listGatewayBackends(): Promise<GatewayBackend[]> {
+export async function listGatewayBackends(): Promise<GatewayBackend[] | null> {
 	try {
 		const response = await fetchJson<BackendRoutesResponse>('/sovd/v1/gateway/backends');
 		const items = response.items ?? [];
-		const mapped = items
+		return items
 			.map((item) => {
 				const id = item.id?.trim();
 				if (!id) {
@@ -889,13 +863,12 @@ export async function listGatewayBackends(): Promise<GatewayBackend[]> {
 				} satisfies GatewayBackend;
 			})
 			.filter((item): item is GatewayBackend => item !== null);
-		return mapped.length > 0 ? mapped : CANNED_BACKENDS;
 	} catch {
-		return CANNED_BACKENDS;
+		return null;
 	}
 }
 
-export async function getAuditLog(limit = 50): Promise<AuditEntry[]> {
+export async function getAuditLog(limit = 50): Promise<AuditEntry[] | null> {
 	try {
 		const response = await fetchJson<AuditLogResponse>(`/sovd/v1/audit?limit=${limit}`);
 		const items = response.items ?? [];
@@ -909,7 +882,7 @@ export async function getAuditLog(limit = 50): Promise<AuditEntry[]> {
 			}))
 			.slice(0, limit);
 	} catch {
-		return CANNED_AUDIT;
+		return null;
 	}
 }
 
@@ -943,51 +916,8 @@ export function telemetryPayloadToDtc(payload: unknown): DtcEntry | null {
 	};
 }
 
-function cannedDid(componentId: EcuId): LiveDid {
-	const volts: Record<string, number> = { cvc: 14.2, sc: 12.8, bcm: 13.5 };
-	const temps: Record<string, number> = { cvc: 42, sc: 38, bcm: 35 };
-	return {
-		component: componentId,
-		vin: cannedComponent(componentId).vin,
-		batteryVoltage: volts[componentId] ?? 12,
-		temperature: temps[componentId] ?? 25,
-		timestamp: new Date().toISOString()
-	};
-}
-
-export const CANNED_COMPONENTS: SovdComponent[] = [
-	{
-		id: 'cvc',
-		label: 'CVC (Central Vehicle Controller)',
-		hwVersion: 'HW-2.1.0',
-		swVersion: 'SW-4.7.3',
-		serial: 'CVC-001-2024',
-		vin: 'WBA3A5G59ENP26705',
-		capabilities: ['faults', 'operations', 'data', 'modes'],
-		source: 'local'
-	},
-	{
-		id: 'sc',
-		label: 'SC (Sensor Controller)',
-		hwVersion: 'HW-1.5.2',
-		swVersion: 'SW-3.2.1',
-		serial: 'SC-002-2024',
-		vin: 'WBA3A5G59ENP26705',
-		capabilities: ['faults', 'data'],
-		source: 'local'
-	},
-	{
-		id: 'bcm',
-		label: 'BCM (Body Control Module)',
-		hwVersion: 'HW-3.0.0',
-		swVersion: 'SW-5.1.0',
-		serial: 'BCM-003-2024',
-		vin: 'WBA3A5G59ENP26705',
-		capabilities: ['faults', 'operations', 'modes'],
-		source: 'local'
-	}
-];
-
+// Illustrative DTC set for the unmounted UC13 lifecycle showcase widget.
+// Never substituted for a live route.
 export const CANNED_DTCS: DtcEntry[] = [
 	{
 		id: 'dtc-001',
@@ -1062,36 +992,6 @@ export const CANNED_DTCS: DtcEntry[] = [
 		lastSeen: '2026-04-12T09:15:00Z',
 		occurrences: 1
 	}
-];
-
-export const CANNED_ROUTINES: RoutineEntry[] = [
-	{ id: 'motor_self_test', name: 'Motor self test', component: 'cvc', status: 'idle' },
-	{ id: 'hv_precharge', name: 'HV precharge routine', component: 'cvc', status: 'running', lastResult: 'In progress...' },
-	{ id: 'safe_state_check', name: 'Safe-state supervisor check', component: 'sc', status: 'completed', lastResult: 'Pass: supervisor healthy' },
-	{ id: 'relay_self_test', name: 'Relay self test', component: 'bcm', status: 'failed', lastResult: 'Error: no response' },
-	{ id: 'read_vin', name: 'Read VIN', component: 'bcm', status: 'idle' }
-];
-
-export const CANNED_SESSION: SessionInfo = {
-	sessionId: 'sess-9a2f3c1d',
-	level: 'extended',
-	securityLevel: 2,
-	expiresAt: new Date(Date.now() + 120_000).toISOString(),
-	active: true
-};
-
-export const CANNED_BACKENDS: GatewayBackend[] = [
-	{ id: 'cvc-doip', address: '192.0.2.10:13400', protocol: 'doip', reachable: true, latencyMs: 4 },
-	{ id: 'sc-uds', address: '192.0.2.11:13400', protocol: 'uds', reachable: true, latencyMs: 6 },
-	{ id: 'bcm-uds', address: '192.0.2.12:13400', protocol: 'uds', reachable: false, latencyMs: 0 }
-];
-
-export const CANNED_AUDIT: AuditEntry[] = [
-	{ timestamp: '2026-04-17T09:44:01Z', actor: 'tester-01', action: 'CLEAR_FAULTS', target: 'cvc', result: 'ok' },
-	{ timestamp: '2026-04-17T09:43:30Z', actor: 'tester-01', action: 'START_ROUTINE', target: 'motor_self_test', result: 'ok' },
-	{ timestamp: '2026-04-17T09:40:00Z', actor: 'tester-02', action: 'SESSION_ELEVATE', target: 'extended', result: 'ok' },
-	{ timestamp: '2026-04-17T09:35:12Z', actor: 'tester-02', action: 'CLEAR_FAULTS', target: 'bcm', result: 'denied' },
-	{ timestamp: '2026-04-17T09:10:00Z', actor: 'tester-01', action: 'SESSION_CREATE', target: 'default', result: 'ok' }
 ];
 
 export function cannedMlInference(componentId: EcuId): MlInferenceResult {

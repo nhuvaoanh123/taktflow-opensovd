@@ -37,6 +37,7 @@
 	let localPage = $state(0);
 	let allFaults = $state<DtcEntry[]>([]);
 	let loading = $state(true);
+	let unavailable = $state(false);
 	let lastResetKey = $state('');
 
 	const currentPage = $derived(onPage ? page : localPage);
@@ -79,7 +80,9 @@
 	async function load(id: EcuId, _refreshNonce: number) {
 		loading = true;
 		try {
-			allFaults = await listFaults(id);
+			const faults = await listFaults(id);
+			unavailable = faults === null;
+			allFaults = faults ?? [];
 		} finally {
 			loading = false;
 		}
@@ -128,7 +131,13 @@
 
 	{#if visible.length === 0}
 		<p class="py-2 text-center text-xs text-muted-foreground">
-			{loading ? 'Loading faults...' : 'No faults for this filter.'}
+			{#if loading}
+				Loading faults...
+			{:else if unavailable}
+				Fault route unavailable for {componentId.toUpperCase()}.
+			{:else}
+				No faults for this filter.
+			{/if}
 		</p>
 	{:else}
 		<table class="w-full text-xs">
@@ -159,7 +168,7 @@
 							</span>
 						</td>
 						<td class="py-1 {STATUS_COLOR[dtc.status]}">{dtc.status}</td>
-						<td class="py-1 text-right tabular-nums">{dtc.occurrences}</td>
+						<td class="py-1 text-right tabular-nums">{dtc.occurrences ?? '--'}</td>
 					</tr>
 				{/each}
 			</tbody>

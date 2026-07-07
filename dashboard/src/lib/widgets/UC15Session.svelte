@@ -3,19 +3,24 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 
-	import { CANNED_SESSION, getSession } from '$lib/api/sovdClient';
+	import { getSession } from '$lib/api/sovdClient';
 	import type { SessionInfo } from '$lib/types/sovd';
 
-	let session = $state<SessionInfo>({ ...CANNED_SESSION });
-	let remaining = $state(0);
+	let session = $state<SessionInfo | null>(null);
+	let loading = $state(true);
+	let remaining = $state<number | null>(null);
 	let timer: ReturnType<typeof setInterval> | null = null;
 
-	function calcRemaining(): number {
+	function calcRemaining(): number | null {
+		if (!session?.expiresAt) {
+			return null;
+		}
 		return Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000));
 	}
 
 	async function load() {
 		session = await getSession();
+		loading = false;
 		remaining = calcRemaining();
 	}
 
@@ -25,7 +30,7 @@
 		timer = setInterval(() => {
 			remaining = calcRemaining();
 			ticks += 1;
-			if (ticks >= 5 || remaining === 0 || session.active === false) {
+			if (ticks >= 5 || remaining === 0 || session?.active === false) {
 				ticks = 0;
 				void load();
 			}
@@ -53,32 +58,38 @@
 	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 		Session
 	</h3>
-	<dl class="space-y-0.5">
-		<div class="flex justify-between">
-			<dt class="text-muted-foreground">Session ID</dt>
-			<dd class="font-mono">{session.sessionId}</dd>
-		</div>
-		<div class="flex justify-between">
-			<dt class="text-muted-foreground">Level</dt>
-			<dd class="font-semibold {session.active === false ? 'text-muted-foreground' : LEVEL_COLOR[session.level]}">
-				{session.active === false ? 'inactive' : session.level}
-			</dd>
-		</div>
-		<div class="flex justify-between">
-			<dt class="text-muted-foreground">Security</dt>
-			<dd class="font-mono">{secBar(session.securityLevel)} L{session.securityLevel}</dd>
-		</div>
-		<div class="flex justify-between">
-			<dt class="text-muted-foreground">Expires in</dt>
-			<dd
-				class="tabular-nums font-semibold {session.active === false
-					? 'text-muted-foreground'
-					: remaining < 30
-						? 'text-red-700'
-						: 'text-emerald-700'}"
-			>
-				{remaining}s
-			</dd>
-		</div>
-	</dl>
+	{#if session}
+		<dl class="space-y-0.5">
+			<div class="flex justify-between">
+				<dt class="text-muted-foreground">Session ID</dt>
+				<dd class="font-mono">{session.sessionId}</dd>
+			</div>
+			<div class="flex justify-between">
+				<dt class="text-muted-foreground">Level</dt>
+				<dd class="font-semibold {session.active === false ? 'text-muted-foreground' : LEVEL_COLOR[session.level]}">
+					{session.active === false ? 'inactive' : session.level}
+				</dd>
+			</div>
+			<div class="flex justify-between">
+				<dt class="text-muted-foreground">Security</dt>
+				<dd class="font-mono">{secBar(session.securityLevel)} L{session.securityLevel}</dd>
+			</div>
+			<div class="flex justify-between">
+				<dt class="text-muted-foreground">Expires in</dt>
+				<dd
+					class="tabular-nums font-semibold {session.active === false || remaining === null
+						? 'text-muted-foreground'
+						: remaining < 30
+							? 'text-red-700'
+							: 'text-emerald-700'}"
+				>
+					{remaining !== null ? `${remaining}s` : '--'}
+				</dd>
+			</div>
+		</dl>
+	{:else}
+		<p class="text-muted-foreground">
+			{loading ? 'Loading session...' : 'Session route unavailable.'}
+		</p>
+	{/if}
 </div>

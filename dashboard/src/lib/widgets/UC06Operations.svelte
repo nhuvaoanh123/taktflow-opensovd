@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Routine execution monitor. Public dashboard builds default to read-only. -->
 <script lang="ts">
-	import { CANNED_ROUTINES, listRoutines, pollRoutine, startRoutine } from '$lib/api/sovdClient';
+	import { listRoutines, pollRoutine, startRoutine } from '$lib/api/sovdClient';
 	import type { EcuId, RoutineEntry } from '$lib/types/sovd';
 
 	interface Props {
@@ -11,7 +11,9 @@
 
 	let { componentId, controlEnabled = false }: Props = $props();
 
-	let baseRoutines = $state<RoutineEntry[]>(CANNED_ROUTINES);
+	let baseRoutines = $state<RoutineEntry[]>([]);
+	let loading = $state(true);
+	let unavailable = $state(false);
 	let statusOverride = $state<Record<string, RoutineEntry>>({});
 	let actionError = $state<string | null>(null);
 
@@ -41,7 +43,14 @@
 	};
 
 	async function load(id?: EcuId) {
-		baseRoutines = id ? await listRoutines(id) : CANNED_ROUTINES;
+		loading = true;
+		try {
+			const listed = id ? await listRoutines(id) : [];
+			unavailable = listed === null;
+			baseRoutines = listed ?? [];
+		} finally {
+			loading = false;
+		}
 	}
 
 	async function refreshRunning(id: EcuId) {
@@ -50,11 +59,17 @@
 			return;
 		}
 		const updates = await Promise.all(
-			running.map(async (routine) => [routine.id, await pollRoutine(id, routine.id)] as const)
+			running.map(async (routine) => {
+				const polled = await pollRoutine(id, routine.id);
+				// A failed poll keeps the last known state instead of inventing one.
+				return polled === null
+					? null
+					: ([routine.id, { ...routine, status: polled.status, lastResult: polled.lastResult }] as const);
+			})
 		);
 		statusOverride = {
 			...statusOverride,
-			...Object.fromEntries(updates)
+			...Object.fromEntries(updates.filter((update) => update !== null))
 		};
 	}
 
@@ -93,6 +108,17 @@
 		</p>
 	{/if}
 
+	{#if routines.length === 0}
+		<p class="py-2 text-center text-xs text-muted-foreground">
+			{#if loading}
+				Loading operations...
+			{:else if unavailable}
+				Operations route unavailable{componentId ? ` for ${componentId.toUpperCase()}` : ''}.
+			{:else}
+				No operations exposed.
+			{/if}
+		</p>
+	{:else}
 	<div class="divide-y divide-border rounded border border-border">
 		{#each routines as rt (rt.id)}
 			<div class="flex items-center gap-3 px-3 py-2 text-xs">
@@ -120,4 +146,5 @@
 			</div>
 		{/each}
 	</div>
+	{/if}
 </div>

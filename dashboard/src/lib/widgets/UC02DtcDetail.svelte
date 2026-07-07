@@ -10,29 +10,33 @@
 
 	let { dtc, onClose }: Props = $props();
 
-	function fmt(iso: string): string {
-		return new Date(iso).toLocaleString();
+	function fmt(iso?: string): string {
+		return iso ? new Date(iso).toLocaleString() : '--';
+	}
+
+	function focusOnMount(node: HTMLElement) {
+		node.focus();
 	}
 </script>
 
+<svelte:window onkeydown={(e) => dtc && e.key === 'Escape' && onClose()} />
+
 {#if dtc}
-	<!-- Backdrop -->
-	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-		onclick={onClose}
-		onkeydown={(e) => e.key === 'Escape' && onClose()}
-		role="dialog"
-		aria-modal="true"
-		aria-label="DTC Detail"
-		tabindex="-1"
-	>
-		<!-- Modal panel — stop propagation so clicking inside doesn't close -->
-		<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+	<div class="fixed inset-0 z-50 flex items-center justify-center">
+		<!-- Backdrop is a real button so closing by click stays keyboard-accessible -->
+		<button
+			type="button"
+			class="absolute inset-0 cursor-default bg-black/60 backdrop-blur-sm"
+			aria-label="Close DTC detail"
+			onclick={onClose}
+		></button>
 		<div
 			class="relative w-full max-w-md rounded-xl border border-border bg-card p-5 text-card-foreground shadow-2xl"
-			role="document"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
+			role="dialog"
+			aria-modal="true"
+			aria-label="DTC Detail"
+			tabindex="-1"
+			use:focusOnMount
 		>
 			<button
 				class="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
@@ -50,7 +54,9 @@
 				<dd class="font-medium uppercase">{dtc.component}</dd>
 
 				<dt class="text-muted-foreground">ECU Address</dt>
-				<dd class="font-mono">0x{dtc.ecuAddress.toString(16).toUpperCase()}</dd>
+				<dd class="font-mono">
+					{dtc.ecuAddress !== undefined ? `0x${dtc.ecuAddress.toString(16).toUpperCase()}` : '--'}
+				</dd>
 
 				<dt class="text-muted-foreground">Severity</dt>
 				<dd class="font-semibold capitalize">{dtc.severity}</dd>
@@ -65,7 +71,7 @@
 				<dd>{fmt(dtc.lastSeen)}</dd>
 
 				<dt class="text-muted-foreground">Occurrences</dt>
-				<dd class="font-semibold">{dtc.occurrences}</dd>
+				<dd class="font-semibold">{dtc.occurrences ?? '--'}</dd>
 			</dl>
 
 			{#if dtc.freezeFrame}

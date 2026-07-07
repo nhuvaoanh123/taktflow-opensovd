@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 
-	import { CANNED_AUDIT, getAuditLog } from '$lib/api/sovdClient';
+	import { getAuditLog } from '$lib/api/sovdClient';
 	import type { AuditEntry } from '$lib/types/sovd';
 
 	interface Props {
@@ -12,11 +12,16 @@
 
 	let { extraEntries = [] }: Props = $props();
 
-	let entries = $state<AuditEntry[]>([...CANNED_AUDIT]);
+	let entries = $state<AuditEntry[]>([]);
+	let loading = $state(true);
+	let unavailable = $state(false);
 	let timer: ReturnType<typeof setInterval> | null = null;
 
 	async function load() {
-		entries = await getAuditLog(50);
+		const loaded = await getAuditLog(50);
+		unavailable = loaded === null;
+		entries = loaded ?? [];
+		loading = false;
 	}
 
 	onMount(() => {
@@ -39,6 +44,17 @@
 	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 		Audit log
 	</h3>
+	{#if allEntries.length === 0}
+		<p class="py-2 text-center text-xs text-muted-foreground">
+			{#if loading}
+				Loading audit log...
+			{:else if unavailable}
+				Audit route unavailable.
+			{:else}
+				No audit entries recorded.
+			{/if}
+		</p>
+	{/if}
 	<div class="max-h-32 overflow-y-auto space-y-px font-mono text-[10px]">
 		{#each allEntries as entry, i (i)}
 			<div class="flex gap-2 border-b border-border/50 py-0.5">

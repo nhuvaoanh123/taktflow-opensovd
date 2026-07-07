@@ -27,7 +27,9 @@
 	});
 
 	async function loadSource(id: EcuId) {
-		source = (await getComponent(id)).source;
+		// An unavailable component route reads as 'unknown', which keeps the
+		// destructive clear action disabled.
+		source = (await getComponent(id))?.source ?? 'unknown';
 	}
 
 	async function handleClear() {

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // WebSocket client for the ADR-0024 ws-bridge with auto-reconnect.
-// Falls back to a simulator when the bridge is unavailable.
+// When the bridge is unreachable, no frames are emitted — the dashboard
+// never synthesizes telemetry.
 
 import type { TelemetryFrame } from '$lib/types/sovd';
-import { CANNED_DTCS, telemetryPayloadToDtc } from './sovdClient';
+import { telemetryPayloadToDtc } from './sovdClient';
 
 type Listener = (frame: TelemetryFrame) => void;
 
@@ -13,7 +14,6 @@ const DEFAULT_DEV_PORT = '8080';
 let ws: WebSocket | null = null;
 let listeners: Listener[] = [];
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let simulatorTimer: ReturnType<typeof setInterval> | null = null;
 let connected = false;
 let shouldReconnect = true;
 
@@ -65,36 +65,6 @@ function emit(frame: TelemetryFrame): void {
 	}
 }
 
-function startSimulator(): void {
-	if (simulatorTimer) return;
-	let tick = 0;
-	simulatorTimer = setInterval(() => {
-		tick++;
-		if (tick % 3 === 0) {
-			const dtc = CANNED_DTCS[tick % CANNED_DTCS.length];
-			emit({ type: 'dtc', payload: dtc, timestamp: new Date().toISOString() });
-			return;
-		}
-		emit({
-			type: 'did',
-			payload: {
-				component: (['cvc', 'sc', 'bcm'] as const)[tick % 3],
-				batteryVoltage: +(12.5 + Math.random() * 2).toFixed(2),
-				temperature: +(35 + Math.random() * 15).toFixed(1),
-				vin: 'WBA3A5G59ENP26705',
-				timestamp: new Date().toISOString()
-			},
-			timestamp: new Date().toISOString()
-		});
-	}, 2000);
-}
-
-function stopSimulator(): void {
-	if (!simulatorTimer) return;
-	clearInterval(simulatorTimer);
-	simulatorTimer = null;
-}
-
 function parseIncoming(raw: string): TelemetryFrame | null {
 	try {
 		const parsed = JSON.parse(raw) as Record<string, unknown>;
@@ -124,7 +94,7 @@ function parseIncoming(raw: string): TelemetryFrame | null {
 				return {
 					type: 'dtc',
 					payload: dtc,
-					timestamp: dtc.lastSeen
+					timestamp: dtc.lastSeen ?? timestamp
 				};
 			}
 		}
@@ -148,7 +118,6 @@ export function connect(): void {
 		ws = new WebSocket(configuredWsUrl());
 		ws.onopen = () => {
 			connected = true;
-			stopSimulator();
 		};
 		ws.onmessage = (event) => {
 			if (typeof event.data !== 'string') {
@@ -162,7 +131,6 @@ export function connect(): void {
 		ws.onclose = () => {
 			ws = null;
 			connected = false;
-			startSimulator();
 			if (shouldReconnect) {
 				reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS);
 			}
@@ -171,7 +139,8 @@ export function connect(): void {
 			ws?.close();
 		};
 	} catch {
-		startSimulator();
+		// Bridge unreachable and constructor failed; reconnect is not
+		// scheduled because onclose never fires for a failed constructor.
 	}
 }
 
@@ -181,7 +150,6 @@ export function disconnect(): void {
 		clearTimeout(reconnectTimer);
 		reconnectTimer = null;
 	}
-	stopSimulator();
 	connected = false;
 	ws?.close();
 	ws = null;

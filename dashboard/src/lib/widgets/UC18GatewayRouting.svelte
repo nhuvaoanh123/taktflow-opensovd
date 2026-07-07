@@ -3,12 +3,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 
-	import { CANNED_BACKENDS, getGatewayHealth, listGatewayBackends } from '$lib/api/sovdClient';
+	import { getGatewayHealth, listGatewayBackends } from '$lib/api/sovdClient';
 	import type { GatewayBackend, GatewayHealth } from '$lib/types/sovd';
 
-	let backends = $state<GatewayBackend[]>([...CANNED_BACKENDS]);
+	let backends = $state<GatewayBackend[] | null>(null);
+	let loading = $state(true);
 	let health = $state<GatewayHealth | null>(null);
-	let backendsLive = $state(false);
 
 	onMount(() => {
 		void load();
@@ -21,7 +21,7 @@
 		]);
 		backends = loadedBackends;
 		health = loadedHealth;
-		backendsLive = loadedBackends !== CANNED_BACKENDS;
+		loading = false;
 	}
 
 	function probeTone(status: GatewayHealth['sovdDb']['status']): string {
@@ -63,41 +63,51 @@
 			</div>
 		</div>
 		<p class="mb-2 text-[10px] text-muted-foreground">
-			Health latency: {health.latencyMs} ms. Routes: {backendsLive ? 'live' : 'fallback'}.
+			Health latency: {health.latencyMs} ms.
 		</p>
+	{:else if !loading}
+		<p class="mb-2 text-[10px] text-muted-foreground">Health route unavailable.</p>
+	{/if}
+	{#if backends && backends.length > 0}
+		<table class="w-full text-xs">
+			<thead>
+				<tr class="border-b border-border">
+					<th class="py-1 text-left font-medium text-muted-foreground">Backend</th>
+					<th class="py-1 text-left font-medium text-muted-foreground">Address</th>
+					<th class="py-1 text-left font-medium text-muted-foreground">Proto</th>
+					<th class="py-1 text-right font-medium text-muted-foreground">Latency</th>
+					<th class="py-1 text-right font-medium text-muted-foreground">Status</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each backends as b (b.id)}
+					<tr class="border-b border-border/60">
+						<td class="py-1 font-mono">{b.id}</td>
+						<td class="py-1 font-mono text-muted-foreground">{b.address}</td>
+						<td class="py-1 uppercase">{b.protocol}</td>
+						<td class="py-1 text-right tabular-nums">
+							{b.reachable ? `${b.latencyMs} ms` : '--'}
+						</td>
+						<td class="py-1 text-right">
+							{#if b.reachable}
+								<span class="text-emerald-700">up</span>
+							{:else}
+								<span class="text-red-700">down</span>
+							{/if}
+						</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
 	{:else}
-		<p class="mb-2 text-[10px] text-muted-foreground">
-			Live gateway probe unavailable; showing fallback routing data only.
+		<p class="py-2 text-center text-xs text-muted-foreground">
+			{#if loading}
+				Loading backend routes...
+			{:else if backends === null}
+				Backend registry route unavailable.
+			{:else}
+				No backend routes registered.
+			{/if}
 		</p>
 	{/if}
-	<table class="w-full text-xs">
-		<thead>
-			<tr class="border-b border-border">
-				<th class="py-1 text-left font-medium text-muted-foreground">Backend</th>
-				<th class="py-1 text-left font-medium text-muted-foreground">Address</th>
-				<th class="py-1 text-left font-medium text-muted-foreground">Proto</th>
-				<th class="py-1 text-right font-medium text-muted-foreground">Latency</th>
-				<th class="py-1 text-right font-medium text-muted-foreground">Status</th>
-			</tr>
-		</thead>
-		<tbody>
-			{#each backends as b (b.id)}
-				<tr class="border-b border-border/60">
-					<td class="py-1 font-mono">{b.id}</td>
-					<td class="py-1 font-mono text-muted-foreground">{b.address}</td>
-					<td class="py-1 uppercase">{b.protocol}</td>
-					<td class="py-1 text-right tabular-nums">
-						{b.reachable ? `${b.latencyMs} ms` : '--'}
-					</td>
-					<td class="py-1 text-right">
-						{#if b.reachable}
-							<span class="text-emerald-700">up</span>
-						{:else}
-							<span class="text-red-700">down</span>
-						{/if}
-					</td>
-				</tr>
-			{/each}
-		</tbody>
-	</table>
 </div>

@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 
-	import { CANNED_COMPONENTS, listComponents } from '$lib/api/sovdClient';
+	import { listComponents } from '$lib/api/sovdClient';
 	import type { EcuId, SovdComponent } from '$lib/types/sovd';
 
 	interface Props {
@@ -13,14 +13,23 @@
 
 	let { onSelect, selectedId }: Props = $props();
 
-	let components = $state<SovdComponent[]>([...CANNED_COMPONENTS]);
+	let components = $state<SovdComponent[]>([]);
+	let loading = $state(true);
+	let unavailable = $state(false);
 
 	onMount(() => {
 		void load();
 	});
 
 	async function load() {
-		components = await listComponents();
+		loading = true;
+		try {
+			const discovered = await listComponents();
+			unavailable = discovered === null;
+			components = discovered ?? [];
+		} finally {
+			loading = false;
+		}
 	}
 
 	const CAP_COLOR: Record<string, string> = {
@@ -38,6 +47,17 @@
 	};
 </script>
 
+{#if components.length === 0}
+	<p class="rounded-md border border-border bg-card px-3 py-4 text-center text-xs text-muted-foreground">
+		{#if loading}
+			Discovering components...
+		{:else if unavailable}
+			Component discovery unavailable — /sovd/v1/components did not respond.
+		{:else}
+			No components discovered.
+		{/if}
+	</p>
+{:else}
 <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
 	{#each components as comp (comp.id)}
 		<button
@@ -59,7 +79,9 @@
 					<span class="text-muted-foreground">{comp.state}</span>
 				{/if}
 			</div>
-			<span class="truncate text-[10px] text-muted-foreground">S/N {comp.serial}</span>
+			{#if comp.serial}
+				<span class="truncate text-[10px] text-muted-foreground">S/N {comp.serial}</span>
+			{/if}
 			<div class="flex flex-wrap gap-1">
 				{#each comp.capabilities as cap (cap)}
 					<span class="rounded border px-1.5 py-0.5 text-[10px] font-medium {CAP_COLOR[cap]}">
@@ -70,3 +92,4 @@
 		</button>
 	{/each}
 </div>
+{/if}

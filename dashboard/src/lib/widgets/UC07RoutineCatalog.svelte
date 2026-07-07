@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- UC07 - Routine catalog discovery per ECU (FR-2.4) -->
 <script lang="ts">
-	import { CANNED_ROUTINES, listRoutines } from '$lib/api/sovdClient';
+	import { listRoutines } from '$lib/api/sovdClient';
 	import type { EcuId, RoutineEntry } from '$lib/types/sovd';
 
 	interface Props {
@@ -10,9 +10,9 @@
 
 	let { componentId }: Props = $props();
 
-	let routines = $state<RoutineEntry[]>(
-		CANNED_ROUTINES.filter((routine) => routine.component === componentId)
-	);
+	let routines = $state<RoutineEntry[]>([]);
+	let loading = $state(true);
+	let unavailable = $state(false);
 	let selected = $state<RoutineEntry | null>(null);
 
 	$effect(() => {
@@ -21,7 +21,14 @@
 	});
 
 	async function load(id: EcuId) {
-		routines = await listRoutines(id);
+		loading = true;
+		try {
+			const listed = await listRoutines(id);
+			unavailable = listed === null;
+			routines = listed ?? [];
+		} finally {
+			loading = false;
+		}
 	}
 </script>
 
@@ -30,7 +37,15 @@
 		Routine catalog - {componentId.toUpperCase()}
 	</h3>
 	{#if routines.length === 0}
-		<p class="text-xs text-muted-foreground">No routines registered for this ECU.</p>
+		<p class="text-xs text-muted-foreground">
+			{#if loading}
+				Loading routine catalog...
+			{:else if unavailable}
+				Operations route unavailable for {componentId.toUpperCase()}.
+			{:else}
+				No routines registered for this ECU.
+			{/if}
+		</p>
 	{:else}
 		<select
 			class="w-full rounded border border-input bg-background px-2 py-1 text-xs text-foreground"

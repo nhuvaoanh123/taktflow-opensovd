@@ -31,30 +31,30 @@
 	}
 </script>
 
-<div class="rounded-md border border-border bg-card p-3">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-		Gateway Routing
-	</h3>
+<div class="rounded-md border border-border bg-card p-4">
+	<h3 class="mb-3 text-sm font-semibold">Gateway</h3>
 	{#if health}
 		<div class="mb-3 grid gap-2 text-[10px] md:grid-cols-4">
 			<div class="rounded border border-border bg-muted/30 p-2">
 				<div class="text-muted-foreground">Server</div>
-				<div class="font-mono">{health.version}</div>
+				<div class="text-xs font-semibold">v{health.version}</div>
 			</div>
 			<div class="rounded border border-border bg-muted/30 p-2">
 				<div class="text-muted-foreground">Cycle</div>
-				<div class="font-mono">{health.operationCycle ?? 'idle'}</div>
+				<div class="text-xs font-semibold">{health.operationCycle ?? 'idle'}</div>
 			</div>
 			<div class="rounded border border-border bg-muted/30 p-2">
 				<div class="text-muted-foreground">SOVD DB</div>
-				<div class="font-semibold {probeTone(health.sovdDb.status)}">{health.sovdDb.status}</div>
+				<div class="text-xs font-semibold {probeTone(health.sovdDb.status)}">
+					{health.sovdDb.status}
+				</div>
 				{#if health.sovdDb.reason}
 					<div class="truncate text-muted-foreground">{health.sovdDb.reason}</div>
 				{/if}
 			</div>
 			<div class="rounded border border-border bg-muted/30 p-2">
-				<div class="text-muted-foreground">Fault Sink</div>
-				<div class="font-semibold {probeTone(health.faultSink.status)}">
+				<div class="text-muted-foreground">Fault sink</div>
+				<div class="text-xs font-semibold {probeTone(health.faultSink.status)}">
 					{health.faultSink.status}
 				</div>
 				{#if health.faultSink.reason}
@@ -63,7 +63,7 @@
 			</div>
 		</div>
 		<p class="mb-2 text-[10px] text-muted-foreground">
-			Health latency: {health.latencyMs} ms.
+			Health latency {health.latencyMs} ms
 		</p>
 	{:else if !loading}
 		<p class="mb-2 text-[10px] text-muted-foreground">Health route unavailable.</p>

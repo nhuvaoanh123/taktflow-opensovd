@@ -92,11 +92,9 @@
 	}
 </script>
 
-<div class="rounded-md border border-border bg-card p-3">
+<div class="rounded-md border border-border bg-card p-4">
 	<div class="mb-3 flex items-center justify-between gap-2">
-		<h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-			Operations
-		</h3>
+		<h3 class="text-sm font-semibold">Operations</h3>
 		<span class="text-[10px] font-medium text-muted-foreground">
 			{controlEnabled ? 'Control enabled' : 'Read-only'}
 		</span>
@@ -124,6 +122,9 @@
 			<div class="flex items-center gap-3 px-3 py-2 text-xs">
 				<div class="min-w-0 grow">
 					<p class="truncate font-medium">{rt.name}</p>
+					{#if rt.name !== rt.id}
+						<p class="truncate font-mono text-[10px] text-muted-foreground">{rt.id}</p>
+					{/if}
 					{#if rt.lastResult}
 						<p class="truncate text-[10px] text-muted-foreground">{rt.lastResult}</p>
 					{/if}

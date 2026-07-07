@@ -46,8 +46,7 @@
 		low: 'bg-slate-400'
 	};
 
-	function rel(iso?: string): string {
-		if (!iso) return '--';
+	function rel(iso: string): string {
 		const diff = Date.now() - new Date(iso).getTime();
 		const seconds = Math.floor(diff / 1000);
 		if (seconds < 60) return `${seconds}s ago`;
@@ -56,9 +55,10 @@
 	}
 </script>
 
-<div class="rounded-md border border-border bg-card p-3">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-		Fault timeline ({all.length})
+<div class="rounded-md border border-border bg-card p-4">
+	<h3 class="mb-2 text-sm font-semibold">
+		Fault feed — all components
+		<span class="ml-1 font-normal text-muted-foreground">({all.length})</span>
 	</h3>
 	{#if all.length === 0}
 		<p class="py-2 text-center text-xs text-muted-foreground">
@@ -77,8 +77,10 @@
 				<span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full {SEV_DOT[dtc.severity]}"></span>
 				<span class="w-16 shrink-0 font-mono font-semibold">{dtc.code}</span>
 				<span class="grow truncate text-muted-foreground">{dtc.description}</span>
-				<span class="shrink-0 text-[10px] uppercase text-muted-foreground">{dtc.component}</span>
-				<span class="shrink-0 text-[10px] tabular-nums text-muted-foreground">{rel(dtc.lastSeen)}</span>
+				<span class="shrink-0 font-mono text-[10px] text-muted-foreground">{dtc.component}</span>
+				{#if dtc.lastSeen}
+					<span class="shrink-0 text-[10px] tabular-nums text-muted-foreground">{rel(dtc.lastSeen)}</span>
+				{/if}
 			</li>
 		{/each}
 	</ol>

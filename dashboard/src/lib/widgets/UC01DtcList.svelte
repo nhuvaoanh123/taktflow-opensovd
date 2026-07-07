@@ -114,11 +114,12 @@
 	};
 </script>
 
-<div class="rounded-md border border-border bg-card p-3 text-card-foreground">
-	<div class="mb-2 flex items-center justify-between">
-		<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-			Faults - {componentId.toUpperCase()} ({filtered.length})
-		</span>
+<div class="text-card-foreground">
+	<div class="mb-2 flex items-center justify-between gap-2">
+		<h3 class="text-sm font-semibold">
+			Faults — <span class="font-mono text-muted-foreground">{componentId}</span>
+			<span class="ml-1 font-normal text-muted-foreground">({filtered.length})</span>
+		</h3>
 		<select
 			bind:value={statusMask}
 			class="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"

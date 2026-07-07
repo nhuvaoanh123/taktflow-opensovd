@@ -33,10 +33,11 @@
 	});
 </script>
 
-<div class="rounded-md border border-border bg-card p-3 text-xs">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-		Live data - {componentId.toUpperCase()} <span class="text-emerald-700">1 Hz</span>
-	</h3>
+<div class="text-xs">
+	<p class="mb-2 flex items-baseline justify-between gap-2">
+		<span class="font-medium text-muted-foreground">Live data</span>
+		<span class="text-[10px] text-muted-foreground">polled at 1 Hz</span>
+	</p>
 	{#if data}
 		<dl class="grid grid-cols-2 gap-x-3 gap-y-0.5">
 			<dt class="text-muted-foreground">VIN</dt>

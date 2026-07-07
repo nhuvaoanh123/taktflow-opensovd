@@ -54,10 +54,8 @@
 	}
 </script>
 
-<div class="rounded-md border border-border bg-card p-3 text-xs">
-	<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-		Session
-	</h3>
+<div class="rounded-md border border-border bg-card p-4 text-xs">
+	<h3 class="mb-2 text-sm font-semibold">Session</h3>
 	{#if session}
 		<dl class="space-y-0.5">
 			<div class="flex justify-between">
